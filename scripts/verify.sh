@@ -73,15 +73,15 @@ grep -q "_commit=\"$KERNEL_COMMIT\"" "$kernel_dir/APKBUILD" ||
 	fail "kernel commit drift"
 grep -q 'github.com/denysvitali/$_repository/archive/$_commit.tar.gz' \
 	"$kernel_dir/APKBUILD" || fail "kernel source is not the pinned GitHub archive"
-grep -q 'LLVM=-19' "$kernel_dir/APKBUILD" || fail "compiler boundary drift"
+grep -q 'LLVM=-20' "$kernel_dir/APKBUILD" || fail "compiler boundary drift"
 
 # ccache has to be routed in through CC/HOSTCC. Alpine's ccache package ships
 # symlinks for cc/gcc/g++/c++/cpp and the musl triple only -- there is no clang
 # symlink -- so a PATH-based setup compiles everything from scratch while
 # looking cached. These assertions exist so that cannot be undone quietly.
-grep -qF 'CC="ccache clang-19"' "$kernel_dir/APKBUILD" ||
+grep -qF 'CC="ccache clang-20"' "$kernel_dir/APKBUILD" ||
 	fail "kernel build no longer routes the compiler through ccache"
-grep -qF 'HOSTCC="ccache clang-19"' "$kernel_dir/APKBUILD" ||
+grep -qF 'HOSTCC="ccache clang-20"' "$kernel_dir/APKBUILD" ||
 	fail "kernel build no longer routes the host compiler through ccache"
 grep -qF 'CCACHE_DIR="/home/pmos/.ccache"' "$kernel_dir/APKBUILD" ||
 	fail "kernel build does not pin CCACHE_DIR to pmbootstrap's cache mount"

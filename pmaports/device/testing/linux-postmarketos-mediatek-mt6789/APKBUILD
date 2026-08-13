@@ -14,14 +14,14 @@ makedepends="
 	bc
 	bison
 	ccache
-	clang19
+	clang20
 	devicepkg-dev
 	elfutils-dev
 	findutils
 	flex
 	linux-headers
-	lld19
-	llvm19
+	lld20
+	llvm20
 	openssl-dev
 	pahole
 	perl
@@ -40,8 +40,8 @@ builddir="$srcdir/$_repository-$_commit"
 
 prepare() {
 	default_prepare
-	command -v clang-19 >/dev/null
-	command -v ld.lld-19 >/dev/null
+	command -v clang-20 >/dev/null
+	command -v ld.lld-20 >/dev/null
 	cp "$srcdir/$_config" .config
 }
 
@@ -51,11 +51,11 @@ build() {
 	# ccache is routed in EXPLICITLY through CC/HOSTCC, not through PATH.
 	# Alpine's ccache package installs /usr/lib/ccache/bin symlinks for cc,
 	# gcc, g++, c++, c89, c99, cpp and the x86_64-alpine-linux-musl-* triple
-	# only -- there is no clang or clang-19 symlink. pmbootstrap puts that
-	# directory first in PATH, so a LLVM=-19 build looks cached and is not:
+	# only -- there is no clang or clang-20 symlink. pmbootstrap puts that
+	# directory first in PATH, so a LLVM=-20 build looks cached and is not:
 	# every run compiles from scratch while the cache stays empty.
 	#
-	# HOSTCC is clang too. LLVM=-19 switches the host toolchain to LLVM as
+	# HOSTCC is clang too. LLVM=-20 switches the host toolchain to LLVM as
 	# well, so a gcc HOSTCC ends up driving lld and dies building fixdep.
 	#
 	# CCACHE_DIR is set explicitly: pmbootstrap symlinks /home/pmos/.ccache
@@ -76,9 +76,9 @@ build() {
 	# pinned rather than taken from the wall clock.
 	export CCACHE_SLOPPINESS="time_macros,include_file_mtime,include_file_ctime,file_stat_matches,pch_defines,system_headers"
 
-	make ARCH="$_carch" LLVM=-19 \
-		CC="ccache clang-19" \
-		HOSTCC="ccache clang-19" \
+	make ARCH="$_carch" LLVM=-20 \
+		CC="ccache clang-20" \
+		HOSTCC="ccache clang-20" \
 		KBUILD_BUILD_TIMESTAMP="2026-08-13 07:20:22 UTC" \
 		KBUILD_BUILD_USER="postmarketos" \
 		KBUILD_BUILD_HOST="builder" \
@@ -107,9 +107,9 @@ package() {
 	# reconsider objects it already has and recompile them uncached.
 	make modules_install dtbs_install \
 		ARCH="$_carch" \
-		LLVM=-19 \
-		CC="ccache clang-19" \
-		HOSTCC="ccache clang-19" \
+		LLVM=-20 \
+		CC="ccache clang-20" \
+		HOSTCC="ccache clang-20" \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
 		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs

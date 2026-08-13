@@ -33,8 +33,10 @@ Everything committed here is world-readable. Non-negotiable rules:
 
 - Kernel: https://github.com/denysvitali/dc-1-linux-kernel, branch `jagar`.
   Pinned by commit in `scripts/versions.env`
-  (`KERNEL_COMMIT`). Kernel builds use clang/LLVM/LLD 19 (`LLVM=-19`) — this
-  is the boot-proven compiler boundary; do not switch toolchains casually.
+  (`KERNEL_COMMIT`). Kernel builds use clang/LLVM/LLD 20 (`LLVM=-20`).
+  The boot-proven compiler boundary was clang 19, but Alpine edge dropped
+  the clang19 package (2026-08), so 20 is the closest buildable toolchain;
+  do not move it further without reason.
 - pmaports + pmbootstrap: upstream postmarketOS GitLab, pinned by commit in
   `scripts/versions.env`. Our two overlay packages
   (`device-daylight-jagar`, `linux-postmarketos-mediatek-mt6789`) live in
@@ -84,7 +86,7 @@ Everything committed here is world-readable. Non-negotiable rules:
   always fetch the latest build. pmbootstrap skips unchanged
   `pkgver-pkgrel` — **bump `pkgrel` when you change a build recipe** or the
   cached package is silently reused.
-- ccache must be routed explicitly (`CC="ccache clang-19"`); Alpine's ccache
+- ccache must be routed explicitly (`CC="ccache clang-20"`); Alpine's ccache
   shims cover gcc names only, so a PATH-based LLVM build silently misses the
   cache. Keep the positive controls: fail if ccache saw zero compiles when a
   kernel was built.
