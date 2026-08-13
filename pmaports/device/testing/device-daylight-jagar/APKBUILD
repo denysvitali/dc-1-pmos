@@ -1,0 +1,32 @@
+maintainer="Denys Vitali <denys@denv.it>"
+pkgname=device-daylight-jagar
+pkgdesc="Daylight Computer DC-1"
+pkgver=1
+pkgrel=0
+url="https://postmarketos.org"
+license="MIT"
+arch="aarch64"
+options="!check !archcheck"
+# MT7902 Wi-Fi/BT firmware comes from upstream linux-firmware
+# (mediatek/WIFI_RAM_CODE_MT7902_1.bin, WIFI_MT7902_patch_mcu_1_1_hdr.bin,
+# BT_RAM_CODE_MT7902_1_1_hdr.bin) and regulatory.db from wireless-regdb.
+depends="
+	linux-firmware-mediatek
+	linux-postmarketos-mediatek-mt6789
+	postmarketos-base
+	wireless-regdb
+"
+makedepends="devicepkg-dev"
+source="deviceinfo"
+
+build() {
+	devicepkg_build "$startdir" "$pkgname"
+}
+
+package() {
+	devicepkg_package "$startdir" "$pkgname"
+}
+
+sha512sums="
+269542398027d0947ced76f2c039328e657437c8d1e31d01bc6cc9e2b176766b59d33ea58e7ce7f9a548af8342cce05c733585dfd9d1bcb4aa11fab21e48eea1  deviceinfo
+"

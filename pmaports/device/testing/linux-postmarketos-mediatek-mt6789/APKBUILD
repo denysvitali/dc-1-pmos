@@ -1,0 +1,125 @@
+maintainer="Denys Vitali <denys@denv.it>"
+pkgname=linux-postmarketos-mediatek-mt6789
+pkgver=7.2_rc5_git20260813
+pkgrel=0
+pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
+arch="aarch64"
+_carch="arm64"
+_flavor="postmarketos-mediatek-mt6789"
+url="https://github.com/denysvitali/dc-1-linux-kernel"
+license="GPL-2.0-only"
+options="!check !strip !tracedeps pmb:cross-native pmb:kconfigcheck-community"
+makedepends="
+	bash
+	bc
+	bison
+	ccache
+	clang19
+	devicepkg-dev
+	elfutils-dev
+	findutils
+	flex
+	linux-headers
+	lld19
+	llvm19
+	openssl-dev
+	pahole
+	perl
+	python3
+	zstd
+"
+
+_repository="dc-1-linux-kernel"
+_commit="06081193648e5a17a4d8a6aedcb38cd33b2530ad"
+_config="config-$_flavor.$arch"
+source="
+	$pkgname-$_commit.tar.gz::https://github.com/denysvitali/$_repository/archive/$_commit.tar.gz
+	$_config::https://raw.githubusercontent.com/denysvitali/$_repository/$_commit/arch/arm64/configs/jagar_defconfig
+"
+builddir="$srcdir/$_repository-$_commit"
+
+prepare() {
+	default_prepare
+	command -v clang-19 >/dev/null
+	command -v ld.lld-19 >/dev/null
+	cp "$srcdir/$_config" .config
+}
+
+build() {
+	unset LDFLAGS
+
+	# ccache is routed in EXPLICITLY through CC/HOSTCC, not through PATH.
+	# Alpine's ccache package installs /usr/lib/ccache/bin symlinks for cc,
+	# gcc, g++, c++, c89, c99, cpp and the x86_64-alpine-linux-musl-* triple
+	# only -- there is no clang or clang-19 symlink. pmbootstrap puts that
+	# directory first in PATH, so a LLVM=-19 build looks cached and is not:
+	# every run compiles from scratch while the cache stays empty.
+	#
+	# HOSTCC is clang too. LLVM=-19 switches the host toolchain to LLVM as
+	# well, so a gcc HOSTCC ends up driving lld and dies building fixdep.
+	#
+	# CCACHE_DIR is set explicitly: pmbootstrap symlinks /home/pmos/.ccache
+	# to its persisted cache mount but never exports CCACHE_DIR, and ccache 4
+	# otherwise prefers $XDG_CACHE_HOME/ccache -- which is inside the
+	# throwaway chroot.
+	export CCACHE_DIR="/home/pmos/.ccache"
+	export CCACHE_BASEDIR="$srcdir"
+	# 4G leaves room under the 10 GB per-repository GitHub cache budget once
+	# the distfiles are counted.
+	export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-4G}"
+	# Compare compilers by content: an identical clang reinstalled in a fresh
+	# chroot must not invalidate the whole cache on mtime alone.
+	export CCACHE_COMPILERCHECK="content"
+	# A fresh source extraction has fresh timestamps on every run, so without
+	# these the hit rate is zero no matter how the cache is keyed. The
+	# timestamp macros are safe here because KBUILD_BUILD_TIMESTAMP below is
+	# pinned rather than taken from the wall clock.
+	export CCACHE_SLOPPINESS="time_macros,include_file_mtime,include_file_ctime,file_stat_matches,pch_defines,system_headers"
+
+	make ARCH="$_carch" LLVM=-19 \
+		CC="ccache clang-19" \
+		HOSTCC="ccache clang-19" \
+		KBUILD_BUILD_TIMESTAMP="2026-08-13 07:20:22 UTC" \
+		KBUILD_BUILD_USER="postmarketos" \
+		KBUILD_BUILD_HOST="builder" \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor" \
+		Image.gz dtbs modules
+
+	# A positive control for the cache itself. A build that bypasses ccache
+	# produces a green package, an empty cache and a permanently cold build,
+	# which is indistinguishable from "working" unless something asserts it.
+	ccache --show-stats
+	local calls
+	calls=$(ccache --print-stats |
+		awk '$1=="direct_cache_hit"||$1=="preprocessed_cache_hit"||$1=="cache_miss" { t+=$2 } END { print t+0 }')
+	if [ "$calls" -eq 0 ]; then
+		error "ccache saw zero compiles -- the build is bypassing it entirely"
+		return 1
+	fi
+	msg "ccache handled $calls compiles"
+}
+
+package() {
+	mkdir -p "$pkgdir"/boot
+	install -Dm644 arch/$_carch/boot/Image.gz "$pkgdir"/boot/vmlinuz
+
+	# Same compiler command as build(): a different CC here would make kbuild
+	# reconsider objects it already has and recompile them uncached.
+	make modules_install dtbs_install \
+		ARCH="$_carch" \
+		LLVM=-19 \
+		CC="ccache clang-19" \
+		HOSTCC="ccache clang-19" \
+		INSTALL_MOD_PATH="$pkgdir" \
+		INSTALL_MOD_STRIP=1 \
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
+	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
+
+	install -Dm644 include/config/kernel.release \
+		"$pkgdir/usr/share/kernel/$_flavor/kernel.release"
+}
+
+sha512sums="
+7ff290db039b8054c80f4e225bf386352da5b4ae06e72c1ef0f794f7d04967ddb9d8a73d8586ed71bb8a4f204fee961162bdc25c4122a1ba9b2e6438dc3aed30  linux-postmarketos-mediatek-mt6789-06081193648e5a17a4d8a6aedcb38cd33b2530ad.tar.gz
+deff9e8d54a3aac69c55001d9d957fe6bc33493bdcd5ffa6e6023dc886fa5c0b8f829288c283a067232751f9ed17e539e9df868335b203dfb346571f91f97adf  config-postmarketos-mediatek-mt6789.aarch64
+"

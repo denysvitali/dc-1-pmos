@@ -1,0 +1,125 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	echo "usage: $0 [--validate-only] [--verify-sources] WORK_DIRECTORY OUTPUT_DIRECTORY" >&2
+	exit 2
+}
+
+validate_only=no
+verify_sources=no
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--validate-only) validate_only=yes; shift ;;
+		--verify-sources) verify_sources=yes; shift ;;
+		*) break ;;
+	esac
+done
+[ "$#" -eq 2 ] || usage
+case "$1:$2" in
+	*:/|*:/dev|*:/dev/*|/:*|/dev:*|/dev/*:*) echo "refusing unsafe path" >&2; exit 2 ;;
+esac
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$script_dir/versions.env"
+work_dir=$(mkdir -p -- "$1" && CDPATH= cd -- "$1" && pwd)
+output_dir=$(mkdir -p -- "$2" && CDPATH= cd -- "$2" && pwd)
+[ -z "$(find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit)" ] || {
+	echo "output directory must be empty: $output_dir" >&2
+	exit 1
+}
+
+if [ "$validate_only" = no ]; then
+	for tool in python3 zstd sha256sum od find awk; do
+		command -v "$tool" >/dev/null || {
+			echo "missing required tool: $tool" >&2
+			exit 1
+		}
+	done
+fi
+
+for forbidden in wifi.conf wifi.txt authorized_keys id_rsa id_ed25519; do
+	if find "$script_dir" "$script_dir/../pmaports" -name "$forbidden" \
+		-print -quit | grep -q .; then
+		echo "refusing credential-like packaging input: $forbidden" >&2
+		exit 1
+	fi
+done
+
+"$script_dir/prepare.sh" "$work_dir"
+pmaports_dir="$work_dir/pmaports"
+pmbootstrap="$work_dir/pmbootstrap/pmbootstrap.py"
+pmb_work="$work_dir/pmbootstrap-work"
+pmb_config="$work_dir/pmbootstrap.cfg"
+mkdir -p "$pmb_work"
+work_version=$(awk '/^work_version = [0-9]+$/ { print $3 }' \
+	"$work_dir/pmbootstrap/pmb/config/__init__.py")
+case "$work_version" in
+	""|*[!0-9]*) echo "could not read pinned pmbootstrap work version" >&2; exit 1 ;;
+esac
+printf '%s\n' "$work_version" >"$pmb_work/version"
+
+cat >"$pmb_config" <<EOF
+[pmbootstrap]
+aports = $pmaports_dir
+boot_size = 256
+build_default_device_arch = True
+ccache_size = 5G
+device = daylight-jagar
+extra_packages = e2fsprogs-extra
+is_default_channel = False
+jobs = 4
+kernel = edge
+keymap =
+locale = en_US.UTF-8
+mirror_alpine = http://dl-cdn.alpinelinux.org/alpine/
+mirror_postmarketos = http://mirror.postmarketos.org/postmarketos/
+nonfree_firmware = False
+qemu_size = 1024M
+ssh_keys = False
+timezone = UTC
+ui = console
+user = dc1
+work = $pmb_work
+EOF
+
+pmb() {
+	if [ "$(id -u)" -eq 0 ]; then
+		python3 "$pmbootstrap" --as-root --config "$pmb_config" \
+			--aports "$pmaports_dir" "$@"
+	else
+		python3 "$pmbootstrap" --config "$pmb_config" \
+			--aports "$pmaports_dir" "$@"
+	fi
+}
+
+# This command allowlist is intentionally incapable of deploying an artifact.
+pmb apkbuild_parse device-daylight-jagar >/dev/null
+pmb apkbuild_parse linux-postmarketos-mediatek-mt6789 >/dev/null
+if [ "$verify_sources" = yes ]; then
+	pmb checksum --verify device-daylight-jagar linux-postmarketos-mediatek-mt6789
+fi
+if [ "$validate_only" = yes ]; then
+	echo "validated pinned postmarketOS package metadata"
+	exit 0
+fi
+pmb build --arch=aarch64 linux-postmarketos-mediatek-mt6789
+pmb build --arch=aarch64 device-daylight-jagar
+
+# --password is not optional in an automated build: without it, pmbootstrap
+# calls getpass() and an unattended run stops at a prompt nobody can answer.
+# The value is a build placeholder, recorded in PROVENANCE and meant to be
+# changed on first boot. The image ships with no SSH daemon and a locked root
+# account, so it is not a remotely reachable credential.
+pmb install --no-image --no-sshd --no-firewall --no-recommends \
+	--password "${PMOS_BUILD_PASSWORD:-postmarketos}"
+
+rootfs_dir="$pmb_work/chroot_rootfs_daylight-jagar"
+[ -d "$rootfs_dir" ] || {
+	echo "pmbootstrap rootfs not found at pinned layout: $rootfs_dir" >&2
+	exit 1
+}
+sh "$script_dir/export-artifacts.sh" \
+	"$rootfs_dir" "$pmb_work/packages" "$work_dir/SOURCES" "$output_dir"
+
+echo "wrote non-deployable rootfs, packages, and manifests to $output_dir"

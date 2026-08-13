@@ -1,0 +1,261 @@
+# CI for dc-1-pmos. Public GitHub-hosted runners only.
+#
+# verify (ubuntu-24.04, x86, fast): offline packaging/installer/mkboot checks
+#   on every push and pull request.
+# build (ubuntu-24.04-arm, native aarch64, no qemu): full pinned-source
+#   rootfs + kernel build, installer/system boot images, release assembly.
+#   Publishes the rolling `latest` prerelease only on pushes to the default
+#   branch; PR runs upload a workflow artifact instead.
+#
+# Every commit builds — no path filters, by design: pmbootstrap skips
+# unchanged pkgver-pkgrel, so a "docs-only" filter would be the second layer
+# of skipping that hides a broken build recipe.
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: >-
+          Versioned release tag (must match pmos-v*). Leave empty to update
+          the rolling `latest` prerelease instead.
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      # Fail a bad workflow_dispatch immediately, not after a multi-hour build.
+      - name: Validate requested release tag
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        env:
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          case "$TAG" in
+            pmos-v*) echo "requested release tag: $TAG" ;;
+            *) echo "release_tag must match pmos-v*, got: $TAG" >&2; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v4
+
+      # mkfs.ext4 / e2fsck / dumpe2fs / debugfs live in /usr/sbin, which is
+      # not on the default non-root PATH; the offline ext4 test needs them
+      # without sudo.
+      - name: Install verification dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends e2fsprogs zstd
+          echo /usr/sbin >> "$GITHUB_PATH"
+          echo /sbin >> "$GITHUB_PATH"
+
+      - name: Packaging verification (scripts/verify.sh)
+        run: sh scripts/verify.sh
+
+      - name: Installer offline tests
+        run: sh installer/tests/run-tests.sh
+
+      # Same compiler contract as installer/build.sh (-static -Os -Wall
+      # -Wextra), so an installer C breakage fails here in seconds instead of
+      # after the aarch64 rootfs build.
+      - name: Installer C smoke build
+        run: |
+          for src in installer/src/init.c installer/src/rebootbl.c \
+                     installer/src/bootctl.c installer/src/system/init.c; do
+            out=$(mktemp)
+            gcc -static -Os -Wall -Wextra -o "$out" "$src"
+            rm -f "$out"
+            echo "compiled $src"
+          done
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          # mkboot has no dependencies and therefore no go.sum; key the
+          # build cache on go.mod instead.
+          cache-dependency-path: boot/mkboot/go.mod
+
+      - name: mkboot build, vet, test
+        working-directory: boot/mkboot
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+
+      - name: Boot tooling helper syntax
+        run: python3 -m py_compile boot/mkboot/vendorboot_v4_verify.py
+
+  build:
+    runs-on: ubuntu-24.04-arm
+    needs: verify
+    timeout-minutes: 360
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet \
+            /opt/ghc /usr/local/.ghcup
+          df -h /
+
+      # Persistence across ephemeral runners. Only the kernel ccache and the
+      # downloaded source tarballs — never chroots or built packages: a stale
+      # package cache is exactly what export-artifacts.sh guards against.
+      # The run_id suffix makes every run save an updated ccache; restore
+      # falls back to the newest cache for the same (then any) source pins.
+      - name: Restore pmbootstrap ccache and source caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/postmarketos/pmbootstrap-work/cache_ccache*
+            work/postmarketos/pmbootstrap-work/cache_distfiles
+          key: pmb-${{ hashFiles('scripts/versions.env') }}-${{ github.run_id }}
+          restore-keys: |
+            pmb-${{ hashFiles('scripts/versions.env') }}-
+            pmb-
+
+      # The kernel toolchain (clang-19/LLVM, per the APKBUILD) lives inside
+      # the build chroot; the runner only needs the host-side tools.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            e2fsprogs zstd lz4 cpio busybox-static file
+          echo /usr/sbin >> "$GITHUB_PATH"
+          echo /sbin >> "$GITHUB_PATH"
+
+      - name: Prepare pinned sources
+        run: sh scripts/prepare.sh work/postmarketos
+
+      # pmbootstrap escalates through the runner's passwordless sudo for its
+      # chroots; export-artifacts.sh is invoked by this script and fills out/.
+      - name: Build rootfs and export artifacts
+        run: sh scripts/build-rootfs.sh work/postmarketos out
+
+      # The post-job cache save tars as the runner user; chroot-produced
+      # cache files are root-owned and would silently fail the save.
+      - name: Reclaim cache ownership for the post-job save
+        run: |
+          for d in work/postmarketos/pmbootstrap-work/cache_ccache* \
+                   work/postmarketos/pmbootstrap-work/cache_distfiles; do
+            if [ -e "$d" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$d"
+            fi
+          done
+
+      # Root is required for mknod. BUSYBOX must be the static aarch64
+      # busybox (Ubuntu's busybox-static); build.sh verifies linkage and the
+      # required applets natively — no qemu, this runner is aarch64.
+      # MODDIR is passed only if the built rootfs actually shipped modules
+      # (the gadget stack may be built in).
+      - name: Build installer and system boot images
+        run: |
+          BB=$(command -v busybox)
+          file -b "$BB" | grep -q 'statically linked'
+          moddir=$(sudo sh -c \
+            'ls -d work/postmarketos/pmbootstrap-work/chroot_rootfs_daylight-jagar/lib/modules/* 2>/dev/null' \
+            | head -n 1 || true)
+          if [ -n "$moddir" ]; then
+            echo "staging kernel modules from $moddir"
+            sudo env BUSYBOX="$BB" \
+              KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
+              MODDIR="$moddir" sh installer/build.sh
+          else
+            echo "no kernel modules directory found; building without MODDIR"
+            sudo env BUSYBOX="$BB" \
+              KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
+              sh installer/build.sh
+          fi
+
+      # One directory holding exactly what the README promises users, with a
+      # single regenerated SHA256SUMS: the exporter's manifest predates the
+      # boot images, so it cannot cover them. PROVENANCE is shipped verbatim
+      # (hardware_verified=false stays untouched).
+      - name: Assemble release directory
+        run: |
+          mkdir release
+          cp out/packages/*.apk release/
+          cp out/jagar-rootfs.tar.gz out/jagar-rootfs.ext4.zst release/
+          cp installer/out/installer-boot.img installer/out/jagar-boot.img release/
+          cp installer/host/dc1-install.sh release/
+          cp out/PROVENANCE out/SOURCES out/FILES.tsv release/
+          grep -qx 'hardware_verified=false' release/PROVENANCE
+          (cd release && sha256sum -- *) | LC_ALL=C sort -k 2 > SHA256SUMS.tmp
+          mv SHA256SUMS.tmp release/SHA256SUMS
+          (cd release && sha256sum --check --strict SHA256SUMS)
+          ls -l release/
+
+      # PR runs stop here: artifact yes, release no.
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dc1-pmos-${{ github.sha }}
+          path: release/
+          if-no-files-found: error
+
+      - name: Write release notes
+        run: |
+          {
+            echo "Automated build of \`${GITHUB_SHA}\`."
+            echo
+            echo "**hardware_verified=false** — a green build proves the"
+            echo "artifacts compile, not that they boot. Read the README"
+            echo "warning before flashing anything."
+            echo
+            echo '```'
+            cat release/PROVENANCE
+            echo '```'
+          } > notes.md
+
+      # Rolling prerelease: recreate `latest` so no stale asset from a
+      # previous build can outlive its SHA256SUMS.
+      - name: Publish rolling prerelease
+        if: >-
+          (github.event_name == 'push' ||
+           (github.event_name == 'workflow_dispatch' && inputs.release_tag == ''))
+          && github.ref_name == github.event.repository.default_branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Rolling build (${GITHUB_SHA:0:12})" \
+            --notes-file notes.md \
+            release/*
+
+      - name: Publish versioned release
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          case "$TAG" in
+            pmos-v*) ;;
+            *) echo "release_tag must match pmos-v*, got: $TAG" >&2; exit 1 ;;
+          esac
+          gh release create "$TAG" \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes-file notes.md \
+            release/*

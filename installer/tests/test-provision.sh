@@ -1,0 +1,172 @@
+#!/bin/sh
+# Offline tests for installer/src/provision.sh: validation and the pure
+# file-edit provisioning, run against a fake rootfs directory. No root, no
+# device, no network.
+set -eu
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+PROV="$HERE/../src/provision.sh"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+pass=0
+failn=0
+ok()   { pass=$((pass + 1)); echo "  ok: $*"; }
+bad()  { failn=$((failn + 1)); echo "  FAIL: $*"; }
+
+HASH='$6$testsalt$abcdefghijklmnopqrstuvwxyz0123456789'
+
+write_answers() {
+	# write_answers FILE [ssid] [psk]
+	f=$1; ssid=${2:-}; psk=${3:-}
+	{
+		echo "DC1_USER=alice"
+		echo "DC1_PASS_HASH=$HASH"
+		echo "DC1_HOSTNAME=mydc1"
+		echo "DC1_TZ=Europe/Zurich"
+		if [ -n "$ssid" ]; then
+			echo "DC1_WIFI_SSID_B64=$(printf '%s' "$ssid" | base64 | tr -d '\n')"
+			echo "DC1_WIFI_PSK_B64=$(printf '%s' "$psk" | base64 | tr -d '\n')"
+		else
+			echo "DC1_WIFI_SSID_B64="
+			echo "DC1_WIFI_PSK_B64="
+		fi
+	} > "$f"
+}
+
+make_rootfs() {
+	# make_rootfs DIR -> fake pmOS-ish rootfs with one regular user "dc1"
+	r=$1
+	mkdir -p "$r/etc" "$r/home/dc1" "$r/usr/share/zoneinfo/Europe" \
+		"$r/var/lib"
+	cat > "$r/etc/passwd" <<'EOF'
+root:x:0:0:root:/root:/bin/sh
+daemon:x:2:2:daemon:/sbin:/sbin/nologin
+dc1:x:10000:10000:dc1 user:/home/dc1:/bin/ash
+EOF
+	cat > "$r/etc/shadow" <<'EOF'
+root:!::0:::::
+daemon:!::0:::::
+dc1:!:19000:0:99999:7:::
+EOF
+	cat > "$r/etc/group" <<'EOF'
+root:x:0:
+wheel:x:10:dc1
+video:x:27:dc1
+audio:x:18:dc1
+dc1:x:10000:
+EOF
+	cat > "$r/etc/hosts" <<'EOF'
+127.0.0.1	localhost
+127.0.1.1	oldname
+EOF
+	echo oldname > "$r/etc/hostname"
+	touch "$r/usr/share/zoneinfo/Europe/Zurich"
+	touch "$r/usr/share/zoneinfo/UTC"
+}
+
+# ---------------------------------------------------------- validation
+echo "== validation =="
+
+write_answers "$TMP/good"
+sh "$PROV" --validate "$TMP/good" >/dev/null && ok "valid answers accepted" \
+	|| bad "valid answers rejected"
+
+sed 's/^DC1_USER=.*/DC1_USER=Alice/' "$TMP/good" > "$TMP/a"
+sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "uppercase username accepted" \
+	|| ok "uppercase username rejected"
+
+sed 's/^DC1_USER=.*/DC1_USER=root/' "$TMP/good" > "$TMP/a"
+sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "root username accepted" \
+	|| ok "root username rejected"
+
+sed 's/^DC1_PASS_HASH=.*/DC1_PASS_HASH=cleartext/' "$TMP/good" > "$TMP/a"
+sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "non-crypt hash accepted" \
+	|| ok "non-crypt hash rejected"
+
+sed 's/^DC1_HOSTNAME=.*/DC1_HOSTNAME=-bad-/' "$TMP/good" > "$TMP/a"
+sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "bad hostname accepted" \
+	|| ok "bad hostname rejected"
+
+sed 's|^DC1_TZ=.*|DC1_TZ=../../etc/shadow|' "$TMP/good" > "$TMP/a"
+sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "traversal timezone accepted" \
+	|| ok "traversal timezone rejected"
+
+write_answers "$TMP/a" "MyNet" "short"
+sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "short PSK accepted" \
+	|| ok "short PSK rejected"
+
+write_answers "$TMP/a" "MyNet" ""
+sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "SSID without PSK accepted" \
+	|| ok "SSID without PSK rejected"
+
+# ------------------------------------------------- apply: rename user
+echo "== apply: rename existing user =="
+R="$TMP/root1"
+make_rootfs "$R"
+write_answers "$TMP/ans" "Home Net" "supersecret1"
+sh "$PROV" "$R" "$TMP/ans" >/dev/null || bad "provision run failed"
+
+grep -q '^alice:x:10000:10000:' "$R/etc/passwd" \
+	&& ok "user renamed, uid preserved" || bad "passwd rename wrong"
+grep -q '^dc1:' "$R/etc/passwd" && bad "old user still in passwd" \
+	|| ok "old user gone from passwd"
+grep -qF 'alice:$6$testsalt$' "$R/etc/shadow" \
+	&& ok "password hash set in shadow" || bad "shadow hash wrong"
+grep -q '^wheel:x:10:alice$' "$R/etc/group" \
+	&& ok "group membership renamed" || bad "group membership wrong"
+[ -d "$R/home/alice" ] && ok "home dir moved" || bad "home dir not moved"
+[ "$(cat "$R/etc/hostname")" = "mydc1" ] && ok "hostname written" \
+	|| bad "hostname wrong"
+grep -q '^127\.0\.1\.1	mydc1$' "$R/etc/hosts" && ok "hosts updated" \
+	|| bad "hosts wrong"
+[ "$(readlink "$R/etc/localtime")" = "../usr/share/zoneinfo/Europe/Zurich" ] \
+	&& ok "timezone symlink" || bad "timezone symlink wrong"
+
+# Wi-Fi: no NM dir, no wpa_supplicant binary -> parked credentials.
+[ -f "$R/var/lib/dc1-installer/wifi.pending" ] \
+	&& ok "wifi parked without network stack" || bad "wifi.pending missing"
+grep -q '^ssid=Home Net$' "$R/var/lib/dc1-installer/wifi.pending" \
+	&& ok "parked ssid correct" || bad "parked ssid wrong"
+
+# ------------------------------------------------- apply: NM keyfile
+echo "== apply: NetworkManager keyfile =="
+R="$TMP/root2"
+make_rootfs "$R"
+mkdir -p "$R/etc/NetworkManager"
+sh "$PROV" "$R" "$TMP/ans" >/dev/null || bad "provision run failed"
+CONN="$R/etc/NetworkManager/system-connections/wifi.nmconnection"
+[ -f "$CONN" ] && ok "keyfile written" || bad "keyfile missing"
+grep -q '^ssid=Home Net$' "$CONN" && ok "keyfile ssid" || bad "keyfile ssid wrong"
+grep -q '^psk=supersecret1$' "$CONN" && ok "keyfile psk" || bad "keyfile psk wrong"
+perms=$(stat -c %a "$CONN")
+[ "$perms" = 600 ] && ok "keyfile mode 600" || bad "keyfile mode $perms"
+
+# ------------------------------------------------- apply: wpa_supplicant
+echo "== apply: wpa_supplicant fallback =="
+R="$TMP/root3"
+make_rootfs "$R"
+mkdir -p "$R/sbin" "$R/etc/init.d" "$R/etc/runlevels/default"
+touch "$R/sbin/wpa_supplicant"; chmod 755 "$R/sbin/wpa_supplicant"
+touch "$R/etc/init.d/wpa_supplicant"
+sh "$PROV" "$R" "$TMP/ans" >/dev/null || bad "provision run failed"
+WPA="$R/etc/wpa_supplicant/wpa_supplicant.conf"
+[ -f "$WPA" ] && ok "wpa_supplicant.conf written" || bad "wpa conf missing"
+grep -q 'ssid="Home Net"' "$WPA" && ok "wpa ssid" || bad "wpa ssid wrong"
+[ -L "$R/etc/runlevels/default/wpa_supplicant" ] \
+	&& ok "openrc service enabled" || bad "openrc symlink missing"
+
+# ------------------------------------------------- apply: matching user
+echo "== apply: username matches existing user =="
+R="$TMP/root4"
+make_rootfs "$R"
+sed 's/^DC1_USER=.*/DC1_USER=dc1/' "$TMP/ans" > "$TMP/ans2"
+sh "$PROV" "$R" "$TMP/ans2" >/dev/null || bad "provision run failed"
+grep -q '^dc1:x:10000:' "$R/etc/passwd" && ok "existing user kept" \
+	|| bad "existing user broken"
+grep -qF 'dc1:$6$testsalt$' "$R/etc/shadow" && ok "password set on existing user" \
+	|| bad "existing user hash wrong"
+
+echo
+echo "test-provision: $pass ok, $failn failed"
+[ "$failn" -eq 0 ]
