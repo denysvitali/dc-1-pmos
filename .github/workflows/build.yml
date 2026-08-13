@@ -148,7 +148,21 @@ jobs:
       # pmbootstrap escalates through the runner's passwordless sudo for its
       # chroots; export-artifacts.sh is invoked by this script and fills out/.
       - name: Build rootfs and export artifacts
-        run: sh scripts/build-rootfs.sh work/postmarketos out
+        # On failure, surface the error tail as ::error:: annotations so the
+        # failure is diagnosable through the public checks API.
+        run: |
+          set -o pipefail
+          if ! sh scripts/build-rootfs.sh work/postmarketos out 2>&1 \
+              | tee build-rootfs.log; then
+            tail -n 8 build-rootfs.log | while IFS= read -r l; do
+              printf '::error::%s\n' "$l"
+            done
+            sudo tail -n 8 work/postmarketos/pmbootstrap-work/log.txt \
+                2>/dev/null | while IFS= read -r l; do
+              printf '::error::pmblog: %s\n' "$l"
+            done
+            exit 1
+          fi
 
       # The post-job cache save tars as the runner user; chroot-produced
       # cache files are root-owned and would silently fail the save.
