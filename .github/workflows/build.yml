@@ -154,11 +154,10 @@ jobs:
           set -o pipefail
           if ! sh scripts/build-rootfs.sh work/postmarketos out 2>&1 \
               | tee build-rootfs.log; then
-            tail -n 8 build-rootfs.log | while IFS= read -r l; do
-              printf '::error::%s\n' "$l"
-            done
-            sudo tail -n 8 work/postmarketos/pmbootstrap-work/log.txt \
-                2>/dev/null | while IFS= read -r l; do
+            sudo grep -n -E \
+                'ERROR:|error:|Error |BAD |No such|not found|undefined|\*\*\*|failed|FAILED' \
+                work/postmarketos/pmbootstrap-work/log.txt 2>/dev/null \
+                | tail -n 9 | while IFS= read -r l; do
               printf '::error::pmblog: %s\n' "$l"
             done
             exit 1
