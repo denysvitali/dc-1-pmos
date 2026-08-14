@@ -14,8 +14,12 @@
 #      the real name, bring up usb0 at 172.16.42.1/24.
 #   3. shells: nc on TCP 4444, interactive sh on ttyGS1/ttyACM0/ttyS0/tty1,
 #      one-way kmsg stream on ttyGS0.
-#   4. the installer daemon: one connection at a time on TCP 5555, handled by
-#      /etc/installer/receive.sh.
+#   4. the on-device touch front-end (tui.sh: Wi-Fi + network install; if
+#      the touch UI cannot run it exits and only the USB flow remains).
+#   5. the USB installer daemon: one connection at a time on TCP 5555,
+#      handled by /etc/installer/receive.sh. Always running, so a host can
+#      take over regardless of what the touch UI is doing (a writelib lock
+#      keeps the two transports from ever writing concurrently).
 
 PATH=/bin:/sbin:/usr/bin:/usr/sbin
 export PATH
@@ -127,7 +131,19 @@ for t in ttyS0 tty1; do
     setsid sh -c "exec sh </dev/$t >/dev/$t 2>&1" &
 done
 
-# ------------------------------------------------------- 4. installer daemon
+# ------------------------------------------------- 4. touch UI front-end
+# The primary install path: pick Wi-Fi on the panel, download the release,
+# feed the shared write core. Backgrounded and optional by design -- if
+# dc1-ask cannot acquire the framebuffer or touchscreen, tui.sh exits and
+# everything below still works exactly as before.
+if [ -x /etc/installer/tui.sh ] && [ -x /bin/dc1-ask ]; then
+    log "starting touch installer UI"
+    setsid sh /etc/installer/tui.sh </dev/null >/dev/null 2>&1 &
+else
+    log "touch UI not staged; USB install only"
+fi
+
+# ------------------------------------------------------- 5. installer daemon
 # One install session at a time. receive.sh talks the DC1-INSTALL-V1 protocol
 # on the socket, writes progress to /tmp/installer-status (painted by /init),
 # and reboots to the bootloader on success -- so this loop normally never

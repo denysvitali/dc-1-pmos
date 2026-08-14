@@ -1,7 +1,8 @@
 #!/bin/sh
 # Build BOTH DC-1 initramfs images:
-#   installer  -- "installation mode" (USB gadget net + installd), flashed
-#                 temporarily to boot_a during installation
+#   installer  -- "installation mode" (on-device touch installer with Wi-Fi
+#                 network install, plus USB gadget net + installd as the
+#                 fallback), flashed temporarily to boot_a during installation
 #   system     -- the boot initramfs inside jagar-boot.img: verify the
 #                 installed jagar-root filesystem and switch_root into it
 #
@@ -16,13 +17,24 @@
 #                                          (gadget stack, if modular)
 #
 # Run as root (or under fakeroot): the cpio needs real device nodes.
+# Needs network on the first run: firmware and Alpine packages are fetched
+# at BUILD time (cached under dl/, pinned below, never committed).
 #
-# The installer image is deliberately minimal and SECRET-FREE:
-#   * no Wi-Fi firmware: the install transfer runs over USB gadget
-#     networking on the same cable fastboot used, so the MT7902 blobs are
-#     not needed here. Wi-Fi credentials collected during install are
-#     provisioned into the INSTALLED rootfs, which carries its own firmware.
-#   * no wifi.conf, no authorized_keys, no keys of any kind.
+# The installer image is SECRET-FREE:
+#   * no wifi.conf, no authorized_keys, no keys of any kind. Wi-Fi
+#     credentials are collected at INSTALL time on the device itself and
+#     provisioned into the installed rootfs.
+#   * the MT7902 firmware + regulatory.db ARE included (the on-device
+#     installer downloads the rootfs over Wi-Fi), but they come from
+#     upstream linux-firmware / wireless-regdb only, pinned by exact size
+#     and SHA-256. The stock Android blobs have the same file names and
+#     even pass the legacy firmware handshake, then fail mainline mt76's
+#     UNI commands -- a same-named file with the wrong hash FAILS the build.
+#   * userland beyond busybox (curl, zstd, wpa_supplicant + libraries, the
+#     musl loader) is extracted from Alpine edge apks pinned by exact
+#     version below. These are public binaries fetched from the official
+#     mirror; when Alpine bumps a version the URL 404s and the build fails
+#     closed -- bump the pin deliberately.
 #
 # Facts this build depends on (measured during bring-up; see also the
 # comments in src/init.c):
@@ -40,7 +52,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 SRC="$HERE/src"
 OUT="$HERE/out"
 ROOT="$HERE/root"
-BUSYBOX=${BUSYBOX:-/bin/busybox.static}
+DL="$HERE/dl"
 CC=${CC:-gcc}
 STRIP=${STRIP:-strip}
 MODDIR=${MODDIR:-}
@@ -54,12 +66,130 @@ fatal() {
 command -v "$CC" >/dev/null || fatal "no compiler: $CC"
 command -v lz4 >/dev/null || fatal "need lz4 (legacy-frame ramdisk is mandatory)"
 command -v cpio >/dev/null || fatal "need cpio"
+command -v curl >/dev/null || fatal "need curl (build-time downloads)"
+command -v xz >/dev/null || fatal "need xz (wireless-regdb tarball)"
+
+# --------------------------------------------------------------- 0. downloads
+# Everything fetched here is public, upstream, and verified before use.
+# dl/ is a cache (gitignored); delete it to force a re-download.
+
+# MT7902 firmware pins: the linux-firmware blobs proven on this device.
+LINUX_FIRMWARE_TAG=20260622
+LINUX_FIRMWARE_URL="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain"
+WIFI_RAM_NAME="WIFI_RAM_CODE_MT7902_1.bin"
+WIFI_RAM_SIZE=716944
+WIFI_RAM_SHA256=b5958ac72c71fb8405e080f52d378d02b484812b9f1010c8843727056bbfc998
+WIFI_PATCH_NAME="WIFI_MT7902_patch_mcu_1_1_hdr.bin"
+WIFI_PATCH_SIZE=119328
+WIFI_PATCH_SHA256=d73ba9e982f781221a2b9f10c42031f20a9dce046929fc0d55c791a417efe30a
+
+# Signed regulatory database pair: official wireless-regdb 2026.05.30
+# release (CONFIG_CFG80211_REQUIRE_SIGNED_REGDB -- never stage half a pair).
+REGDB_VERSION=2026.05.30
+REGDB_URL="https://mirrors.edge.kernel.org/pub/software/network/wireless-regdb/wireless-regdb-$REGDB_VERSION.tar.xz"
+REGDB_SIZE=6380
+REGDB_SHA256=2fb33ca0074db573e05ef7dd50bb45b63c0ff98b7e852e1105ebad536fae8e6b
+REGDB_SIG_SIZE=1085
+REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e919179
+
+# Alpine edge/main aarch64 packages, pinned by exact version (resolved
+# 2026-08-14). The mirror serves exactly one file per version, so a version
+# pin IS the content pin for build reproducibility purposes; when edge moves
+# on, the URL 404s and the build fails closed.
+ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64"
+ALPINE_APKS="
+busybox-static-1.38.0-r4
+musl-1.2.6-r2
+curl-8.21.0-r0
+libcurl-8.21.0-r0
+ca-certificates-bundle-20260611-r0
+brotli-libs-1.2.0-r1
+c-ares-1.34.8-r0
+libcrypto3-3.5.7-r0
+libssl3-3.5.7-r0
+libidn2-2.3.8-r0
+libunistring-1.4.2-r0
+nghttp2-libs-1.70.0-r0
+libpsl-0.21.5-r3
+zlib-1.3.2-r0
+zstd-1.5.7-r2
+zstd-libs-1.5.7-r2
+libgcc-15.2.0-r8
+libstdc++-15.2.0-r8
+wpa_supplicant-2.11-r4
+dbus-libs-1.16.2-r2
+libnl3-3.11.0-r0
+pcsc-lite-libs-2.5.1-r0
+"
+
+verify_blob() {
+	vb_label=$1 vb_path=$2 vb_size=$3 vb_sha=$4
+	[ -f "$vb_path" ] || fatal "$vb_label missing: $vb_path"
+	vb_actual_size=$(wc -c < "$vb_path" | tr -d ' ')
+	[ "$vb_actual_size" = "$vb_size" ] || \
+		fatal "$vb_label has size $vb_actual_size, expected $vb_size: $vb_path"
+	vb_actual_sha=$(sha256sum "$vb_path")
+	vb_actual_sha=${vb_actual_sha%% *}
+	[ "$vb_actual_sha" = "$vb_sha" ] || \
+		fatal "$vb_label has unexpected SHA-256 $vb_actual_sha: $vb_path (stock Android blob? see header comment)"
+	echo "  verified $vb_label: $vb_actual_size bytes"
+}
+
+fetch() {   # fetch URL OUT -- cache-aware, fail-closed
+	[ -s "$2" ] && return 0
+	echo "  fetching $(basename "$2")"
+	curl -fsSL --retry 3 -o "$2.part" "$1" || fatal "download failed: $1"
+	mv "$2.part" "$2"
+}
+
+mkdir -p "$DL/firmware" "$DL/apk" "$DL/apkroot"
+
+fetch "$LINUX_FIRMWARE_URL/mediatek/$WIFI_RAM_NAME?h=$LINUX_FIRMWARE_TAG" \
+	"$DL/firmware/$WIFI_RAM_NAME"
+fetch "$LINUX_FIRMWARE_URL/mediatek/$WIFI_PATCH_NAME?h=$LINUX_FIRMWARE_TAG" \
+	"$DL/firmware/$WIFI_PATCH_NAME"
+verify_blob "MT7902 RAM firmware" "$DL/firmware/$WIFI_RAM_NAME" \
+	"$WIFI_RAM_SIZE" "$WIFI_RAM_SHA256"
+verify_blob "MT7902 ROM patch" "$DL/firmware/$WIFI_PATCH_NAME" \
+	"$WIFI_PATCH_SIZE" "$WIFI_PATCH_SHA256"
+
+if [ ! -f "$DL/firmware/regulatory.db" ] || [ ! -f "$DL/firmware/regulatory.db.p7s" ]; then
+	fetch "$REGDB_URL" "$DL/firmware/wireless-regdb.tar.xz"
+	tar -xJf "$DL/firmware/wireless-regdb.tar.xz" -C "$DL/firmware" \
+		--strip-components=1 \
+		"wireless-regdb-$REGDB_VERSION/regulatory.db" \
+		"wireless-regdb-$REGDB_VERSION/regulatory.db.p7s" \
+		|| fatal "cannot extract regulatory.db pair"
+fi
+verify_blob "wireless-regdb $REGDB_VERSION database" \
+	"$DL/firmware/regulatory.db" "$REGDB_SIZE" "$REGDB_SHA256"
+verify_blob "wireless-regdb $REGDB_VERSION signature" \
+	"$DL/firmware/regulatory.db.p7s" "$REGDB_SIG_SIZE" "$REGDB_SIG_SHA256"
+regdb_magic=$(od -An -tx1 -N4 "$DL/firmware/regulatory.db" | tr -d ' \n')
+[ "$regdb_magic" = 52474442 ] || fatal "regulatory.db has invalid magic $regdb_magic"
+
+# Fetch + unpack the pinned Alpine packages into one merged tree. An .apk is
+# concatenated gzip/tar segments; tar extracts all of them (the signature
+# segment yields dot-files we ignore). Every file we STAGE from the tree is
+# checked to exist afterwards, so a bad extraction fails closed.
+for pkg in $ALPINE_APKS; do
+	fetch "$ALPINE_MIRROR/$pkg.apk" "$DL/apk/$pkg.apk"
+done
+rm -rf "$DL/apkroot"
+mkdir -p "$DL/apkroot"
+for pkg in $ALPINE_APKS; do
+	tar -xzf "$DL/apk/$pkg.apk" -C "$DL/apkroot" 2>/dev/null || true
+done
+rm -rf "$DL/apkroot/.SIGN"* 2>/dev/null || true
+
+BUSYBOX=${BUSYBOX:-"$DL/apkroot/bin/busybox.static"}
 
 [ -x "$BUSYBOX" ] || fatal "static busybox missing at $BUSYBOX (set BUSYBOX=)"
-# Must be the *static* build. A dynamically linked busybox would need the musl
-# loader, which we deliberately do not ship.
+# Must be the *static* build (Alpine's is static-PIE: self-relocating, no
+# interpreter -- equally fine). A dynamically linked busybox would need the
+# musl loader before /usr/lib exists, which init never guarantees.
 if command -v file >/dev/null; then
-	file -b "$BUSYBOX" | grep -q "statically linked" || \
+	file -b "$BUSYBOX" | grep -Eq "statically linked|static-pie linked" || \
 		fatal "$BUSYBOX is not statically linked"
 fi
 # If the busybox binary runs on this build host (native aarch64 CI), verify
@@ -67,7 +197,8 @@ fi
 # skip this check and find out on device -- prefer native CI.
 if "$BUSYBOX" true 2>/dev/null; then
 	applets=$("$BUSYBOX" --list)
-	for a in nc sha256sum base64 blkid awk mkfifo tee head dd chroot switch_root; do
+	for a in nc sha256sum base64 blkid awk mkfifo tee head dd chroot \
+	         switch_root cryptpw udhcpc rmdir df pidof; do
 		echo "$applets" | grep -qx "$a" || \
 			fatal "busybox at $BUSYBOX lacks required applet: $a"
 	done
@@ -102,6 +233,10 @@ mkdir -p "$OUT" "$ROOT"
 "$CC" -static -Os -Wall -Wextra -o "$OUT/system-init" "$SRC/system/init.c"
 "$STRIP" "$OUT/system-init"
 
+# dc1-ask: the touch prompt screen (framebuffer + evdev, no dependencies).
+"$CC" -static -Os -Wall -Wextra -o "$OUT/dc1-ask" "$SRC/ask.c"
+"$STRIP" "$OUT/dc1-ask"
+
 # ---------------------------------------------------------------- 2. skeleton
 d="$ROOT/installer"
 mkdir -p "$d"/dev "$d"/proc "$d"/sys "$d"/tmp "$d"/etc/installer "$d"/bin \
@@ -121,11 +256,17 @@ mknod -m 666 "$d/dev/tty"     c 5 0
 install -m 0755 "$OUT/installer-init" "$d/init"
 install -m 0755 "$OUT/rebootbl" "$d/bin/rebootbl"
 install -m 0755 "$OUT/bootctl"  "$d/bin/bootctl"
+install -m 0755 "$OUT/dc1-ask"  "$d/bin/dc1-ask"
 install -m 0755 "$BUSYBOX" "$d/bin/busybox"
 install -m 0755 "$SRC/rc.sh" "$d/etc/rc.sh"
 install -m 0755 "$SRC/receive.sh" "$d/etc/installer/receive.sh"
 install -m 0755 "$SRC/provision.sh" "$d/etc/installer/provision.sh"
+install -m 0755 "$SRC/netinstall.sh" "$d/etc/installer/netinstall.sh"
+install -m 0755 "$SRC/tui.sh" "$d/etc/installer/tui.sh"
 install -m 0644 "$SRC/partlib.sh" "$d/etc/installer/partlib.sh"
+install -m 0644 "$SRC/writelib.sh" "$d/etc/installer/writelib.sh"
+install -m 0644 "$SRC/wifi.sh" "$d/etc/installer/wifi.sh"
+install -m 0755 "$SRC/udhcpc.script" "$d/etc/udhcpc.script"
 
 # rc.sh runs "/bin/busybox --install -s /bin", but every applet the scripts
 # reference is also symlinked here: a missing `tr` or `head` does not error,
@@ -134,9 +275,65 @@ for a in sh ash cat ls ln mount mountpoint umount insmod lsmod modprobe ip \
          dmesg setsid echo sleep mkdir rm cp mv chmod chown touch chroot tr \
          head tail wc grep sed cut sort od dd find blkid seq date uname sync \
          poweroff reboot cmp pidof ps basename readlink printf nc mkfifo \
-         sha256sum base64 awk tee stat; do
+         sha256sum base64 awk tee stat cryptpw udhcpc rmdir df kill; do
 	ln -sf busybox "$d/bin/$a"
 done
+
+# ------------------------------------------- 2b. network userland + firmware
+# Binaries and libraries from the pinned Alpine apks (see stage 0). Only the
+# named files are taken -- never a recursive copy of the apk tree.
+AR="$DL/apkroot"
+stage() {   # stage MODE SRC DEST -- fail closed on anything missing
+	[ -e "$AR/$2" ] || [ -L "$AR/$2" ] || fatal "apk did not provide $2"
+	mkdir -p "$d/$(dirname "$3")"
+	cp -a "$AR/$2" "$d/$3"
+	[ "$1" = lib ] || chmod 0755 "$d/$3"
+}
+stage bin sbin/wpa_supplicant       sbin/wpa_supplicant
+stage bin sbin/wpa_cli              sbin/wpa_cli
+stage bin usr/bin/curl              usr/bin/curl
+stage bin usr/bin/zstd              usr/bin/zstd
+stage lib etc/ssl/certs/ca-certificates.crt etc/ssl/certs/ca-certificates.crt
+# The musl loader plus every DT_NEEDED of the binaries above. Alpine keeps
+# musl in /lib and the rest in /usr/lib; preserve both (symlinks included).
+mkdir -p "$d/lib" "$d/usr/lib"
+for so in lib/ld-musl-aarch64.so.1 lib/libc.musl-aarch64.so.1; do
+	[ -e "$AR/$so" ] || [ -L "$AR/$so" ] || fatal "apk did not provide $so"
+	cp -a "$AR/$so" "$d/$so"
+done
+find "$AR/usr/lib" -maxdepth 1 \( -name '*.so' -o -name '*.so.*' \) \
+	-exec cp -a -t "$d/usr/lib" {} + \
+	|| fatal "staging Alpine shared libraries failed"
+
+# Every staged ELF must resolve its DT_NEEDED inside the image, or Wi-Fi /
+# download would fail at first boot on hardware instead of failing the build.
+if command -v readelf >/dev/null 2>&1; then
+	for bin in "$d/sbin/wpa_supplicant" "$d/sbin/wpa_cli" \
+	           "$d/usr/bin/curl" "$d/usr/bin/zstd" "$d"/usr/lib/*.so*; do
+		[ -f "$bin" ] || continue
+		readelf -d "$bin" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p' \
+		| while read -r need; do
+			[ -e "$d/usr/lib/$need" ] || [ -e "$d/lib/$need" ] || \
+				fatal "$(basename "$bin") needs $need, not staged (Alpine dep drift -- update the apk pin list)"
+		done || exit 1
+	done
+	echo "  shared-library closure check: OK"
+else
+	echo "  NOTE: readelf unavailable; shared-library closure check skipped"
+fi
+
+# Pinned upstream firmware (verified in stage 0). Exactly these four files;
+# never a recursive copy, so a stray same-named vendor blob cannot ride in.
+mkdir -p "$d/lib/firmware/mediatek"
+install -m 0644 "$DL/firmware/$WIFI_RAM_NAME" "$d/lib/firmware/mediatek/$WIFI_RAM_NAME"
+install -m 0644 "$DL/firmware/$WIFI_PATCH_NAME" "$d/lib/firmware/mediatek/$WIFI_PATCH_NAME"
+install -m 0644 "$DL/firmware/regulatory.db" "$d/lib/firmware/regulatory.db"
+install -m 0644 "$DL/firmware/regulatory.db.p7s" "$d/lib/firmware/regulatory.db.p7s"
+
+# Runtime directories the network stack expects.
+mkdir -p "$d/run" "$d/tmp"
+: > "$d/etc/resolv.conf"
+chmod 0644 "$d/etc/resolv.conf"
 
 if [ -n "$MODDIR" ] && [ -d "$MODDIR" ]; then
 	mkdir -p "$d/lib/modules"
@@ -172,9 +369,12 @@ for a in sh ash cat ls ln mount mountpoint umount echo sleep mkdir rm cp \
 	ln -sf busybox "$s/bin/$a"
 done
 
-# Belt and braces: nothing secret-shaped may enter either image.
+# Belt and braces: nothing secret-shaped may enter either image. The CA
+# bundle (public certificates, .crt) is expected; anything key-like is not.
 if find "$ROOT" -name 'authorized_keys' -o -name 'wifi.conf' -o -name '*.pem' \
-	-o -name 'id_rsa*' -o -name 'id_ed25519*' | grep -q .; then
+	-o -name 'wpa_supplicant.conf' -o -name '*.psk' \
+	-o -name 'id_rsa*' -o -name 'id_ed25519*' -o -name 'id_ecdsa*' \
+	| grep -q .; then
 	fatal "credential-like file staged into an initramfs image"
 fi
 

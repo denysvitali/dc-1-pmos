@@ -1,0 +1,33 @@
+#!/bin/sh
+# udhcpc.script -- busybox udhcpc hook for the installer initramfs.
+# Applies the lease with busybox ip only; resolv.conf is written for the
+# musl resolver (curl / c-ares read it too). Kept deliberately tiny: any
+# failure here surfaces as "no route" in the installer, not a hang.
+# NOTE: the kernel must keep CONFIG_BINFMT_SCRIPT or this hook silently
+# never runs (see the repo CLAUDE.md hardware invariants).
+
+case "$1" in
+	deconfig)
+		ip addr flush dev "$interface" 2>/dev/null
+		ip link set "$interface" up
+		;;
+	bound|renew)
+		ip addr flush dev "$interface" 2>/dev/null
+		ip addr add "$ip/${mask:-24}" dev "$interface"
+		if [ -n "${router:-}" ]; then
+			for r in $router; do
+				ip route del default 2>/dev/null
+				ip route add default via "$r" dev "$interface"
+				break
+			done
+		fi
+		if [ -n "${dns:-}" ]; then
+			{
+				for d in $dns; do
+					echo "nameserver $d"
+				done
+			} > /etc/resolv.conf
+		fi
+		;;
+esac
+exit 0

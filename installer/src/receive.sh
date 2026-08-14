@@ -1,5 +1,6 @@
 #!/bin/sh
-# receive.sh -- device-side handler for one DC1-INSTALL-V1 session.
+# receive.sh -- device-side handler for one DC1-INSTALL-V1 session (the USB
+# fallback transport; the primary path is the on-device tui.sh/netinstall.sh).
 #
 # Run by busybox `nc -l -p 5555 -e` with the socket on stdin/stdout. The host
 # (installer/host/dc1-install.sh) sends a text header, a blank line, then the
@@ -15,28 +16,21 @@
 # Replies are text lines: "DC1: <progress>" while working, then exactly one of
 # "DC1-INSTALL: OK ..." or "DC1-INSTALL: FAIL <reason>".
 #
-# Fail-closed rules, in the order they protect:
-#   * the target is resolved BY GPT PARTITION NAME (PARTNAME=userdata in
-#     sysfs), never a hardcoded /dev/sdX, and must be unique and >= 32 GiB.
-#     Nothing else is ever written. preloader / lk / dtbo / vendor_boot /
-#     boot partitions are untouchable by construction.
-#   * the image's first MiB (superblock) is held back in RAM and written
-#     LAST, only after the SHA-256 of the full stream verified -- so an
-#     aborted or corrupted transfer can never leave a mountable filesystem
-#     labelled jagar-root behind.
-#   * the written filesystem must carry ext4 label "jagar-root" (the label
-#     the boot initramfs mounts by) before it is mounted or provisioned.
+# The fail-closed write/verify core (GPT PARTNAME resolution, held-back
+# superblock, scrub-on-reject, jagar-root label requirement) lives in
+# writelib.sh and is shared with the network installer.
 #
 # Offline-testable: set DC1_LIB=1 and source this file to get the functions
-# without running a session; DC1_SYSBLOCK / DC1_DEV override sysfs and the
-# resolved device node for tests.
+# without running a session; DC1_SYSBLOCK / DC1_DEV / DC1_PART_BYTES override
+# sysfs and the resolved device node for tests.
 
 STATUS_FILE=${DC1_STATUS_FILE:-/tmp/installer-status}
-MIB=1048576
 
 # Shared fail-closed userdata resolution (defines SYSBLOCK, MIN_SECTORS,
-# resolve_userdata). DC1_PARTLIB lets the offline tests point at src/.
+# resolve_userdata) and the write/verify core. DC1_PARTLIB / DC1_WRITELIB let
+# the offline tests point at src/.
 . "${DC1_PARTLIB:-/etc/installer/partlib.sh}"
+. "${DC1_WRITELIB:-/etc/installer/writelib.sh}"
 
 say() {
 	# To the socket (host) and the status file (painted on the panel).
@@ -49,6 +43,7 @@ fail() {
 	echo "DC1-INSTALL: FAIL $*"
 	printf 'INSTALL FAILED\n%s\n' "$*" > "$STATUS_FILE" 2>/dev/null
 	echo "[installd] FAIL: $*" > /dev/kmsg 2>/dev/null
+	wr_unlock
 	exit 1
 }
 
@@ -84,6 +79,8 @@ read_header() {
 install_session() {
 	say "HOST CONNECTED"
 
+	wr_lock || { echo "DC1-INSTALL: FAIL another install is running"; exit 1; }
+
 	read_header || fail "bad header"
 
 	echo "$hdr_answers" | base64 -d > /tmp/answers 2>/dev/null \
@@ -95,86 +92,24 @@ install_session() {
 	/etc/installer/provision.sh --validate /tmp/answers \
 		|| fail "answers failed validation"
 
-	dev=${DC1_DEV:-$(resolve_userdata)} || fail "cannot resolve userdata partition"
-	[ -b "$dev" ] || fail "$dev is not a block device"
-	sectors=$(cat "$SYSBLOCK/$(basename "$dev")/size" 2>/dev/null || echo 0)
-	part_bytes=$((sectors * 512))
-	[ "$hdr_size" -le "$part_bytes" ] || \
-		fail "image ($hdr_size bytes) larger than userdata ($part_bytes bytes)"
-	say "TARGET $dev ($((part_bytes / 1024 / 1024 / 1024)) GIB)"
+	wr_open_target
+	[ "$hdr_size" -le "$WR_PART_BYTES" ] || \
+		fail "image ($hdr_size bytes) larger than userdata ($WR_PART_BYTES bytes)"
 
-	# Kill any existing filesystem signature first: from this point on the
-	# partition is not bootable until the verified superblock lands last.
-	dd if=/dev/zero of="$dev" bs=$MIB count=1 conv=fsync 2>/dev/null \
-		|| fail "cannot write to $dev"
-
+	wr_scrub
 	say "RECEIVING IMAGE"
-	rm -f /tmp/hash.fifo /tmp/hash.out /tmp/first-mib
-	mkfifo /tmp/hash.fifo || fail "mkfifo failed"
-	sha256sum /tmp/hash.fifo > /tmp/hash.out &
-	hashpid=$!
-	# busybox head -c never reads past its byte count, so the inner head
-	# splits off exactly the first MiB and dd receives the remainder.
-	head -c "$hdr_size" | tee /tmp/hash.fifo | {
-		head -c $MIB > /tmp/first-mib
-		dd of="$dev" bs=$MIB seek=1 conv=fsync 2>/dev/null
-	}
-	wait "$hashpid"
-	got_sha=$(cut -d' ' -f1 < /tmp/hash.out)
-	rm -f /tmp/hash.fifo
+	wr_receive_stream "$hdr_size" || wr_reject "device write failed mid-stream"
 
-	if [ "$got_sha" != "$hdr_sha256" ]; then
-		# The superblock was never written, but scrub anyway.
-		dd if=/dev/zero of="$dev" bs=$MIB count=1 conv=fsync 2>/dev/null
-		fail "sha256 mismatch: got $got_sha want $hdr_sha256 (short or corrupt transfer)"
-	fi
-	first_bytes=$(wc -c < /tmp/first-mib | tr -d ' ')
-	[ "$first_bytes" -eq $MIB ] || fail "held-back superblock block is $first_bytes bytes"
+	[ "$WR_SHA256" = "$hdr_sha256" ] || \
+		wr_reject "sha256 mismatch: got $WR_SHA256 want $hdr_sha256 (short or corrupt transfer)"
 	say "SHA-256 VERIFIED"
 
-	dd if=/tmp/first-mib of="$dev" bs=$MIB conv=fsync 2>/dev/null \
-		|| fail "writing verified superblock failed"
-	rm -f /tmp/first-mib
-	sync
-
-	# The label is load-bearing: the boot initramfs finds root by it.
-	blkid "$dev" 2>/dev/null | grep -q 'TYPE="ext4"' \
-		|| fail "written image is not ext4"
-	blkid "$dev" 2>/dev/null | grep -q 'LABEL="jagar-root"' \
-		|| fail "written filesystem is not labelled jagar-root"
-	say "IMAGE WRITTEN + VERIFIED"
-
-	mkdir -p /mnt/root
-	mount -t ext4 "$dev" /mnt/root || fail "mount failed"
-	mount -o bind /dev  /mnt/root/dev  2>/dev/null
-	mount -t proc  proc  /mnt/root/proc 2>/dev/null
-	mount -t sysfs sysfs /mnt/root/sys  2>/dev/null
-
-	# Grow the filesystem to the whole partition. ext4 supports online grow,
-	# so this runs from the freshly installed rootfs via chroot. Non-fatal:
-	# a system at image size still boots; the failure is reported loudly.
-	resize_note="RESIZED"
-	if chroot /mnt/root /usr/sbin/resize2fs "$dev" 2>/dev/null \
-	   || chroot /mnt/root /sbin/resize2fs "$dev" 2>/dev/null; then
-		say "FILESYSTEM RESIZED"
-	else
-		resize_note="RESIZE-FAILED"
-		say "WARNING: RESIZE2FS FAILED - ROOT STAYS AT IMAGE SIZE"
-	fi
-
-	say "PROVISIONING"
-	if ! /etc/installer/provision.sh /mnt/root /tmp/answers; then
-		umount /mnt/root/dev /mnt/root/proc /mnt/root/sys 2>/dev/null
-		umount /mnt/root 2>/dev/null
-		fail "provisioning failed (image is written; fix answers and retry)"
-	fi
+	wr_commit
+	wr_finalize /tmp/answers
 	rm -f /tmp/answers
+	wr_unlock
 
-	umount /mnt/root/dev /mnt/root/proc /mnt/root/sys 2>/dev/null
-	umount /mnt/root || fail "umount failed"
-	sync
-
-	echo "DC1-INSTALL: OK $resize_note rebooting-to-bootloader"
+	echo "DC1-INSTALL: OK $WR_RESIZE_NOTE rebooting-to-bootloader"
 	printf 'INSTALL COMPLETE\nREBOOTING TO FASTBOOT\nFLASH THE REAL BOOT IMAGE\n' \
 		> "$STATUS_FILE" 2>/dev/null
 	echo "[installd] install complete; rebooting to bootloader" > /dev/kmsg 2>/dev/null

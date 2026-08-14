@@ -27,6 +27,7 @@ mkpart() {
 export DC1_SYSBLOCK="$TMP/sys"
 export DC1_STATUS_FILE="$TMP/status"
 export DC1_PARTLIB="$HERE/../src/partlib.sh"
+export DC1_WRITELIB="$HERE/../src/writelib.sh"
 DC1_LIB=1
 . "$HERE/../src/receive.sh"
 

@@ -20,22 +20,29 @@ MediaTek MT8781/MT6789). This repository does two things:
 
 ## Quickstart
 
-Download `installer-boot.img`, `jagar-boot.img`, `jagar-rootfs.ext4.zst`, and
-`SHA256SUMS` from the [rolling release](https://github.com/denysvitali/dc-1-pmos/releases),
-verify them, put the device in fastboot mode, then:
+Download `installer-boot.img` and `SHA256SUMS` from the
+[rolling release](https://github.com/denysvitali/dc-1-pmos/releases),
+verify, put the device in fastboot mode (Power + Volume Up at power-on, or
+`adb reboot bootloader`), then:
 
 ```sh
 sha256sum --ignore-missing -c SHA256SUMS
 fastboot flash boot_a installer-boot.img && fastboot reboot
-./dc1-install.sh --rootfs jagar-rootfs.ext4.zst --boot-image jagar-boot.img
 ```
 
-`dc1-install.sh` (from `installer/host/` in this repo) asks for username,
-password, hostname, timezone, and optional Wi-Fi credentials, streams the
-rootfs to the device over USB networking with fail-closed SHA-256
-verification, and finishes by flashing the real boot image. The full,
-explained procedure is in [docs/installation.md](docs/installation.md);
-current hardware support is in [docs/status.md](docs/status.md).
+That is all the computer does. The device's own display and touchscreen
+take it from there: pick your Wi-Fi network on the touch keyboard, enter
+username / password / hostname / timezone, and the installer downloads the
+rootfs from the rolling release, verifies every byte against `SHA256SUMS`
+before anything becomes mountable, provisions it (the password is hashed
+on-device), writes the verified real boot image to `boot_a`, and reboots
+into postmarketOS.
+
+No Wi-Fi? The USB fallback (`installer/host/dc1-install.sh`) streams the
+rootfs from a Linux host over USB networking with the same fail-closed
+verification. The full, explained procedure is in
+[docs/installation.md](docs/installation.md); current hardware support is
+in [docs/status.md](docs/status.md).
 
 ## What CI builds
 
@@ -54,7 +61,9 @@ rolling prerelease on GitHub, so the latest build is always fetchable:
 
 No secrets, credentials, or proprietary Android blobs are ever baked into
 published artifacts. MT7902 Wi-Fi/Bluetooth firmware comes exclusively from
-upstream `linux-firmware` and `wireless-regdb`.
+upstream `linux-firmware` and `wireless-regdb`, pinned by size and SHA-256
+(the installer image carries the same pinned pair so it can download the
+rootfs over Wi-Fi).
 
 ## Repository layout
 

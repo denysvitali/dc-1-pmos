@@ -457,7 +457,11 @@ int main(void)
 		if (!status[0])
 			memcpy(status, "WAITING FOR HOST\n", 18);
 
-		if (have_fb) {
+		/* While the touch UI (dc1-ask, run by tui.sh) owns the panel
+		 * it creates /tmp/ui-active; painting over it would fight the
+		 * keyboard screen. The status screen resumes the moment the
+		 * flag is gone. */
+		if (have_fb && access("/tmp/ui-active", F_OK) != 0) {
 			paint(&f, status, n);
 			blit(&f);
 		}

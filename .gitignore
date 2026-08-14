@@ -4,3 +4,5 @@ out/
 __pycache__/
 .DS_Store
 boot/mkboot/mkboot
+installer/dl/
+installer/root/

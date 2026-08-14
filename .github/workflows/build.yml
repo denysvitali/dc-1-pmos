@@ -77,7 +77,8 @@ jobs:
       - name: Installer C smoke build
         run: |
           for src in installer/src/init.c installer/src/rebootbl.c \
-                     installer/src/bootctl.c installer/src/system/init.c; do
+                     installer/src/bootctl.c installer/src/ask.c \
+                     installer/src/system/init.c; do
             out=$(mktemp)
             gcc -static -Os -Wall -Wextra -o "$out" "$src"
             rm -f "$out"
@@ -132,13 +133,17 @@ jobs:
             pmb-${{ hashFiles('scripts/versions.env') }}-
             pmb-
 
-      # The kernel toolchain (clang-19/LLVM, per the APKBUILD) lives inside
+      # The kernel toolchain (clang-20/LLVM, per the APKBUILD) lives inside
       # the build chroot; the runner only needs the host-side tools.
+      # No busybox-static here on purpose: Ubuntu's busybox lacks blkid (it
+      # failed installer/build.sh's applet check on a live run). The build
+      # script fetches Alpine's pinned busybox-static apk instead, which is
+      # also what the initramfs scripts were proven against.
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            e2fsprogs zstd lz4 cpio busybox-static file kpartx
+            e2fsprogs zstd lz4 cpio file kpartx xz-utils binutils
           echo /usr/sbin >> "$GITHUB_PATH"
           echo /sbin >> "$GITHUB_PATH"
 
@@ -180,27 +185,24 @@ jobs:
             fi
           done
 
-      # Root is required for mknod. BUSYBOX must be the static aarch64
-      # busybox (Ubuntu's busybox-static); build.sh verifies linkage and the
+      # Root is required for mknod. BUSYBOX defaults to the pinned Alpine
+      # busybox-static apk that installer/build.sh downloads itself (Ubuntu's
+      # busybox-static lacks blkid); build.sh verifies linkage and the
       # required applets natively — no qemu, this runner is aarch64.
       # MODDIR is passed only if the built rootfs actually shipped modules
       # (the gadget stack may be built in).
       - name: Build installer and system boot images
         run: |
-          BB=$(command -v busybox)
-          file -b "$BB" | grep -q 'statically linked'
           moddir=$(sudo sh -c \
             'ls -d work/postmarketos/pmbootstrap-work/chroot_rootfs_daylight-jagar/lib/modules/* 2>/dev/null' \
             | head -n 1 || true)
           if [ -n "$moddir" ]; then
             echo "staging kernel modules from $moddir"
-            sudo env BUSYBOX="$BB" \
-              KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
+            sudo env KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
               MODDIR="$moddir" sh installer/build.sh
           else
             echo "no kernel modules directory found; building without MODDIR"
-            sudo env BUSYBOX="$BB" \
-              KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
+            sudo env KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
               sh installer/build.sh
           fi
 
