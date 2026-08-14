@@ -11,6 +11,11 @@ description="DC-1 debug shells (ttyGS0 kmsg, ttyGS1, TCP 4444 on usb0)"
 
 depend() {
 	need dc1-usb-gadget
+	# Start sshd alongside this service. openssh-server is a device depends,
+	# but Alpine ships no runlevel registration for sshd (you must enable it),
+	# and a post-install rc-update is fragile against package install order.
+	# A soft dependency starts sshd whenever it is present, ordering-independent.
+	use sshd
 }
 
 start() {

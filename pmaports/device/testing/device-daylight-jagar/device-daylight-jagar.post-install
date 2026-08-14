@@ -5,10 +5,7 @@ rc-update add dc1-display-gate boot 2>/dev/null || true
 rc-update add dc1-frontlight default 2>/dev/null || true
 rc-update add dc1-usb-gadget boot 2>/dev/null || true
 rc-update add dc1-debug-shell default 2>/dev/null || true
-# sshd is provided by openssh-server (a device depends, so it is installed
-# before this post-install runs); enable it so the host can reach the
-# installed system over usb0. It is auth-protected (dc1 login).
-if [ -x /etc/init.d/sshd ]; then
-	rc-update add sshd default 2>/dev/null || true
-fi
+# sshd is started via a `use sshd` soft dependency in dc1-debug-shell (not
+# registered here) -- a post-install rc-update is fragile against package
+# install order, and Alpine ships no sshd runlevel registration of its own.
 exit 0
