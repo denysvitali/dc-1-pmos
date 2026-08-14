@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=2
+pkgrel=3
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -49,5 +49,5 @@ sha512sums="
 269542398027d0947ced76f2c039328e657437c8d1e31d01bc6cc9e2b176766b59d33ea58e7ce7f9a548af8342cce05c733585dfd9d1bcb4aa11fab21e48eea1  deviceinfo
 66d1dd8ae1f222e36e43d4e11e8905b8a894b35b39ad0d36157a13be3335bf6422e9ee181526afafe89d28f096874c4158feb6e7131e917b2a47cd969eb095ba  dc1-display-gate.initd
 a74965c50efc38879c4ce684ae1322b172d66be0b27ef2c74bff86eca12aaf8a948fc56edd37ef3249e57b1f993bda51672777137eb267bc3b26b753d1144ea2  dc1-frontlight.initd
-c95b166df7c18ec011bff6a7400ab42b6258f00fd21a2f7ce5a2763e455216cb8b5c0e395048024d2a619c39c0d6e4ded0ae1c1a063cbd99ec47c76b8fd142bf  dc1-sway.conf
+2d4e1aa8e64d152922d962bd67885d8fab8653dc3bda9daeaf19f4fc41b5e5dd99f6efe15a51b8fb27bcbee26632d6fd5eb6b20816253def5a287942bf98dae9  dc1-sway.conf
 "
