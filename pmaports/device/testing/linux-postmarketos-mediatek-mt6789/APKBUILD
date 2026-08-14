@@ -40,8 +40,13 @@ builddir="$srcdir/$_repository-$_commit"
 
 prepare() {
 	default_prepare
+	# Alpine's LLVM 20 layout is mixed: clang20/llvm20 ship versioned names
+	# plus /usr/lib/llvm20/bin, while lld20 owns only the unversioned
+	# /usr/bin/ld.lld. These checks fail the build early (and silently --
+	# keep them in sync with the make invocations below).
 	command -v clang-20 >/dev/null
-	command -v ld.lld-20 >/dev/null
+	command -v ld.lld >/dev/null
+	test -x /usr/lib/llvm20/bin/llvm-ar
 	cp "$srcdir/$_config" .config
 }
 
@@ -52,10 +57,14 @@ build() {
 	# Alpine's ccache package installs /usr/lib/ccache/bin symlinks for cc,
 	# gcc, g++, c++, c89, c99, cpp and the x86_64-alpine-linux-musl-* triple
 	# only -- there is no clang or clang-20 symlink. pmbootstrap puts that
-	# directory first in PATH, so a LLVM=-20 build looks cached and is not:
+	# directory first in PATH, so an LLVM build looks cached and is not:
 	# every run compiles from scratch while the cache stays empty.
 	#
-	# HOSTCC is clang too. LLVM=-20 switches the host toolchain to LLVM as
+	# LLVM= uses kbuild's directory-prefix form because Alpine ships no
+	# ld.lld-20: lld20 owns the unversioned /usr/bin/ld.lld, so LD/HOSTLD
+	# are overridden explicitly.
+	#
+	# HOSTCC is clang too. LLVM= switches the host toolchain to LLVM as
 	# well, so a gcc HOSTCC ends up driving lld and dies building fixdep.
 	#
 	# CCACHE_DIR is set explicitly: pmbootstrap symlinks /home/pmos/.ccache
@@ -76,7 +85,9 @@ build() {
 	# pinned rather than taken from the wall clock.
 	export CCACHE_SLOPPINESS="time_macros,include_file_mtime,include_file_ctime,file_stat_matches,pch_defines,system_headers"
 
-	make ARCH="$_carch" LLVM=-20 \
+	make ARCH="$_carch" LLVM=/usr/lib/llvm20/bin/ \
+		LD=/usr/bin/ld.lld \
+		HOSTLD=/usr/bin/ld.lld \
 		CC="ccache clang-20" \
 		HOSTCC="ccache clang-20" \
 		KBUILD_BUILD_TIMESTAMP="2026-08-13 07:20:22 UTC" \
@@ -107,7 +118,9 @@ package() {
 	# reconsider objects it already has and recompile them uncached.
 	make modules_install dtbs_install \
 		ARCH="$_carch" \
-		LLVM=-20 \
+		LLVM=/usr/lib/llvm20/bin/ \
+		LD=/usr/bin/ld.lld \
+		HOSTLD=/usr/bin/ld.lld \
 		CC="ccache clang-20" \
 		HOSTCC="ccache clang-20" \
 		INSTALL_MOD_PATH="$pkgdir" \

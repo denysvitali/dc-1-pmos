@@ -73,7 +73,8 @@ grep -q "_commit=\"$KERNEL_COMMIT\"" "$kernel_dir/APKBUILD" ||
 	fail "kernel commit drift"
 grep -q 'github.com/denysvitali/$_repository/archive/$_commit.tar.gz' \
 	"$kernel_dir/APKBUILD" || fail "kernel source is not the pinned GitHub archive"
-grep -q 'LLVM=-20' "$kernel_dir/APKBUILD" || fail "compiler boundary drift"
+grep -q 'LLVM=/usr/lib/llvm20/bin/' "$kernel_dir/APKBUILD" || fail "compiler boundary drift"
+grep -q 'LD=/usr/bin/ld.lld' "$kernel_dir/APKBUILD" || fail "compiler boundary drift"
 
 # ccache has to be routed in through CC/HOSTCC. Alpine's ccache package ships
 # symlinks for cc/gcc/g++/c++/cpp and the musl triple only -- there is no clang

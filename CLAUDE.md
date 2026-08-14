@@ -33,7 +33,9 @@ Everything committed here is world-readable. Non-negotiable rules:
 
 - Kernel: https://github.com/denysvitali/dc-1-linux-kernel, branch `jagar`.
   Pinned by commit in `scripts/versions.env`
-  (`KERNEL_COMMIT`). Kernel builds use clang/LLVM/LLD 20 (`LLVM=-20`).
+  (`KERNEL_COMMIT`). Kernel builds use clang/LLVM/LLD 20 via kbuild's
+  prefix form (`LLVM=/usr/lib/llvm20/bin/` + explicit `LD=/usr/bin/ld.lld`;
+  Alpine ships no `ld.lld-20`).
   The boot-proven compiler boundary was clang 19, but Alpine edge dropped
   the clang19 package (2026-08), so 20 is the closest buildable toolchain;
   do not move it further without reason.

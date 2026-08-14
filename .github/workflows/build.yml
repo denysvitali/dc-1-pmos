@@ -154,10 +154,16 @@ jobs:
           set -o pipefail
           if ! sh scripts/build-rootfs.sh work/postmarketos out 2>&1 \
               | tee build-rootfs.log; then
-            sudo grep -n -E \
-                'ERROR:|error:|Error |BAD |No such|not found|undefined|\*\*\*|failed|FAILED' \
-                work/postmarketos/pmbootstrap-work/log.txt 2>/dev/null \
-                | tail -n 9 | while IFS= read -r l; do
+            # Annotate the log region just above abuild's ">>> ERROR" marker:
+            # that is where the failing command's output lands, and it may
+            # contain no greppable error keyword at all.
+            pmblog=work/postmarketos/pmbootstrap-work/log.txt
+            ln=$(sudo grep -n -m1 '>>> ERROR' "$pmblog" 2>/dev/null | cut -d: -f1)
+            if [ -n "$ln" ]; then
+              sudo sed -n "$((ln > 8 ? ln - 8 : 1)),${ln}p" "$pmblog"
+            else
+              sudo tail -n 9 "$pmblog" 2>/dev/null
+            fi | while IFS= read -r l; do
               printf '::error::pmblog: %s\n' "$l"
             done
             exit 1
