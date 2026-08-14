@@ -105,12 +105,21 @@ trap 'rm -rf "$work_dir"' EXIT INT TERM
 # package.
 shim_dir="$work_dir/bin"
 mkdir -p "$shim_dir"
+# Must be the real /usr/bin binaries, not `command -v`: pmbootstrap forces
+# /usr/lib/ccache/bin first in every chroot PATH (pmb/config/__init__.py,
+# chroot_path) and Alpine's ccache ships versioned clang symlinks there, so a
+# PATH lookup finds a ccache shim; symlinking clang++ to it makes ccache
+# search PATH for an unversioned clang++ that does not exist (CI run
+# 31824509811). A wrapper script (not a symlink) keeps the -21 argv[0], which
+# is all clang needs to pick the C++ driver from the target name.
 for shim in clang:clang-21 clang++:clang++-21; do
 	unversioned=${shim%:*}
 	versioned=${shim#*:}
-	versioned_path=$(command -v "$versioned") ||
-		fatal "$versioned is missing; the clang21 dependency moved"
-	ln -sf "$versioned_path" "$shim_dir/$unversioned"
+	[ -x "/usr/bin/$versioned" ] ||
+		fatal "/usr/bin/$versioned is missing; the clang21 dependency moved"
+	printf '#!/bin/sh\nexec /usr/bin/%s "$@"\n' "$versioned" \
+		>"$shim_dir/$unversioned"
+	chmod 0755 "$shim_dir/$unversioned"
 done
 PATH="$shim_dir:$PATH"
 export PATH
