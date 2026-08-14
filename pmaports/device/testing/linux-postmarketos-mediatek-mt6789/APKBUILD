@@ -1,7 +1,7 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=linux-postmarketos-mediatek-mt6789
 pkgver=7.2_rc5_git20260813
-pkgrel=1
+pkgrel=2
 pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
 arch="aarch64"
 _carch="arm64"
@@ -153,6 +153,18 @@ package() {
 		CC="ccache clang-20" \
 		HOSTCC="gcc" \
 		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
+
+	# The Mali-G57 GPU is held behind a runtime OF overlay (not a cold-DT
+	# entry), because probing it at boot would walk the MFG power domains
+	# before they are safe. mt6789-live-gpu-overlay.ko requests this exact
+	# overlay at load time via request_firmware_direct(), so it must live in
+	# /lib/firmware/mediatek/ -- not /boot/dtbs, where dtbs_install puts it.
+	# It is a compiled device-tree overlay from the kernel source (GPL), not a
+	# proprietary blob; the driver pins its size + SHA-256 and refuses any
+	# other content. See drivers/pmdomain/mediatek/mt6789-live-gpu-overlay.c.
+	install -Dm644 \
+		arch/$_carch/boot/dts/mediatek/mt8781-daylight-jagar-live-gpu-probe.dtbo \
+		"$pkgdir"/lib/firmware/mediatek/mt8781-daylight-jagar-live-gpu-probe.dtbo
 
 	install -Dm644 include/config/kernel.release \
 		"$pkgdir/usr/share/kernel/$_flavor/kernel.release"

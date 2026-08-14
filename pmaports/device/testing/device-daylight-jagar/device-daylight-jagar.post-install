@@ -2,10 +2,17 @@
 # Register the DC-1 boot + debug services. Best-effort and idempotent: each
 # service fails safely (panel stays dark / no shell) if absent.
 rc-update add dc1-display-gate boot 2>/dev/null || true
+rc-update add dc1-gpu boot 2>/dev/null || true
 rc-update add dc1-frontlight default 2>/dev/null || true
 rc-update add dc1-usb-gadget boot 2>/dev/null || true
 rc-update add dc1-debug-shell default 2>/dev/null || true
-# sshd is started via a `use sshd` soft dependency in dc1-debug-shell (not
-# registered here) -- a post-install rc-update is fragile against package
-# install order, and Alpine ships no sshd runlevel registration of its own.
+# sshd: register it in the default runlevel directly. openssh-server is a hard
+# depends of this package, so apk installs it BEFORE this post-install runs --
+# /etc/init.d/sshd is guaranteed present, which removes the install-order
+# fragility the earlier `use sshd` soft-dep was trying to dodge. That soft-dep
+# was observed NOT to start sshd at boot (it sat "stopped" until started by
+# hand), so it is not sufficient.
+if [ -x /etc/init.d/sshd ]; then
+	rc-update add sshd default 2>/dev/null || true
+fi
 exit 0

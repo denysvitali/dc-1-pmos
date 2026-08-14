@@ -2,5 +2,9 @@
 # Re-assert the boot services after an upgrade (the runlevel entries survive,
 # but re-register in case a service was dropped or renamed between versions).
 rc-update add dc1-display-gate boot 2>/dev/null || true
+rc-update add dc1-gpu boot 2>/dev/null || true
 rc-update add dc1-frontlight default 2>/dev/null || true
+if [ -x /etc/init.d/sshd ]; then
+	rc-update add sshd default 2>/dev/null || true
+fi
 exit 0
