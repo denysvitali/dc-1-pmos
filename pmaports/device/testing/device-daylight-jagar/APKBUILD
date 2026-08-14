@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=8
+pkgrel=9
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -28,6 +28,7 @@ source="
 	dc1-usb-gadget.initd
 	dc1-networkmanager-usb0.conf
 	dc1-sway.conf
+	00-logo-key.conf
 "
 
 build() {
@@ -58,6 +59,9 @@ package() {
 	# Panel output + touch transform for the default (sway) compositor.
 	install -Dm644 "$srcdir"/dc1-sway.conf \
 		"$pkgdir"/etc/sway/config.d/00-dc1-output.conf
+	# Satisfy upstream's unconditional include (see the file's header).
+	install -Dm644 "$srcdir"/00-logo-key.conf \
+		"$pkgdir"/etc/sway/config.d/00-logo-key.conf
 }
 
 sha512sums="
@@ -69,4 +73,5 @@ a74965c50efc38879c4ce684ae1322b172d66be0b27ef2c74bff86eca12aaf8a948fc56edd37ef32
 ee90a6b36e45008b76cc6d2dcc5aaa264e7c2cecfc691263762b92758353c72995e34f02f55f5cf1db65335f69f05fef89a30f7e2f3af26fd1cf9d337aa9ae7c  dc1-usb-gadget.initd
 40cc32d4b8f241071f438bdf86c2a559b2145b004ec69aa3e17daec680385a35becfc70f4cec5d4bf1dbabd5efeca1d4163ce2ce6d69870ff4cd5996d1db527c  dc1-networkmanager-usb0.conf
 2d4e1aa8e64d152922d962bd67885d8fab8653dc3bda9daeaf19f4fc41b5e5dd99f6efe15a51b8fb27bcbee26632d6fd5eb6b20816253def5a287942bf98dae9  dc1-sway.conf
+45bfbe7279140132e722b1bf7f34b96b71a45f4bd3b4c393d0865c0bd193eafb99104da438d67b3025401d0da4720bbc82ffc64294487c2ce9a0779f3d53724e  00-logo-key.conf
 "
