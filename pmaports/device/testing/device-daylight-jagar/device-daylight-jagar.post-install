@@ -5,8 +5,9 @@ rc-update add dc1-display-gate boot 2>/dev/null || true
 rc-update add dc1-frontlight default 2>/dev/null || true
 rc-update add dc1-usb-gadget boot 2>/dev/null || true
 rc-update add dc1-debug-shell default 2>/dev/null || true
-# sshd is provided by openssh-server (extra_packages); enable it so the host
-# can reach the installed system over usb0. It is auth-protected (dc1 login).
+# sshd is provided by openssh-server (a device depends, so it is installed
+# before this post-install runs); enable it so the host can reach the
+# installed system over usb0. It is auth-protected (dc1 login).
 if [ -x /etc/init.d/sshd ]; then
 	rc-update add sshd default 2>/dev/null || true
 fi
