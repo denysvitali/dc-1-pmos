@@ -10,6 +10,7 @@
 description="DC-1 UI control plane"
 
 : "${socket:=/run/dc1-ui.sock}"
+: "${ui_uid:=10000}"
 : "${ui_group:=dc1}"
 
 command="/usr/sbin/dc1-backend"
@@ -59,11 +60,23 @@ start_post() {
 		eerror "${socket} did not appear; the UI cannot reach the backend"
 		return 1
 	fi
-	if grep -q "^${ui_group}:" /etc/group 2>/dev/null; then
-		chgrp "${ui_group}" "${socket}" && chmod 0660 "${socket}"
+	# Resolve the desktop user's primary group by UID, not by name. The
+	# autologin user is a FIXED uid (pmOS default 10000, see
+	# /etc/conf.d/tinydm AUTOLOGIN_UID), but onboarding renames that user --
+	# and therefore its primary group (provision.sh rename_in_group) -- so a
+	# group NAME goes stale after provisioning while the gid survives.
+	# ui_group in conf.d still overrides, and accepts a real group name;
+	# otherwise fall back to the primary group of the desktop uid.
+	gid=
+	if getent group "${ui_group}" >/dev/null 2>&1; then
+		gid=$(getent group "${ui_group}" | cut -d: -f3)
 	else
-		ewarn "group ${ui_group} does not exist: ${socket} stays root-only"
-		ewarn "set ui_group in /etc/conf.d/dc1-backend to the desktop user's group"
+		gid=$(getent passwd "${ui_uid:-10000}" 2>/dev/null | cut -d: -f4)
+	fi
+	if [ -n "${gid}" ]; then
+		chgrp "${gid}" "${socket}" && chmod 0660 "${socket}"
+	else
+		ewarn "no desktop user/group to hand ${socket} to; it stays root-only"
 	fi
 	return 0
 }

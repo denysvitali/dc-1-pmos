@@ -139,11 +139,22 @@ wr_finalize() {
 		say "WARNING: RESIZE2FS FAILED - ROOT STAYS AT IMAGE SIZE"
 	fi
 
-	say "PROVISIONING"
-	if ! /etc/installer/provision.sh /mnt/root "$wr_answers"; then
-		umount /mnt/root/dev /mnt/root/proc /mnt/root/sys 2>/dev/null
-		umount /mnt/root 2>/dev/null
-		fail "provisioning failed (image is written; fix answers and retry)"
+	# Provisioning is SKIPPED for an unprovisioned install: the rootfs is
+	# written and resized, but no user/hostname/timezone/Wi-Fi is applied and
+	# the idempotence marker is left unset. On first boot the installed
+	# system's Flutter UI then runs onboarding and provisions itself (via
+	# dc1-backend's /onboard, the Go port of provision.sh). This is the
+	# "flash and interact with the touchscreen immediately" flow; the classic
+	# provisioned install (answers applied here) is still the default.
+	if [ -n "${DC1_SKIP_PROVISION:-}" ]; then
+		say "SKIPPING PROVISIONING (unprovisioned install: onboard on first boot)"
+	else
+		say "PROVISIONING"
+		if ! /etc/installer/provision.sh /mnt/root "$wr_answers"; then
+			umount /mnt/root/dev /mnt/root/proc /mnt/root/sys 2>/dev/null
+			umount /mnt/root 2>/dev/null
+			fail "provisioning failed (image is written; fix answers and retry)"
+		fi
 	fi
 
 	umount /mnt/root/dev /mnt/root/proc /mnt/root/sys 2>/dev/null

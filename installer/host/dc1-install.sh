@@ -152,6 +152,7 @@ ROOTFS=""
 INSTALLER_BOOT=""
 BOOT_IMAGE=""
 ANSWERS_IN=""
+SKIP_PROVISION=""
 usage() {
 	sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
 	exit 2
@@ -162,6 +163,7 @@ while [ $# -gt 0 ]; do
 		--installer-boot) INSTALLER_BOOT=${2:?}; shift 2 ;;
 		--boot-image)     BOOT_IMAGE=${2:?}; shift 2 ;;
 		--answers)        ANSWERS_IN=${2:?}; shift 2 ;;
+		--skip-provision) SKIP_PROVISION=1; shift ;;
 		--device-ip)      DEVICE_IP=${2:?}; shift 2 ;;
 		--host-ip)        HOST_IP=${2:?}; shift 2 ;;
 		-h|--help)        usage ;;
@@ -182,9 +184,15 @@ trap 'rm -rf "$TMPDIR_INSTALL"' EXIT
 
 # ------------------------------------------------------------- 1. answers
 # Collected FIRST so the user is not typing against a timeout while the
-# device waits.
+# device waits. --skip-provision installs with no answers at all, so the
+# on-device Flutter onboarding runs on first boot instead of the classic
+# host-driven prompts.
 
-if [ -n "$ANSWERS_IN" ]; then
+if [ -n "$SKIP_PROVISION" ]; then
+	[ -z "$ANSWERS_IN" ] || die "--skip-provision and --answers are mutually exclusive"
+	ANSWERS=""
+	msg "unprovisioned install: onboarding will run on the device's touchscreen"
+elif [ -n "$ANSWERS_IN" ]; then
 	[ -f "$ANSWERS_IN" ] || die "answers file missing: $ANSWERS_IN"
 	ANSWERS="$ANSWERS_IN"
 	msg "using answers from $ANSWERS_IN"
@@ -286,7 +294,11 @@ SESSION="$TMPDIR_INSTALL/session.log"
 	echo "DC1-INSTALL-V1"
 	echo "size=$SIZE"
 	echo "sha256=$SHA"
-	echo "answers=$(base64 < "$ANSWERS" | tr -d '\n')"
+	if [ -n "$SKIP_PROVISION" ]; then
+		echo "unprovisioned=1"
+	else
+		echo "answers=$(base64 < "$ANSWERS" | tr -d '\n')"
+	fi
 	echo
 	cat "$RAW"
 } | run_nc | tee "$SESSION"

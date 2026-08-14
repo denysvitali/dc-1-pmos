@@ -48,11 +48,12 @@ fail() {
 }
 
 # Parse "key=value" header lines from stdin until the empty line.
-# Sets: hdr_size hdr_sha256 hdr_answers
+# Sets: hdr_size hdr_sha256 hdr_answers hdr_unprovisioned
 read_header() {
 	hdr_size=""
 	hdr_sha256=""
 	hdr_answers=""
+	hdr_unprovisioned=""
 	read -r magic || return 1
 	magic=$(echo "$magic" | tr -d '\r')
 	[ "$magic" = "DC1-INSTALL-V1" ] || { echo "bad magic: $magic" >&2; return 1; }
@@ -60,9 +61,10 @@ read_header() {
 		line=$(echo "$line" | tr -d '\r')
 		[ -n "$line" ] || break
 		case "$line" in
-			size=*)    hdr_size=${line#size=} ;;
-			sha256=*)  hdr_sha256=${line#sha256=} ;;
-			answers=*) hdr_answers=${line#answers=} ;;
+			size=*)          hdr_size=${line#size=} ;;
+			sha256=*)        hdr_sha256=${line#sha256=} ;;
+			answers=*)       hdr_answers=${line#answers=} ;;
+			unprovisioned=*) hdr_unprovisioned=${line#unprovisioned=} ;;
 			*) echo "unknown header line: $line" >&2; return 1 ;;
 		esac
 	done
@@ -72,7 +74,14 @@ read_header() {
 		*[!0-9a-f]*|'') echo "bad sha256: $hdr_sha256" >&2; return 1 ;;
 	esac
 	[ ${#hdr_sha256} -eq 64 ] || { echo "sha256 not 64 hex chars" >&2; return 1; }
-	[ -n "$hdr_answers" ] || { echo "missing answers" >&2; return 1; }
+	# answers is required only for a provisioned install. unprovisioned=1
+	# (an optional, backward-compatible header) installs the image with no
+	# answers, so the on-device Flutter onboarding runs on first boot.
+	if [ "$hdr_unprovisioned" = "1" ]; then
+		hdr_answers=""
+	else
+		[ -n "$hdr_answers" ] || { echo "missing answers" >&2; return 1; }
+	fi
 	return 0
 }
 
@@ -83,14 +92,19 @@ install_session() {
 
 	read_header || fail "bad header"
 
-	echo "$hdr_answers" | base64 -d > /tmp/answers 2>/dev/null \
-		|| fail "answers: base64 decode failed"
-	chmod 600 /tmp/answers
+	if [ "$hdr_unprovisioned" = "1" ]; then
+		say "UNPROVISIONED INSTALL: onboarding will run on first boot"
+		export DC1_SKIP_PROVISION=1
+	else
+		echo "$hdr_answers" | base64 -d > /tmp/answers 2>/dev/null \
+			|| fail "answers: base64 decode failed"
+		chmod 600 /tmp/answers
 
-	# Validate the answers BEFORE any destructive step, so a typo in the
-	# username does not cost a 2 GiB transfer and a wiped partition.
-	/etc/installer/provision.sh --validate /tmp/answers \
-		|| fail "answers failed validation"
+		# Validate the answers BEFORE any destructive step, so a typo in the
+		# username does not cost a 2 GiB transfer and a wiped partition.
+		/etc/installer/provision.sh --validate /tmp/answers \
+			|| fail "answers failed validation"
+	fi
 
 	wr_open_target
 	[ "$hdr_size" -le "$WR_PART_BYTES" ] || \

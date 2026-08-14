@@ -4,7 +4,13 @@
 # default too (override there with DC1_BACKEND_SOCKET). Never a TCP address.
 #socket="/run/dc1-ui.sock"
 
-# Group given read/write access to the socket, i.e. the group of the user the
-# Sway session runs as. The default matches the user this image is built with;
-# change it if the desktop user was renamed during onboarding.
+# UID of the desktop user the Sway session autologins as (pmOS default; see
+# /etc/conf.d/tinydm AUTOLOGIN_UID). The socket is handed to this user's
+# PRIMARY GROUP by gid, so it keeps working after onboarding renames the user
+# and its group. Only change this if the autologin uid is changed elsewhere.
+#ui_uid="10000"
+
+# Optional override: a group NAME to hand the socket to instead of the desktop
+# user's primary group. Leave unset to use the uid-derived primary group (the
+# robust default); set it only if the shell runs as a non-autologin user.
 #ui_group="dc1"

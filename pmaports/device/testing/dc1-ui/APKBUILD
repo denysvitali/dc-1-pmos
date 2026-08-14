@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=dc1-ui
 pkgdesc="Daylight DC-1 on-device shell: Flutter UI and its control plane"
 pkgver=1
-pkgrel=1
+pkgrel=2
 url="https://github.com/denysvitali/dc-1-pmos"
 license="MIT"
 arch="aarch64"
@@ -85,8 +85,8 @@ package() {
 }
 
 sha512sums="
-557be330be078dcb25cc429aad847840354aa35befcece24ee1b6dedc9f26c4627109ce78413bc5ff592c0392cbcf5e90644260660077f22a65658a4f4ee6b7d  dc1-backend.initd
-9da2c1e9ae8679b3cbaf8fe6f54b11576ef7d3e663c938a868ea9e7437d6b36c24e33ca430c23df91e4fa1b97e292ed533e16dfdcd07c8dbcfc4593c6e92e130  dc1-backend.confd
+82f69cf683de268c1cbd9621ffcdda5f5e2b582336c6bb358e7dff32e42b0f42d42a3e53043b4934a9790adfdb47688d15dc9a197337e5987f7d47b5772e1872  dc1-backend.initd
+0d0d9d815855b978e522dc13689d3f9eceb02ea764db122198bd6086dcba36e37437df169681f754aefcd1790cf04451187f40793ff6a8526f76b17cb22532a7  dc1-backend.confd
 4d9ce2c8a8da97c0d5a55e1cb3adbf386c614aef8442a939346470e5185276a2ae55abcf9bc3efc0bc139bc067199145c3bf93e42bf0ecc799bfcb8a6a93e92a  dc1-ui-session
 dacc1e2efebed12107ebef7fa3d5dee4f6f68e3d20e324815985099226fcc7c3b803a969120d2ecd19dc959c0acbce74783ed57cedc69baf9b468efd29e97faa  dc1-ui.sway.conf
 "
