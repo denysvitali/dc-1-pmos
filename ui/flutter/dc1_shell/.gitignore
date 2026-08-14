@@ -13,7 +13,6 @@ pubspec.lock
 linux/
 android/
 ios/
-web/
 macos/
 windows/
 test/

@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import 'backend.dart';
+import 'backend_client.dart';
 import 'first_light.dart';
 import 'onboarding.dart';
 
@@ -16,16 +15,20 @@ import 'onboarding.dart';
 ///    depends on dc1-backend being up.
 ///  * onboarding -- the Wi-Fi -> identity -> hostname -> timezone ->
 ///    confirm -> progress flow, talking to dc1-backend over the Unix
-///    socket.
+///    socket (device) or the in-browser mock (web).
+///
+/// [createBackendClient] is supplied by the conditional import in
+/// `backend_client.dart`, so this entry point is identical on the device and
+/// on the web: it never imports `dart:io`, `dart:html`, or anything else
+/// platform-specific. Each transport reads its own environment inside the
+/// factory.
 void main() {
-  final Map<String, String> environment = Platform.environment;
-  final String socketPath = backendSocketPath(environment);
-  final bool forcedFirstLight = environment['DC1_FIRST_LIGHT'] == '1';
+  final BackendClient? client = createBackendClient();
 
-  if (forcedFirstLight || !backendSocketPresent(socketPath)) {
+  if (client == null) {
     runApp(const FirstLightApp());
     return;
   }
 
-  runApp(OnboardingApp(client: BackendClient(socketPath: socketPath)));
+  runApp(OnboardingApp(client: client));
 }

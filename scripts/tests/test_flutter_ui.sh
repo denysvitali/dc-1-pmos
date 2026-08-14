@@ -28,6 +28,9 @@ for file in \
 	lib/main.dart \
 	lib/first_light.dart \
 	lib/backend.dart \
+	lib/backend_io.dart \
+	lib/backend_web.dart \
+	lib/backend_client.dart \
 	lib/validation.dart \
 	lib/onboarding.dart \
 	lib/draft.dart \
@@ -59,20 +62,29 @@ grep -q '^name: dc1_shell$' "$app/pubspec.yaml" || fail "pubspec name drift"
 grep -q 'sdk: flutter' "$app/pubspec.yaml" || fail "pubspec has no SDK dependency"
 
 # 4. Phase 1 first light: the background colour and the title are the whole
-#    contract of the smallest verifiable unit.
+#    contract of the smallest verifiable unit. The first-light-vs-onboarding
+#    decision moved into createBackendClient() (the per-transport factory);
+#    main.dart still falls back to first light whenever that factory returns
+#    null, which is what these assert.
 grep -qF '0xFF101418' "$app/lib/theme.dart" || fail "first-light background drift"
 grep -qF "'DC-1'" "$app/lib/first_light.dart" || fail "first-light title drift"
-grep -qF 'DC1_FIRST_LIGHT' "$app/lib/main.dart" ||
-	fail "main.dart no longer honours DC1_FIRST_LIGHT"
-grep -qF 'backendSocketPresent' "$app/lib/main.dart" ||
+grep -qF 'DC1_FIRST_LIGHT' "$app/lib/backend_io.dart" ||
+	fail "device transport no longer honours DC1_FIRST_LIGHT"
+grep -qF 'backendSocketPresent' "$app/lib/backend_io.dart" ||
+	fail "device transport no longer falls back to first light without a backend"
+grep -qF 'FirstLightApp' "$app/lib/main.dart" ||
 	fail "main.dart no longer falls back to first light without a backend"
 
 # 5. Transport: Unix socket only. Never TCP -- the USB host and any Wi-Fi
-#    peer must not be able to reach the control plane.
-grep -qF 'InternetAddressType.unix' "$app/lib/backend.dart" ||
-	fail "backend client does not connect over a Unix socket"
+#    peer must not be able to reach the control plane. The transport was
+#    split out of backend.dart (shared types) into backend_io.dart (device,
+#    dart:io) and backend_web.dart (browser mock) behind a conditional import
+#    in backend_client.dart, so the socket assertions now target the io
+#    transport specifically.
+grep -qF 'InternetAddressType.unix' "$app/lib/backend_io.dart" ||
+	fail "device transport does not connect over a Unix socket"
 grep -qF '/run/dc1-ui.sock' "$app/lib/backend.dart" || fail "socket path drift"
-grep -qF 'DC1_BACKEND_SOCKET' "$app/lib/backend.dart" ||
+grep -qF 'DC1_BACKEND_SOCKET' "$app/lib/backend_io.dart" ||
 	fail "socket path is not overridable via DC1_BACKEND_SOCKET"
 if grep -rnE '127\.0\.0\.1|InternetAddress\.loopback|localhost|ServerSocket|RawSocket\.connect|Socket\.connect\(' \
 	"$app/lib" >/dev/null; then
@@ -81,10 +93,10 @@ if grep -rnE '127\.0\.0\.1|InternetAddress\.loopback|localhost|ServerSocket|RawS
 	fail "a TCP endpoint appears in the UI sources"
 fi
 for endpoint in /wifi/scan /wifi/connect /onboard /events /finish; do
-	grep -qF "'$endpoint'" "$app/lib/backend.dart" ||
-		fail "backend client lost the $endpoint endpoint"
+	grep -qF "'$endpoint'" "$app/lib/backend_io.dart" ||
+		fail "device transport lost the $endpoint endpoint"
 done
-grep -qF 'LineSplitter' "$app/lib/backend.dart" ||
+grep -qF 'LineSplitter' "$app/lib/backend_io.dart" ||
 	fail "the /events stream is no longer parsed line by line (NDJSON)"
 # dc1-backend publishes the installer's phrasing ("ONBOARDING COMPLETE",
 # "WI-FI CONNECTION FAILED"), so terminal states are matched by substring.
@@ -92,6 +104,18 @@ grep -qF 'LineSplitter' "$app/lib/backend.dart" ||
 # backend and the progress screen hangs on the last intermediate state.
 grep -qF "state.contains('FAILED')" "$app/lib/backend.dart" ||
 	fail "terminal-state detection no longer matches the backend vocabulary"
+
+# 5b. The web transport is an in-browser mock and must never import dart:io
+#    (it would not compile for Flutter web). The conditional-import shim is
+#    what lets one source tree build for both targets.
+[ -f "$app/lib/backend_client.dart" ] || fail "missing backend_client.dart shim"
+[ -f "$app/lib/backend_web.dart" ] || fail "missing web transport"
+if grep -q "import 'dart:io'" "$app/lib/backend.dart" "$app/lib/backend_web.dart" \
+	"$app/lib/backend_client.dart" "$app/lib/main.dart"; then
+	fail "dart:io leaked into a web-compiled file"
+fi
+grep -qF "if (dart.library.js_interop)" "$app/lib/backend_client.dart" ||
+	fail "backend_client.dart no longer picks the web transport via conditional import"
 
 # 6. Validation parity with installer/src/tui.sh. These are the literal
 #    patterns; if the shell rules move, this test must be updated in the same
