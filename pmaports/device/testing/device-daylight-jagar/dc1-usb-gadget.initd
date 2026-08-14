@@ -23,7 +23,15 @@ write() {
 
 start() {
 	ebegin "Bringing up the DC-1 USB gadget"
-	[ -d /sys/kernel/config ] || { eend 1 "configfs not mounted"; return 1; }
+
+	# The system initramfs mounts proc/sysfs/devtmpfs but NOT configfs, and
+	# the rootfs' OpenRC sysfs service is not in a runlevel, so configfs is
+	# otherwise never mounted here. Mount it before the gadget setup.
+	if ! grep -qs ' /sys/kernel/config configfs ' /proc/mounts; then
+		mkdir -p /sys/kernel/config
+		mount -t configfs configfs /sys/kernel/config 2>/dev/null \
+			|| { eend 1 "configfs mount failed"; return 1; }
+	fi
 
 	rm -rf "$G" 2>/dev/null
 	mkdir -p "$G" || { eend 1 "configfs usb_gadget unavailable"; return 1; }
