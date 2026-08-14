@@ -28,6 +28,11 @@ PRIVATE_MARKERS = (
     b"BEGIN RSA PRIVATE KEY",
     b"BEGIN EC PRIVATE KEY",
 )
+# Packaged files whose name collides with a forbidden credential name but
+# whose content is fixed upstream policy, not configuration. Exact paths only.
+ALLOWED_PACKAGED_PATHS = {
+    "usr/share/dbus-1/system.d/wpa_supplicant.conf",
+}
 
 
 def sha256(path: Path) -> str:
@@ -52,6 +57,8 @@ def paths_below(root: Path) -> list[Path]:
 def verify_safe(root: Path, paths: list[Path]) -> None:
     for path in paths:
         relative = path.relative_to(root)
+        if relative.as_posix() in ALLOWED_PACKAGED_PATHS:
+            continue
         if path.name in FORBIDDEN_NAMES or ".ssh" in relative.parts:
             raise SystemExit(f"credential-like path in rootfs: {relative}")
         mode = path.lstat().st_mode

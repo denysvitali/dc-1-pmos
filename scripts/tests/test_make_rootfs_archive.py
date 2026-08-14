@@ -75,6 +75,10 @@ class RootfsArchiveTest(unittest.TestCase):
             # ssh-keygen embeds the PEM banner as a format constant.
             (source / "usr/bin/ssh-keygen").write_bytes(
                 b"\x7fELF-----BEGIN OPENSSH PRIVATE KEY-----")
+            # Packaged D-Bus policy, not a credential config.
+            (source / "usr/share/dbus-1/system.d").mkdir(parents=True)
+            (source / "usr/share/dbus-1/system.d/wpa_supplicant.conf").write_text(
+                "<busconfig/>\n")
             destination.mkdir()
             self.assertEqual(self.run_builder(source, destination).returncode, 0)
 
