@@ -1,7 +1,7 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=linux-postmarketos-mediatek-mt6789
 pkgver=7.2_rc5_git20260813
-pkgrel=2
+pkgrel=3
 pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
 arch="aarch64"
 _carch="arm64"
@@ -30,7 +30,7 @@ makedepends="
 "
 
 _repository="dc-1-linux-kernel"
-_commit="06081193648e5a17a4d8a6aedcb38cd33b2530ad"
+_commit="3522feccb58506b19bd72fe0936be7264e23a723"
 _config="config-$_flavor.$arch"
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/denysvitali/$_repository/archive/$_commit.tar.gz
@@ -171,6 +171,6 @@ package() {
 }
 
 sha512sums="
-7ff290db039b8054c80f4e225bf386352da5b4ae06e72c1ef0f794f7d04967ddb9d8a73d8586ed71bb8a4f204fee961162bdc25c4122a1ba9b2e6438dc3aed30  linux-postmarketos-mediatek-mt6789-06081193648e5a17a4d8a6aedcb38cd33b2530ad.tar.gz
-deff9e8d54a3aac69c55001d9d957fe6bc33493bdcd5ffa6e6023dc886fa5c0b8f829288c283a067232751f9ed17e539e9df868335b203dfb346571f91f97adf  config-postmarketos-mediatek-mt6789.aarch64
+0ed642eac40c29eadd030b29587ad3d68398f03b32a406e42905fef87ef45909999e4d4ef792a51d324ef68a348bbf8899f87e67d1f7cacb00d341473af8b995  linux-postmarketos-mediatek-mt6789-3522feccb58506b19bd72fe0936be7264e23a723.tar.gz
+2db87c9e22eae6928e5dad9b711e3f93e55131a1bc9f39b99189d0e3830e5903dfd449fc92904b974f95042965225fb365f9004089b2bc59fcfd2ca09648cbbc  config-postmarketos-mediatek-mt6789.aarch64
 "
