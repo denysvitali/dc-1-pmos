@@ -398,9 +398,27 @@ install -m 0644 "$SRC/partlib.sh" "$s/etc/partlib.sh"
 install -m 0755 "$OUT/rebootbl" "$s/bin/rebootbl"
 for a in sh ash cat ls ln mount mountpoint umount echo sleep mkdir rm cp \
          chmod tr head tail wc grep sed cut od dd find blkid seq date sync \
-         reboot basename readlink printf stat switch_root dmesg setsid; do
+         reboot basename dirname readlink printf stat switch_root dmesg setsid; do
 	ln -sf busybox "$s/bin/$a"
 done
+
+# The SYSTEM image never runs `busybox --install`, so an applet that is not
+# symlinked above simply does not exist -- and a missing one fails SILENTLY:
+# $(missing_cmd) expands to the empty string, so resolution "succeeds" with an
+# empty device name. That exact bug (a missing `dirname`) made boot.sh time out
+# on "userdata partition not found", dropped PID 1 to a rescue shell on an
+# invisible tty, and left the device dark on every boot. Fail the BUILD instead:
+# every bare word that the staged scripts invoke must resolve to a symlink here.
+for a in $(sed -n -e 's/^[[:space:]]*#.*//' \
+                  -e 's/.*\$(\([a-z0-9_]*\)[ )].*/\1/p' \
+                  "$SRC/system/boot.sh" "$SRC/partlib.sh" | sort -u); do
+	case "$a" in
+		# locally-defined functions, not applets
+		resolve_userdata|resolve_named_part|sysfs_dev_name|log|fail) continue ;;
+	esac
+	[ -e "$s/bin/$a" ] || fatal "system initramfs scripts call '$a' but it is not staged in /bin"
+done
+echo "  system initramfs applet closure: OK"
 
 # Belt and braces: nothing secret-shaped may enter either image. The CA
 # bundle (public certificates, .crt) is expected; anything key-like is not.

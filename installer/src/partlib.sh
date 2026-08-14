@@ -14,6 +14,21 @@ SYSBLOCK=${DC1_SYSBLOCK:-/sys/class/block}
 MIN_SECTORS=67108864     # 32 GiB in 512-byte sectors: userdata is ~109 GiB,
                          # every boot-critical partition is far smaller.
 
+# sysfs_dev_name /sys/class/block/sdc57/uevent -> sdc57
+#
+# Pure parameter expansion on purpose: this file is sourced by the SYSTEM
+# initramfs, which stages an explicit, minimal applet list and never runs
+# `busybox --install`. This used to be `basename "$(dirname "$u")"`, and
+# because `dirname` was not in that list the substitution expanded to the
+# empty string -- so resolution failed on every boot, boot.sh timed out
+# "userdata partition not found", PID 1 dropped to a rescue shell on a tty
+# nobody can see, and the device sat dark forever with the watchdog petted.
+# Depending on no external command at all removes the whole failure class.
+sysfs_dev_name() {
+	sdn_dir=${1%/uevent}
+	printf '%s\n' "${sdn_dir##*/}"
+}
+
 # resolve_userdata -> prints the device node path, or returns 1 with a
 # diagnostic on stderr.
 resolve_userdata() {
@@ -23,7 +38,7 @@ resolve_userdata() {
 		[ -f "$u" ] || continue
 		grep -q '^PARTNAME=userdata$' "$u" || continue
 		count=$((count + 1))
-		found=$(basename "$(dirname "$u")")
+		found=$(sysfs_dev_name "$u")
 	done
 	[ "$count" -eq 1 ] || { echo "expected exactly 1 PARTNAME=userdata, found $count" >&2; return 1; }
 	[ -n "$found" ] || { echo "empty device name for userdata" >&2; return 1; }
@@ -52,7 +67,7 @@ resolve_named_part() {
 		[ -f "$u" ] || continue
 		grep -q "^PARTNAME=$rnp_name\$" "$u" || continue
 		count=$((count + 1))
-		found=$(basename "$(dirname "$u")")
+		found=$(sysfs_dev_name "$u")
 	done
 	[ "$count" -eq 1 ] || { echo "expected exactly 1 PARTNAME=$rnp_name, found $count" >&2; return 1; }
 	[ -n "$found" ] || { echo "empty device name for $rnp_name" >&2; return 1; }
