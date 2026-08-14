@@ -1,7 +1,7 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=linux-postmarketos-mediatek-mt6789
 pkgver=7.2_rc5_git20260813
-pkgrel=0
+pkgrel=1
 pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
 arch="aarch64"
 _carch="arm64"
@@ -85,6 +85,10 @@ build() {
 	# pinned rather than taken from the wall clock.
 	export CCACHE_SLOPPINESS="time_macros,include_file_mtime,include_file_ctime,file_stat_matches,pch_defines,system_headers"
 
+	# Build only the one DTB the boot image consumes (scripts/export-artifacts.sh
+	# copies exactly arch/arm64/boot/dts/mediatek/mt8781-daylight-jagar.dtb).
+	# `dtbs` compiles all 113 MediaTek boards; unrelated mt7988a/mt8395 overlay
+	# builds flakily fail under clang-20, so keep the target to the device DTB.
 	make ARCH="$_carch" LLVM=/usr/lib/llvm20/bin/ \
 		LD=/usr/bin/ld.lld \
 		HOSTLD=/usr/bin/ld.lld \
@@ -94,7 +98,7 @@ build() {
 		KBUILD_BUILD_USER="postmarketos" \
 		KBUILD_BUILD_HOST="builder" \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor" \
-		Image.gz dtbs modules
+		Image.gz arch/arm64/boot/dts/mediatek/mt8781-daylight-jagar.dtb modules
 
 	# A positive control for the cache itself. A build that bypasses ccache
 	# produces a green package, an empty cache and a permanently cold build,
@@ -116,7 +120,7 @@ package() {
 
 	# Same compiler command as build(): a different CC here would make kbuild
 	# reconsider objects it already has and recompile them uncached.
-	make modules_install dtbs_install \
+	make modules_install \
 		ARCH="$_carch" \
 		LLVM=/usr/lib/llvm20/bin/ \
 		LD=/usr/bin/ld.lld \
@@ -124,9 +128,14 @@ package() {
 		CC="ccache clang-20" \
 		HOSTCC="ccache clang-20" \
 		INSTALL_MOD_PATH="$pkgdir" \
-		INSTALL_MOD_STRIP=1 \
-		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
+		INSTALL_MOD_STRIP=1
 	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
+
+	# The single device DTB, at the path scripts/export-artifacts.sh reads it
+	# from. Built in build(); installing it directly keeps the package from
+	# re-driving the full 113-board dtbs target (see build()).
+	install -Dm644 arch/$_carch/boot/dts/mediatek/mt8781-daylight-jagar.dtb \
+		"$pkgdir"/boot/dtbs/mediatek/mt8781-daylight-jagar.dtb
 
 	install -Dm644 include/config/kernel.release \
 		"$pkgdir/usr/share/kernel/$_flavor/kernel.release"
