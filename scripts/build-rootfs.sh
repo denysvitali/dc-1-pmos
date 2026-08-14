@@ -62,7 +62,7 @@ printf '%s\n' "$work_version" >"$pmb_work/version"
 cat >"$pmb_config" <<EOF
 [pmbootstrap]
 aports = $pmaports_dir
-boot_size = 256
+boot_size = 512
 build_default_device_arch = True
 ccache_size = 5G
 device = daylight-jagar
