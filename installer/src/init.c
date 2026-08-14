@@ -18,11 +18,12 @@
  *
  *   - devtmpfs is NOT auto-mounted on an initramfs boot: devtmpfs_mount() is
  *     only called from prepare_namespace(), which the kernel skips when it
- *     runs rdinit. /init must mount it or /dev/fb0 and /dev/kmsg never appear.
- *   - the LK framebuffer at 0xfe8c1000 (1200x1600, a8r8g8b8, stride padded by
- *     16 px) is already scanning out when we get control; painting it needs a
- *     cached shadow buffer, because per-pixel stores to the uncached mapping
- *     are pathologically slow.
+ *     runs rdinit. /init must mount it or /dev/kmsg and /dev/dri/card0 never
+ *     appear.
+ *   - the panel is dark at boot and only lights via a DRM atomic commit after
+ *     the runtime display gate is opened (see open_panel_gate()); /dev/fb0 and
+ *     the LK scanout buffer are dead instruments on this panel. See the gate
+ *     block below -- this cost boot cycles to learn, do not re-derive it.
  *   - the UDC name candidates below are the ones the MTU3 driver actually
  *     registers on this SoC; rc.sh retries with the real name from
  *     /sys/class/udc if the guess misses.
@@ -40,17 +41,11 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
-#include <linux/fb.h>
+#include <drm/drm.h>
+#include <drm/drm_mode.h>
+#include <drm/drm_fourcc.h>
 #include <errno.h>
 #include <stdlib.h>
-
-/* Known-good geometry, measured from the live LK atag videolfb.
- * Used only as a fallback when FBIOGET_*SCREENINFO is unavailable. */
-#define FB_PHYS    0xfe8c1000UL
-#define FB_LEN     0x1650000UL          /* 23,396,352 -- three buffers */
-#define FB_W       1200
-#define FB_H       1600
-#define FB_STRIDE  ((1200 + 16) * 4)    /* 4864: LK pads the line by 16 px */
 
 #define STATUS_FILE "/tmp/installer-status"
 
@@ -183,6 +178,7 @@ struct fbinfo {
 	unsigned long len;            /* bytes mapped from the device */
 	unsigned long one;            /* bytes in ONE frame = stride * h */
 	unsigned int w, h, stride, bpp;
+	int fd;                       /* DRM fd owning the buffer; never closed */
 	const char *how;              /* provenance, for the log */
 };
 
@@ -239,44 +235,208 @@ static int fb_alloc_shadow(struct fbinfo *f)
 	return 0;
 }
 
-/* Try /dev/fb0 (needs simpledrm bound + DRM_FBDEV_EMULATION + FB_DEVICE). */
-static int fb_via_fbdev(struct fbinfo *f)
+/* --------------------------- display gate + DRM --------------------------
+ * The DC-1 panel is held OFF at boot: the panel driver parks its probe behind
+ * two module parameters (jagar_probe_stage=0 "hold", jagar_production_sequence
+ * N) until a user gates them on at runtime. Opening them too early during boot
+ * DOES NOT BOOT (LK falls back to the other slot), so this stays a runtime
+ * step. The gate is runtime-only -- module params plus deferred-probe pokes --
+ * it resets on reboot and writes no storage.
+ *
+ * And /dev/fb0 does NOT reach the glass on this panel: two maximally different
+ * framebuffers written through the fbdev emulation produced photographically
+ * identical panels. Only a DRM atomic commit reaches the glass. The legacy
+ * SETCRTC ioctl below is used because the kernel routes it through the atomic
+ * path internally, which is the only citable display channel. */
+
+static int wr(const char *path, const char *val);
+
+static int exists(const char *p) { return access(p, F_OK) == 0; }
+
+static int wait_for(const char *path, int seconds)
 {
-	struct fb_var_screeninfo v;
-	struct fb_fix_screeninfo x;
-	int fd = open("/dev/fb0", O_RDWR);
-	if (fd < 0) return -1;
-	if (ioctl(fd, FBIOGET_VSCREENINFO, &v) || ioctl(fd, FBIOGET_FSCREENINFO, &x)) {
-		close(fd);
+	for (int n = 0; n < seconds; n++) {
+		if (exists(path)) return 0;
+		sleep(1);
+	}
+	return -1;
+}
+
+/* Open the panel gate. Returns 0 once /dev/dri/card0 is bound. */
+static int open_panel_gate(void)
+{
+	static const char *panel = "/sys/module/panel_novatek_nt36523/parameters";
+	static const char *skip  = "/sys/module/mediatek_drm/parameters/jagar_skip_drm_client";
+	static const char *gce_param = "/sys/module/mtk_cmdq_mailbox/parameters/jagar_mt6789_probe_stage";
+	static const char *gce_drv   = "/sys/bus/platform/devices/10228000.gce/driver";
+	static const char *dsi_dev   = "/sys/bus/mipi-dsi/devices/14013000.dsi.0";
+	static const char *prod = "/sys/module/panel_novatek_nt36523/parameters/jagar_production_sequence";
+	static const char *stage = "/sys/module/panel_novatek_nt36523/parameters/jagar_probe_stage";
+
+	if (!exists(panel)) { say("gate: no panel driver (wrong kernel?)"); return -1; }
+
+	/* Tell mediatek-drm to skip its intermediate DRM client, so no fbdev
+	 * helper performs the first modeset -- the first real KMS client (us)
+	 * gets the panel. */
+	if (wr(skip, "Y\n") != 0) { say("gate: cannot set skip_drm_client"); return -1; }
+
+	/* Bind GCE/CMDQ before the panel gate (safe probe order: opening the
+	 * panel first makes GCE registration trigger the whole dependent DRM
+	 * chain synchronously and can wedge the interconnect). */
+	if (!exists(gce_drv)) {
+		if (wr(gce_param, "4\n") != 0 ||
+		    wr("/sys/bus/platform/drivers_probe", "10228000.gce\n") != 0) {
+			say("gate: GCE bind write failed");
+			return -1;
+		}
+		if (wait_for(gce_drv, 5) != 0) {
+			say("gate: GCE did not bind"); return -1;
+		}
+	}
+
+	if (wait_for(dsi_dev, 15) != 0) {
+		say("gate: DSI panel device did not appear"); return -1;
+	}
+
+	/* Silence the kernel console before the display controller changes
+	 * owners (prevents a jagarfb-style console from repainting the stale
+	 * scanout). Our own status goes to /dev/kmsg and serial, which printk
+	 * level does not gate. */
+	(void)wr("/proc/sys/kernel/printk", "1 4 1 7\n");
+
+	/* Power the panel and poke the deferred probe to retry. */
+	if (wr(prod, "Y\n") != 0 ||
+	    wr(stage, "3\n") != 0 ||
+	    wr("/sys/bus/mipi-dsi/drivers_probe", "14013000.dsi.0\n") != 0) {
+		say("gate: panel open write failed");
 		return -1;
 	}
-	unsigned long len = x.smem_len ? x.smem_len : (unsigned long)x.line_length * v.yres;
-	void *m = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (m == MAP_FAILED) { close(fd); return -1; }
-	f->mem = m; f->len = len;
-	f->w = v.xres; f->h = v.yres;
-	f->stride = x.line_length ? x.line_length : v.xres * (v.bits_per_pixel / 8);
-	f->bpp = v.bits_per_pixel ? v.bits_per_pixel : 32;
-	f->how = "fbdev /dev/fb0";
-	if (fb_alloc_shadow(f)) { munmap(m, len); close(fd); return -1; }
-	int b = open("/sys/class/graphics/fb0/blank", O_WRONLY);
-	if (b >= 0) { (void)write(b, "0\n", 2); close(b); }
+
+	if (wait_for("/dev/dri/card0", 15) != 0) {
+		say("gate: /dev/dri/card0 did not appear"); return -1;
+	}
+	say("gate: display opened");
 	return 0;
 }
 
-/* Fallback: map the LK scanout buffer straight out of /dev/mem. Works when
- * the DTS marks that reserved-memory region no-map (then devmem_is_allowed()
- * permits the mapping even with CONFIG_STRICT_DEVMEM=y). */
-static int fb_via_devmem(struct fbinfo *f)
+/* Acquire the display via DRM: open the gate, allocate a dumb buffer, scan it
+ * out, and leave it mapped for paint()/blit() to draw into.
+ *
+ * 32 bpp XRGB8888 only: the existing painter is 32 bpp. The 1200x1600 buffer
+ * is 7.68 MB of contiguous coherent memory; the postmarketOS kernel satisfies
+ * this via its CMA pool (CREATE_DUMB 32bpp verified OK on the installer kernel
+ * 2026-08-14). The bring-up diagnostic kernel could not (its only CMA area
+ * sits at 4 GB behind a 32-bit OVL master), but that is a different config. If
+ * a future config regresses, we give up cleanly and fall back to serial-only
+ * status rather than paint garbage. */
+static int fb_via_drm(struct fbinfo *f)
 {
-	int fd = open("/dev/mem", O_RDWR | O_SYNC);
-	if (fd < 0) return -1;
-	void *m = mmap(NULL, FB_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (off_t)FB_PHYS);
-	if (m == MAP_FAILED) { close(fd); return -1; }
-	f->mem = m; f->len = FB_LEN;
-	f->w = FB_W; f->h = FB_H; f->stride = FB_STRIDE; f->bpp = 32;
-	f->how = "devmem 0xfe8c1000";
-	if (fb_alloc_shadow(f)) { munmap(m, FB_LEN); close(fd); return -1; }
+	struct drm_mode_card_res res;
+	struct drm_mode_get_connector conn;
+	struct drm_mode_modeinfo modes[8];
+	struct drm_mode_create_dumb dumb;
+	struct drm_mode_fb_cmd2 fb;
+	struct drm_mode_map_dumb mreq;
+	struct drm_mode_crtc set;
+	uint32_t conns[8], crtcs[8], encs[8], fbs[8];
+	uint32_t conn_id = 0, crtc_id = 0;
+	struct drm_mode_modeinfo *m = NULL;
+	int fd, i;
+
+	if (open_panel_gate() != 0)
+		return -1;
+
+	fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
+	if (fd < 0) { say("fb: no /dev/dri/card0"); return -1; }
+
+	/* SET_MASTER fails harmlessly when we already own it (best effort). */
+	(void)ioctl(fd, DRM_IOCTL_SET_MASTER, 0);
+
+	/* Two-pass GETRESOURCES: first counts, then the id arrays. */
+	memset(&res, 0, sizeof res);
+	if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res) < 0) { close(fd); return -1; }
+	if (res.count_connectors > 8) res.count_connectors = 8;
+	if (res.count_crtcs > 8)      res.count_crtcs = 8;
+	if (res.count_encoders > 8)   res.count_encoders = 8;
+	if (res.count_fbs > 8)        res.count_fbs = 8;
+	res.connector_id_ptr = (uint64_t)(uintptr_t)conns;
+	res.crtc_id_ptr      = (uint64_t)(uintptr_t)crtcs;
+	res.encoder_id_ptr   = (uint64_t)(uintptr_t)encs;
+	res.fb_id_ptr        = (uint64_t)(uintptr_t)fbs;
+	if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res) < 0) { close(fd); return -1; }
+	if (!res.count_connectors || !res.count_crtcs) {
+		say("fb: no DRM connector/crtc"); close(fd); return -1;
+	}
+	crtc_id = crtcs[0];
+
+	/* Find a connected connector and take its first mode. */
+	for (i = 0; i < (int)res.count_connectors; i++) {
+		memset(&conn, 0, sizeof conn);
+		conn.connector_id = conns[i];
+		if (ioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn) < 0) continue;
+		if (conn.count_modes > 8) conn.count_modes = 8;
+		conn.modes_ptr = (uint64_t)(uintptr_t)modes;
+		conn.props_ptr = 0; conn.prop_values_ptr = 0; conn.encoders_ptr = 0;
+		conn.count_props = 0; conn.count_encoders = 0;
+		if (ioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn) < 0) continue;
+		if (conn.connection == 1 /* DRM_MODE_CONNECTED */ && conn.count_modes) {
+			conn_id = conns[i];
+			m = &modes[0];
+			break;
+		}
+	}
+	if (!m) { say("fb: no connected DRM connector"); close(fd); return -1; }
+
+	memset(&dumb, 0, sizeof dumb);
+	dumb.width = m->hdisplay;
+	dumb.height = m->vdisplay;
+	dumb.bpp = 32;
+	if (ioctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &dumb) < 0) {
+		say("fb: CREATE_DUMB 32bpp failed -- no display");
+		close(fd); return -1;
+	}
+
+	memset(&fb, 0, sizeof fb);
+	fb.width = m->hdisplay;
+	fb.height = m->vdisplay;
+	fb.pixel_format = DRM_FORMAT_XRGB8888;
+	fb.handles[0] = dumb.handle;
+	fb.pitches[0] = dumb.pitch;
+	if (ioctl(fd, DRM_IOCTL_MODE_ADDFB2, &fb) < 0) { say("fb: ADDFB2 failed"); close(fd); return -1; }
+
+	memset(&mreq, 0, sizeof mreq);
+	mreq.handle = dumb.handle;
+	if (ioctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &mreq) < 0) { say("fb: MAP_DUMB failed"); close(fd); return -1; }
+	void *mem = mmap(NULL, dumb.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, mreq.offset);
+	if (mem == MAP_FAILED) { say("fb: dumb buffer mmap failed"); close(fd); return -1; }
+
+	/* First atomic commit: the scanout switches to our buffer and the panel
+	 * lights (it was held dark until this point). */
+	memset(&set, 0, sizeof set);
+	set.crtc_id = crtc_id;
+	set.fb_id = fb.fb_id;
+	set.set_connectors_ptr = (uint64_t)(uintptr_t)&conn_id;
+	set.count_connectors = 1;
+	set.mode = *m;
+	set.mode_valid = 1;
+	if (ioctl(fd, DRM_IOCTL_MODE_SETCRTC, &set) < 0) {
+		say("fb: SETCRTC failed -- panel stays dark");
+		munmap(mem, dumb.size); close(fd); return -1;
+	}
+
+	f->mem = mem;
+	f->len = dumb.size;
+	f->w = m->hdisplay;
+	f->h = m->vdisplay;
+	f->stride = dumb.pitch;
+	f->bpp = 32;
+	f->fd = fd;               /* owned for our lifetime; init never exits */
+	f->how = "DRM dumb-buffer";
+	if (fb_alloc_shadow(f)) { munmap(mem, dumb.size); close(fd); return -1; }
+
+	/* The frontlight comes up at 0, so a committed frame is invisible until
+	 * the white channel is raised. */
+	(void)wr("/sys/class/backlight/lcd-backlight/brightness", "10\n");
 	return 0;
 }
 
@@ -408,14 +568,6 @@ int main(void)
 	int t = open("/dev/tty1", O_RDWR);
 	if (t >= 0) { dup2(t, 0); dup2(t, 1); dup2(t, 2); if (t > 2) close(t); }
 
-	struct fbinfo f;
-	memset(&f, 0, sizeof f);
-	int have_fb = (fb_via_fbdev(&f) == 0) || (fb_via_devmem(&f) == 0);
-	if (have_fb)
-		say2("fb: acquired via ", f.how);
-	else
-		say("fb: NO framebuffer -- status only on serial/kmsg");
-
 	gadget();
 
 	/* Initial status; rc.sh and installd overwrite it as they progress. */
@@ -430,7 +582,8 @@ int main(void)
 
 	/* Second stage in the background so a broken script cannot cost us the
 	 * screen. It does: busybox --install, module insmod, UDC retry, usb0
-	 * addressing, shells, and the installer daemon. */
+	 * addressing, shells, and the installer daemon. Its first job is to pet
+	 * /dev/watchdog -- see the display-gate note below. */
 	if (access("/etc/rc.sh", X_OK) == 0 && access("/bin/busybox", X_OK) == 0) {
 		rc_pid = fork();
 		if (rc_pid == 0) {
@@ -444,6 +597,19 @@ int main(void)
 	} else {
 		say("init: /etc/rc.sh or /bin/busybox missing -- no installer daemon");
 	}
+
+	/* Acquire the display only once rc.sh is up: LK arms a ~31s hardware
+	 * watchdog and this kernel does not auto-pet it, so the display gate --
+	 * which can spend up to ~35s on its GCE + DSI + card0 waits in a
+	 * pathological case -- must not run while the watchdog is unpetted. The
+	 * panel is dark until this returns anyway, so nothing is lost by waiting. */
+	struct fbinfo f;
+	memset(&f, 0, sizeof f);
+	int have_fb = (fb_via_drm(&f) == 0);
+	if (have_fb)
+		say2("fb: acquired via ", f.how);
+	else
+		say("fb: no display -- status only on serial/kmsg");
 
 	/* Never exit: repaint the status screen, reap children, heartbeat. */
 	for (unsigned long n = 0;; n++) {

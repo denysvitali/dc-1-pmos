@@ -213,7 +213,15 @@ mkdir -p "$OUT" "$ROOT"
 # ---------------------------------------------------------------- 1. compile
 # -static: no ld-musl in the image, so nothing to get wrong. -Os: small and
 # boring.
-"$CC" -static -Os -Wall -Wextra -o "$OUT/installer-init" "$SRC/init.c"
+#
+# init.c talks to DRM with raw ioctls against the kernel UAPI headers, which
+# are vendored under src/uapi/ (drm/{drm,drm_mode,drm_fourcc}.h plus the two
+# linux/ headers they pull in that not every libc ships -- bits.h, const.h).
+# Raw UAPI headers annotate pointer arguments with __user, so define it empty
+# exactly as the bring-up build did; and the -I pins to our vendored copy
+# rather than whichever kernel headers the CI image happens to carry.
+"$CC" -static -Os -Wall -Wextra -D__user= -I "$SRC/uapi" \
+	-o "$OUT/installer-init" "$SRC/init.c"
 "$STRIP" "$OUT/installer-init"
 
 # rebootbl: busybox `reboot` only does RB_AUTOBOOT, which LK treats as an
