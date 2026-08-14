@@ -321,7 +321,10 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (!dry_run && geteuid() != 0) {
+	/* A clear message beats an mmap failure. Skipped when the caller has
+	 * redirected the register file, i.e. the offline tests -- there the
+	 * kernel's own permission check on the named file is the real gate. */
+	if (!dry_run && geteuid() != 0 && !getenv("DC1_MEMDEV")) {
 		fprintf(stderr, "dc1-reboot-fastboot: must be root\n");
 		return 1;
 	}
