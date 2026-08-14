@@ -39,6 +39,7 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <time.h>
 
 static int g_kmsg = -1;
 
@@ -91,6 +92,44 @@ static void say2(const char *a, const char *b)
 	say(buf);
 }
 
+/* Deadman lease. A watchdog that is petted unconditionally is not a watchdog,
+ * it is a keep-alive: it holds a dead board alive instead of resetting it, and
+ * -- worse -- it defeats the A/B recovery LK already implements, because a
+ * board that never resets is never retried and never falls back to the other
+ * slot. A failed boot must therefore stop being petted.
+ *
+ * Petting is unconditional only while the boot is still making progress. Once
+ * we drop to the rescue shell, the petter switches to a lease: it keeps the
+ * board alive only while someone demonstrably still has it, and the lease is
+ * renewed from outside (`touch /tmp/wd-lease` over the debug shell). Walk away
+ * -- or lose the cable -- and the board resets itself back to a known state
+ * rather than sitting dark forever waiting for a power button. */
+#define WD_DEADMAN       "/tmp/wd-deadman"
+#define WD_LEASE         "/tmp/wd-lease"
+#define WD_LEASE_SECONDS 300
+
+static void touch_file(const char *path)
+{
+	int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd < 0) return;
+	(void)write(fd, "1\n", 2);
+	close(fd);
+}
+
+static int lease_is_fresh(void)
+{
+	struct stat st;
+	time_t now;
+	if (stat(WD_LEASE, &st) < 0)
+		return 0;
+	now = time(NULL);
+	/* No usable clock: fail towards staying alive rather than resetting a
+	 * board someone may be actively debugging. */
+	if (now == (time_t)-1 || now < st.st_mtime)
+		return 1;
+	return (now - st.st_mtime) <= WD_LEASE_SECONDS;
+}
+
 /* Fork the sole watchdog owner. It holds the fd open forever -- including
  * across switch_root, where its root points at the (deleted) initramfs but
  * the open fd keeps working. Pet interval 10s against LK's ~31s timer. */
@@ -113,6 +152,15 @@ static void start_watchdog_petter(void)
 	}
 	say("watchdog: petter running (sole owner, survives switch_root)");
 	for (;;) {
+		if (access(WD_DEADMAN, F_OK) == 0 && !lease_is_fresh()) {
+			say("watchdog: deadman lease expired -- ceasing to pet;"
+			    " the board will reset and LK can retry/fall back");
+			/* Stop petting. Do not exit: exiting is indistinguishable
+			 * from a crash, and staying parked keeps the fd owned so
+			 * nothing else re-arms it before the reset lands. */
+			for (;;)
+				sleep(3600);
+		}
 		(void)write(fd, "a", 1);
 		sleep(10);
 	}
@@ -231,6 +279,15 @@ static void rescue(const char *why)
 
 	say2("RESCUE SHELL: ", why);
 	say("nothing was written; fix the problem or reflash from fastboot");
+
+	/* Arm the deadman. From here the board stays alive only while someone
+	 * renews the lease; otherwise it resets, which is what lets LK retry the
+	 * slot and eventually fall back. Seed it once so an operator who is
+	 * already attached has WD_LEASE_SECONDS to notice and take over. */
+	touch_file(WD_LEASE);
+	touch_file(WD_DEADMAN);
+	say("watchdog: deadman armed -- renew with: touch " WD_LEASE
+	    " (else the board resets)");
 	for (;;) {
 		for (int i = 0; i < 3; i++) {
 			if (kid[i] > 0 && waitpid(kid[i], NULL, WNOHANG) == 0)
