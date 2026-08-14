@@ -114,6 +114,12 @@ pmb build --arch=aarch64 device-daylight-jagar
 pmb install --no-image --no-sshd --no-firewall --no-recommends \
 	--password "${PMOS_BUILD_PASSWORD:-postmarketos}"
 
+# install leaves the chroot active, with pmbootstrap's own state (including
+# the local abuild signing key) bind-mounted under mnt/pmbootstrap. Unmount
+# it all before the export stage reads the tree; the exporter's credential
+# tripwire rejects the tree otherwise, and rightly so.
+pmb shutdown
+
 rootfs_dir="$pmb_work/chroot_rootfs_daylight-jagar"
 [ -d "$rootfs_dir" ] || {
 	echo "pmbootstrap rootfs not found at pinned layout: $rootfs_dir" >&2
