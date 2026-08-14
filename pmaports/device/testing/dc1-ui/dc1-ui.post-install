@@ -1,0 +1,6 @@
+#!/bin/sh
+# Register the control plane. Best-effort and idempotent, like the device
+# package: if this fails the shell still starts and falls back to the
+# first-light screen rather than leaving a dark panel.
+rc-update add dc1-backend default 2>/dev/null || true
+exit 0

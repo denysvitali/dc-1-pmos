@@ -109,7 +109,7 @@ apkbuild_field() {
 }
 
 mkdir "$output_dir/packages"
-for package in linux-postmarketos-mediatek-mt6789 device-daylight-jagar; do
+for package in linux-postmarketos-mediatek-mt6789 device-daylight-jagar dc1-ui; do
 	apkbuild="$overlay/$package/APKBUILD"
 	[ -f "$apkbuild" ] || fail "missing overlay APKBUILD: $apkbuild"
 	pkgver=$(apkbuild_field "$apkbuild" pkgver)

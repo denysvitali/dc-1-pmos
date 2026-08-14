@@ -1,0 +1,26 @@
+name: dc1_shell
+description: DC-1 on-device shell -- first light and first-boot onboarding.
+publish_to: none
+version: 0.1.0
+
+# No third-party packages, deliberately: the app is compiled inside the
+# pmbootstrap Alpine aarch64 chroot, where the only dependency source we
+# trust (and the only one guaranteed to resolve) is the Flutter SDK itself.
+# Adding a hosted dependency would make the rootfs build depend on pub.dev.
+#
+# Dart 3.10.3 is what Alpine edge/testing ships for flutter-common 3.38.4-r2
+# (flutter-common depends on dart-sdk~3.10.3).
+environment:
+  sdk: ">=3.10.0 <4.0.0"
+  flutter: ">=3.38.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,91 @@
+maintainer="Denys Vitali <denys@denv.it>"
+pkgname=dc1-ui
+pkgdesc="Daylight DC-1 on-device shell: Flutter UI and its control plane"
+pkgver=1
+pkgrel=0
+url="https://github.com/denysvitali/dc-1-pmos"
+license="MIT"
+arch="aarch64"
+# !strip: the Flutter runner, its AOT snapshot and the static Go binary are
+# prebuilt payload, not something this recipe compiled -- they are shipped
+# exactly as produced and verified.
+options="!check !strip"
+# libapp.so is the shell's private Dart AOT snapshot, reachable only through
+# the runner's own RUNPATH ($ORIGIN/lib). Without the mask abuild scans that
+# RUNPATH and publishes so:libapp.so into Alpine's global soname namespace,
+# where a name that generic is a collision waiting to happen. Only that one
+# is masked: libflutter_linux_gtk.so is deliberately left visible so the
+# runner's DT_NEEDED becomes an so: dependency on the flutter-gtk package,
+# alongside the version pin below.
+somask="libapp.so"
+# flutter-gtk is pinned exactly: it is the GTK3 embedder the bundle is built
+# against and dlopens by soname, and a bare `flutter-gtk` silently follows
+# Alpine edge onto an engine ABI the committed bundle was not compiled for.
+# The same version is asserted, by size and SHA-256, in
+# scripts/verify-flutter-gtk.sh. flutter-desktop/flutter-common/flutter-tool/
+# dart-sdk are build-time only and must never appear here.
+depends="
+	flutter-gtk=3.38.4-r2
+	font-dejavu
+	mesa-dri-gallium
+	networkmanager-cli
+	"
+install="$pkgname.post-install $pkgname.post-upgrade"
+source="
+	dc1-backend.initd
+	dc1-backend.confd
+	dc1-ui-session
+	dc1-ui.sway.conf
+"
+
+# The Flutter bundle and the dc1-backend binary cannot be produced by abuild:
+# the Flutter toolchain needs a network fetch and ~2 GB of SDK, and the shell
+# has to be cross-checked against the musl embedder. They are built by
+# scripts/build-flutter-ui.sh and scripts/build-backend.sh and staged into
+# payload/ by scripts/build-ui-payload.sh before this package is built.
+# Everything in payload/ is asserted here rather than trusted, because an
+# empty or half-written bundle installs cleanly and shows nothing.
+
+package() {
+	local member _payload="$startdir/payload"
+
+	# die, not error: abuild's error() only prints -- its body ends in
+	# logcmd, which returns 0 -- so an assertion written with it keeps
+	# going and ships the broken payload it just complained about.
+	[ -d "$_payload" ] || die "payload/ is missing: run scripts/build-ui-payload.sh"
+
+	for member in dc1-backend bundle/dc1_shell bundle/lib/libapp.so \
+			bundle/data/icudtl.dat; do
+		[ -s "$_payload/$member" ] || die "payload/$member is missing or empty"
+	done
+	[ -n "$(find "$_payload"/bundle/data/flutter_assets -type f -print -quit)" ] ||
+		die "payload/bundle/data/flutter_assets/ is empty"
+
+	install -Dm755 "$_payload"/dc1-backend "$pkgdir"/usr/sbin/dc1-backend
+	install -Dm755 "$srcdir"/dc1-backend.initd "$pkgdir"/etc/init.d/dc1-backend
+	install -Dm644 "$srcdir"/dc1-backend.confd "$pkgdir"/etc/conf.d/dc1-backend
+
+	# The bundle is installed whole: the runner resolves lib/ and data/
+	# relative to its own directory.
+	mkdir -p "$pkgdir"/usr/lib/dc1-ui
+	cp -a "$_payload"/bundle/. "$pkgdir"/usr/lib/dc1-ui/
+	chmod 755 "$pkgdir"/usr/lib/dc1-ui/dc1_shell
+
+	# The bundle ships its own copy of the embedder, byte-identical to the
+	# one in flutter-gtk. Drop it: the pinned dependency is what makes the
+	# ABI claim true, and two copies of a 13 MB library that must not
+	# diverge is a way for them to diverge. Removing it lets the loader
+	# fall through the runner's RUNPATH to /usr/lib/libflutter_linux_gtk.so.
+	rm -f "$pkgdir"/usr/lib/dc1-ui/lib/libflutter_linux_gtk.so
+
+	install -Dm755 "$srcdir"/dc1-ui-session "$pkgdir"/usr/bin/dc1-ui-session
+	install -Dm644 "$srcdir"/dc1-ui.sway.conf \
+		"$pkgdir"/etc/sway/config.d/10-dc1-ui.conf
+}
+
+sha512sums="
+557be330be078dcb25cc429aad847840354aa35befcece24ee1b6dedc9f26c4627109ce78413bc5ff592c0392cbcf5e90644260660077f22a65658a4f4ee6b7d  dc1-backend.initd
+9da2c1e9ae8679b3cbaf8fe6f54b11576ef7d3e663c938a868ea9e7437d6b36c24e33ca430c23df91e4fa1b97e292ed533e16dfdcd07c8dbcfc4593c6e92e130  dc1-backend.confd
+4d9ce2c8a8da97c0d5a55e1cb3adbf386c614aef8442a939346470e5185276a2ae55abcf9bc3efc0bc139bc067199145c3bf93e42bf0ecc799bfcb8a6a93e92a  dc1-ui-session
+dacc1e2efebed12107ebef7fa3d5dee4f6f68e3d20e324815985099226fcc7c3b803a969120d2ecd19dc959c0acbce74783ed57cedc69baf9b468efd29e97faa  dc1-ui.sway.conf
+"

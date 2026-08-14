@@ -66,7 +66,7 @@ boot_size = 512
 build_default_device_arch = True
 ccache_size = 5G
 device = daylight-jagar
-extra_packages = e2fsprogs-extra,mesa-dri-gallium,font-dejavu
+extra_packages = e2fsprogs-extra,mesa-dri-gallium,font-dejavu,dc1-ui
 is_default_channel = False
 jobs = 4
 kernel = edge
@@ -94,17 +94,30 @@ pmb() {
 }
 
 # This command allowlist is intentionally incapable of deploying an artifact.
+pmb apkbuild_parse dc1-ui >/dev/null
 pmb apkbuild_parse device-daylight-jagar >/dev/null
 pmb apkbuild_parse linux-postmarketos-mediatek-mt6789 >/dev/null
 if [ "$verify_sources" = yes ]; then
-	pmb checksum --verify device-daylight-jagar linux-postmarketos-mediatek-mt6789
+	pmb checksum --verify dc1-ui device-daylight-jagar \
+		linux-postmarketos-mediatek-mt6789
 fi
 if [ "$validate_only" = yes ]; then
 	echo "validated pinned postmarketOS package metadata"
 	exit 0
 fi
+
+# Before the kernel, deliberately: the UI payload is minutes of work and the
+# kernel is tens of minutes, so a moved flutter-gtk pin or a broken Dart
+# source fails the run early instead of an hour in.
+sh "$script_dir/build-ui-payload.sh" "$work_dir"
+
 pmb build --arch=aarch64 linux-postmarketos-mediatek-mt6789
 pmb build --arch=aarch64 device-daylight-jagar
+# --force for this one only: dc1-ui's pkgver-pkgrel does not move when the
+# Flutter sources or the Go backend change, so the usual "skip an unchanged
+# version" rule would silently package the previous run's payload. Rebuilding
+# is a file copy plus compression, not a compile.
+pmb build --force --arch=aarch64 dc1-ui
 
 # --password is not optional in an automated build: without it, pmbootstrap
 # calls getpass() and an unattended run stops at a prompt nobody can answer.

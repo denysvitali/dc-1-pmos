@@ -35,6 +35,7 @@ prepare_checkout() {
 		git -C "$directory" status --porcelain | while IFS= read -r line; do
 			path=${line#???}
 			case "$path" in
+				device/testing/dc1-ui/*|\
 				device/testing/device-daylight-jagar/*|\
 				device/testing/linux-postmarketos-mediatek-mt6789/*) ;;
 				*) echo "$directory has unrelated local change: $path" >&2; exit 1 ;;
@@ -57,9 +58,16 @@ prepare_checkout "$pmbootstrap_dir" \
 	https://gitlab.postmarketos.org/postmarketOS/pmbootstrap.git "$PMBOOTSTRAP_COMMIT"
 
 # The upstream checkout is pinned and disposable. Copy only this tracked overlay.
+# dc1-ui is copied the same way, but note that its payload/ (the Flutter
+# bundle and dc1-backend) is staged into the checkout AFTERWARDS by
+# scripts/build-ui-payload.sh -- this rm -rf is what keeps a stale payload
+# from a previous run out of the package.
 rm -rf -- \
+	"$pmaports_dir/device/testing/dc1-ui" \
 	"$pmaports_dir/device/testing/device-daylight-jagar" \
 	"$pmaports_dir/device/testing/linux-postmarketos-mediatek-mt6789"
+cp -R "$overlay_dir/device/testing/dc1-ui" \
+	"$pmaports_dir/device/testing/"
 cp -R "$overlay_dir/device/testing/device-daylight-jagar" \
 	"$pmaports_dir/device/testing/"
 cp -R "$overlay_dir/device/testing/linux-postmarketos-mediatek-mt6789" \

@@ -1,0 +1,10 @@
+# Configuration for /etc/init.d/dc1-backend.
+
+# Unix socket the control plane listens on. The Flutter shell looks here by
+# default too (override there with DC1_BACKEND_SOCKET). Never a TCP address.
+#socket="/run/dc1-ui.sock"
+
+# Group given read/write access to the socket, i.e. the group of the user the
+# Sway session runs as. The default matches the user this image is built with;
+# change it if the desktop user was renamed during onboarding.
+#ui_group="dc1"

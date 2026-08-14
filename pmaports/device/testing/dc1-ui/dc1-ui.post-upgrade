@@ -1,0 +1,5 @@
+#!/bin/sh
+# Re-assert the runlevel entry after an upgrade, in case the service was
+# dropped or renamed between versions.
+rc-update add dc1-backend default 2>/dev/null || true
+exit 0

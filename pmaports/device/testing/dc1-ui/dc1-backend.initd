@@ -1,0 +1,69 @@
+#!/sbin/openrc-run
+# The DC-1 UI control plane: one static Go binary serving HTTP/JSON to the
+# Flutter shell over a Unix domain socket.
+#
+# It binds no TCP port, ever -- the USB gadget host (172.16.42.x) and any
+# future Wi-Fi peer must not be able to reach onboarding. The socket is the
+# only address, which is also why its permissions are handled here rather
+# than left at the daemon's default.
+
+description="DC-1 UI control plane"
+
+: "${socket:=/run/dc1-ui.sock}"
+: "${ui_group:=dc1}"
+
+command="/usr/sbin/dc1-backend"
+command_args="-socket ${socket}"
+command_background="yes"
+pidfile="/run/dc1-backend.pid"
+output_log="/var/log/dc1-backend.log"
+error_log="/var/log/dc1-backend.log"
+
+depend() {
+	need localmount
+	# Wi-Fi scan/connect go through nmcli, so NetworkManager should be up
+	# first; `use`, not `need`, because onboarding without Wi-Fi is a
+	# supported path and the shell must still come up on a device with no
+	# network at all.
+	use networkmanager
+	# The shell samples the socket once, at startup, and draws first light
+	# if it is missing -- so a display manager that wins the race against
+	# this service costs onboarding entirely, silently. Order against the
+	# `display-manager` virtual rather than tinydm by name: the provider is
+	# whatever postmarketos-ui-* installed.
+	before display-manager
+}
+
+start_pre() {
+	# Only when it is missing: an unconditional checkpath on an existing
+	# directory rewrites its mode, and a socket path pointed at /tmp would
+	# then lose the sticky bit.
+	socket_dir=$(dirname "${socket}")
+	[ -d "${socket_dir}" ] ||
+		checkpath --directory --mode 0755 --owner root:root "${socket_dir}"
+}
+
+start_post() {
+	# dc1-backend creates the socket mode 0600 root:root. The Flutter shell
+	# runs as the desktop user under Sway, so without this it gets EACCES,
+	# reports no backend and falls back to the first-light screen -- a
+	# silent loss of onboarding. Hand the socket to the desktop user's
+	# group at 0660; never world-writable.
+	n=0
+	while [ ! -S "${socket}" ]; do
+		n=$((n + 1))
+		[ "$n" -ge 50 ] && break
+		sleep 0.1
+	done
+	if [ ! -S "${socket}" ]; then
+		eerror "${socket} did not appear; the UI cannot reach the backend"
+		return 1
+	fi
+	if grep -q "^${ui_group}:" /etc/group 2>/dev/null; then
+		chgrp "${ui_group}" "${socket}" && chmod 0660 "${socket}"
+	else
+		ewarn "group ${ui_group} does not exist: ${socket} stays root-only"
+		ewarn "set ui_group in /etc/conf.d/dc1-backend to the desktop user's group"
+	fi
+	return 0
+}

@@ -7,3 +7,8 @@ boot/mkboot/mkboot
 installer/dl/
 installer/root/
 flash/
+
+# Build payload staged into the pinned pmaports checkout by mistake: it
+# carries data/flutter_assets/AssetManifest.bin, which the packaging
+# verification refuses to see committed under pmaports/.
+pmaports/device/testing/dc1-ui/payload/

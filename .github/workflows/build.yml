@@ -90,12 +90,27 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-          # mkboot has no dependencies and therefore no go.sum; key the
-          # build cache on go.mod instead.
-          cache-dependency-path: boot/mkboot/go.mod
+          # Neither module has dependencies and therefore no go.sum; key the
+          # build cache on the go.mod files instead.
+          cache-dependency-path: |
+            boot/mkboot/go.mod
+            ui/backend/go.mod
 
       - name: mkboot build, vet, test
         working-directory: boot/mkboot
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+
+      # CGO_ENABLED=0 here too, so this job fails on a cgo import rather than
+      # letting the aarch64 job discover it while cross-building the shipped
+      # binary. The tests are hermetic: no nmcli, no /etc, no socket outside
+      # a temp directory.
+      - name: dc1-backend build, vet, test
+        working-directory: ui/backend
+        env:
+          CGO_ENABLED: "0"
         run: |
           go build ./...
           go vet ./...
@@ -164,6 +179,16 @@ jobs:
             e2fsprogs zstd lz4 cpio file kpartx xz-utils binutils
           echo /usr/sbin >> "$GITHUB_PATH"
           echo /sbin >> "$GITHUB_PATH"
+
+      # scripts/build-rootfs.sh cross-builds ui/backend into the dc1-ui
+      # package payload (GOOS=linux GOARCH=arm64 CGO_ENABLED=0), so this job
+      # needs a Go toolchain on PATH before the rootfs build, not just the
+      # lint job. This runner is already aarch64, so the "cross" build is
+      # native; the flags are kept explicit anyway.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: ui/backend/go.mod
 
       - name: Prepare pinned sources
         run: sh scripts/prepare.sh work/postmarketos
