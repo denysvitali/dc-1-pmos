@@ -66,6 +66,27 @@ class RootfsArchiveTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("credential-like path", result.stderr)
 
+    def test_key_markers_rejected_in_text_but_not_elf(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            source = base / "rootfs"
+            destination = base / "out"
+            (source / "usr/bin").mkdir(parents=True)
+            # ssh-keygen embeds the PEM banner as a format constant.
+            (source / "usr/bin/ssh-keygen").write_bytes(
+                b"\x7fELF-----BEGIN OPENSSH PRIVATE KEY-----")
+            destination.mkdir()
+            self.assertEqual(self.run_builder(source, destination).returncode, 0)
+
+            (source / "etc/leaked").mkdir(parents=True)
+            (source / "etc/leaked/key.pem").write_bytes(
+                b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+            second = base / "out2"
+            second.mkdir()
+            result = self.run_builder(source, second)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("private-key marker", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

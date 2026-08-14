@@ -57,6 +57,11 @@ def verify_safe(root: Path, paths: list[Path]) -> None:
         mode = path.lstat().st_mode
         if stat.S_ISREG(mode) and path.stat().st_size <= 16 * 1024 * 1024:
             data = path.read_bytes()
+            # ELF binaries from signed packages legitimately embed PEM
+            # banners as format-string constants (ssh-keygen, libcrypto);
+            # a leaked key is a text file. Names are still checked above.
+            if data[:4] == b"\x7fELF":
+                continue
             if any(marker in data for marker in PRIVATE_MARKERS):
                 raise SystemExit(f"private-key marker in rootfs: {relative}")
 
