@@ -66,7 +66,7 @@ boot_size = 512
 build_default_device_arch = True
 ccache_size = 5G
 device = daylight-jagar
-extra_packages = e2fsprogs-extra
+extra_packages = e2fsprogs-extra,font-dejavu
 is_default_channel = False
 jobs = 4
 kernel = edge
@@ -78,7 +78,7 @@ nonfree_firmware = False
 qemu_size = 1024M
 ssh_keys = False
 timezone = UTC
-ui = console
+ui = sway
 user = dc1
 work = $pmb_work
 EOF
