@@ -135,6 +135,21 @@ jobs:
             pmb-${{ hashFiles('scripts/versions.env') }}-
             pmb-
 
+      # A restored ccache can arrive root-owned (the post-job reclaim below is
+      # skipped when the previous build failed, so the tar archived root-owned
+      # files). The chroot build user then cannot write /home/pmos/.ccache and
+      # ccache dies with "Permission denied" -- which also means nothing is
+      # cached, so the next kernel build is cold (~17 min) instead of warm.
+      # Reclaim ownership up front, before the build, not just for the save.
+      - name: Reclaim restored cache ownership (pre-build)
+        run: |
+          for d in work/postmarketos/pmbootstrap-work/cache_ccache* \
+                   work/postmarketos/pmbootstrap-work/cache_distfiles; do
+            if [ -e "$d" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$d"
+            fi
+          done
+
       # The kernel toolchain (clang-20/LLVM, per the APKBUILD) lives inside
       # the build chroot; the runner only needs the host-side tools.
       # No busybox-static here on purpose: Ubuntu's busybox lacks blkid (it
@@ -177,8 +192,12 @@ jobs:
           fi
 
       # The post-job cache save tars as the runner user; chroot-produced
-      # cache files are root-owned and would silently fail the save.
+      # cache files are root-owned and would silently fail the save. Run even
+      # when the build failed: skipping this on failure is what poisons the
+      # next run's restore with a root-owned cache (see the pre-build reclaim
+      # above), which both breaks ccache and forces a cold rebuild.
       - name: Reclaim cache ownership for the post-job save
+        if: always()
         run: |
           for d in work/postmarketos/pmbootstrap-work/cache_ccache* \
                    work/postmarketos/pmbootstrap-work/cache_distfiles; do
