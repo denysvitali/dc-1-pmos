@@ -51,7 +51,11 @@ for file in pubspec.yaml analysis_options.yaml lib/main.dart; do
 	[ -f "$src_dir/$file" ] || fatal "missing source file: $src_dir/$file"
 done
 
-[ -f /etc/alpine-release ] || fatal "not an Alpine chroot (no /etc/alpine-release)"
+# The point of this guard is "musl, not the glibc runner": a glibc-hosted
+# flutter build emits a runner that cannot load Alpine's musl embedder. The
+# musl loader is the direct observable; /etc/alpine-release is absent in
+# pmbootstrap build chroots (no alpine-release package installed).
+[ -e "/lib/ld-musl-$(uname -m).so.1" ] || fatal "not a musl environment (glibc-hosted flutter build would emit an unloadable bundle)"
 command -v apk >/dev/null || fatal "apk is not available"
 arch=$(uname -m)
 [ "$arch" = aarch64 ] || fatal "must run in an aarch64 chroot, not $arch"

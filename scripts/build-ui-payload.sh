@@ -124,7 +124,10 @@ case "$(uname -m)" in
 	aarch64) chroot_dir="$pmb_work/chroot_native" ;;
 	*) chroot_dir="$pmb_work/chroot_buildroot_aarch64" ;;
 esac
-[ -f "$chroot_dir/etc/alpine-release" ] ||
+# /bin/sh as a symlink is pmbootstrap's own Chroot.exists() invariant
+# (pmb/core/chroot.py); /etc/alpine-release is NOT present, because build
+# chroots never install the alpine-release package (broke CI run 31824170263).
+[ -h "$chroot_dir/bin/sh" ] ||
 	fatal "no initialised aarch64 chroot at $chroot_dir (pmbootstrap layout changed?)"
 
 # build-flutter-ui.sh resolves the app sources relative to itself, so the
