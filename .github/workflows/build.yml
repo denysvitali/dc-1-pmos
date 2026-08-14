@@ -73,14 +73,16 @@ jobs:
 
       # Same compiler contract as installer/build.sh (-static -Os -Wall
       # -Wextra), so an installer C breakage fails here in seconds instead of
-      # after the aarch64 rootfs build.
+      # after the aarch64 rootfs build. init.c talks DRM raw ioctls against
+      # the vendored UAPI headers under installer/src/uapi, so pin to them and
+      # define __user empty exactly as build.sh does.
       - name: Installer C smoke build
         run: |
           for src in installer/src/init.c installer/src/rebootbl.c \
                      installer/src/bootctl.c installer/src/ask.c \
                      installer/src/system/init.c; do
             out=$(mktemp)
-            gcc -static -Os -Wall -Wextra -o "$out" "$src"
+            gcc -static -Os -Wall -Wextra -D__user= -I installer/src/uapi -o "$out" "$src"
             rm -f "$out"
             echo "compiled $src"
           done
