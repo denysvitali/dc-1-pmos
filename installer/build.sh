@@ -120,6 +120,9 @@ wpa_supplicant-2.11-r4
 dbus-libs-1.16.2-r2
 libnl3-3.11.0-r0
 pcsc-lite-libs-2.5.1-r0
+dropbear-2026.94-r0
+utmps-libs-0.1.3.4-r0
+skalibs-libs-2.15.1.0-r0
 "
 
 verify_blob() {
@@ -302,6 +305,10 @@ stage bin sbin/wpa_cli              sbin/wpa_cli
 stage bin usr/bin/curl              usr/bin/curl
 stage bin usr/bin/zstd              usr/bin/zstd
 stage lib etc/ssl/certs/ca-certificates.crt etc/ssl/certs/ca-certificates.crt
+# dropbear: SSH into the recovery environment (scp for pulling logs, a real
+# PTY, port forwarding) -- rc.sh binds it to the USB link only, never the LAN.
+stage bin usr/sbin/dropbear         usr/sbin/dropbear
+stage bin usr/bin/dropbearkey       usr/bin/dropbearkey
 # The musl loader plus every DT_NEEDED of the binaries above. Alpine keeps
 # musl in /lib and the rest in /usr/lib; preserve both (symlinks included).
 mkdir -p "$d/lib" "$d/usr/lib"
@@ -342,6 +349,24 @@ install -m 0644 "$DL/firmware/regulatory.db.p7s" "$d/lib/firmware/regulatory.db.
 mkdir -p "$d/run" "$d/tmp"
 : > "$d/etc/resolv.conf"
 chmod 0644 "$d/etc/resolv.conf"
+
+# Account database + PTY mount point for dropbear. The installer initramfs had
+# neither: SSH cannot resolve a user without passwd/shadow, and cannot allocate
+# an interactive terminal without devpts.
+#
+# root has a BLANK password on purpose, and this is NOT a secret leak: an
+# empty password field is the absence of a credential, so nothing sensitive is
+# published. It is also not a new exposure -- this image already serves an
+# unauthenticated root shell on TCP 4444 over the same cable. Both are bound to
+# the USB link only (see rc.sh); the installer brings Wi-Fi up during a network
+# install, so binding is what keeps a root shell off the user's LAN.
+printf 'root:x:0:0:root:/root:/bin/sh\n' > "$d/etc/passwd"
+chmod 0644 "$d/etc/passwd"
+printf 'root::19000:0:99999:7:::\n' > "$d/etc/shadow"
+chmod 0640 "$d/etc/shadow"
+printf 'root:x:0:\n' > "$d/etc/group"
+chmod 0644 "$d/etc/group"
+mkdir -p "$d/dev/pts" "$d/etc/dropbear"
 
 if [ -n "$MODDIR" ] && [ -d "$MODDIR" ]; then
 	mkdir -p "$d/lib/modules"

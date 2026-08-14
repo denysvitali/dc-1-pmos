@@ -91,13 +91,42 @@ RUN DC1-INSTALL.SH ON HOST"
   fi ) &
 
 # ------------------------------------------------------------- 3. channels
-# Debug shell over TCP. One connection at a time; respawned so a dropped
-# connection does not end it. This is the recovery channel, not the installer
-# protocol channel (that one is 5555).
-setsid /bin/busybox sh -c \
-    'while : ; do /bin/busybox nc -l -p 4444 -e /bin/sh; sleep 1; done' \
-    </dev/null >/dev/null 2>&1 &
-log "debug shell listening on TCP 4444"
+# Debug shell over TCP, and SSH. BOTH are bound to the USB address only, never
+# 0.0.0.0: a network install brings Wi-Fi up on this same image, and an
+# unauthenticated root shell reachable from the user's LAN would be a real
+# exposure. Binding is the control, so wait for usb0 to be addressed first.
+( for _ in $(seq 1 60); do
+      ip addr show usb0 2>/dev/null | grep -q '172\.16\.42\.1' && break
+      sleep 1
+  done
+  if ! ip addr show usb0 2>/dev/null | grep -q '172\.16\.42\.1'; then
+      log "usb0 never got 172.16.42.1 -- NOT starting shells (refusing to bind 0.0.0.0)"
+      exit 0
+  fi
+
+  # One connection at a time; respawned so a dropped connection does not end
+  # it. This is the recovery channel, not the installer protocol channel
+  # (that one is 5555).
+  setsid /bin/busybox sh -c \
+      'while : ; do /bin/busybox nc -l -s 172.16.42.1 -p 4444 -e /bin/sh; sleep 1; done' \
+      </dev/null >/dev/null 2>&1 &
+  log "debug shell listening on 172.16.42.1:4444"
+
+  # SSH: a real PTY, scp for pulling logs off the device, and port forwarding.
+  # -R generates a host key on first use (into the tmpfs initramfs, so it is
+  # per-boot and never shipped); -B permits the blank-password root login this
+  # image deliberately carries (see build.sh).
+  if [ -x /usr/sbin/dropbear ]; then
+      mkdir -p /dev/pts /etc/dropbear
+      mountpoint -q /dev/pts || mount -t devpts devpts /dev/pts 2>/dev/null
+      if /usr/sbin/dropbear -R -B -p 172.16.42.1:22 2>/dev/null; then
+          log "sshd listening on 172.16.42.1:22 (ssh root@172.16.42.1, blank password)"
+      else
+          log "dropbear failed to start"
+      fi
+  else
+      log "dropbear not staged; SSH unavailable"
+  fi ) &
 
 # One-way kmsg stream on the first ACM function: the host just opens
 # /dev/ttyACM0 and receives the entire kernel log with zero typing.
