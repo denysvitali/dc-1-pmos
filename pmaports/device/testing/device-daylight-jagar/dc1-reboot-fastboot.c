@@ -68,6 +68,7 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,6 +100,15 @@ static const char *env_or(const char *name, const char *fallback)
 	return (v && *v) ? v : fallback;
 }
 
+/* snprintf that treats truncation as an error: a silently shortened device
+ * name would name a different partition. */
+static int fmt(char *dst, size_t n, const char *f, const char *a, const char *b)
+{
+	int r = snprintf(dst, n, f, a, b);
+
+	return (r < 0 || (size_t)r >= n) ? -1 : 0;
+}
+
 static int read_file(const char *path, char *buf, size_t n)
 {
 	int fd = open(path, O_RDONLY);
@@ -121,7 +131,7 @@ static int resolve_misc(char *out, size_t n)
 {
 	const char *sysblock = env_or("DC1_SYSBLOCK", "/sys/class/block");
 	const char *devdir = env_or("DC1_DEVDIR", "/dev");
-	char found[64] = "", path[512], buf[4096];
+	char found[NAME_MAX + 1] = "", path[PATH_MAX], buf[4096];
 	struct dirent *de;
 	int count = 0;
 	DIR *d;
@@ -134,13 +144,17 @@ static int resolve_misc(char *out, size_t n)
 	while ((de = readdir(d))) {
 		if (de->d_name[0] == '.')
 			continue;
-		snprintf(path, sizeof(path), "%s/%s/uevent", sysblock, de->d_name);
+		if (fmt(path, sizeof(path), "%s/%s/uevent", sysblock, de->d_name) < 0)
+			continue;
 		if (read_file(path, buf, sizeof(buf)) < 0)
 			continue;
 		if (!strstr(buf, "PARTNAME=misc\n"))
 			continue;
 		count++;
-		snprintf(found, sizeof(found), "%s", de->d_name);
+		/* A name we cannot hold is a name we must not act on: bump the
+		 * count again so the "exactly 1" check below refuses. */
+		if (fmt(found, sizeof(found), "%s%s", de->d_name, "") < 0)
+			count++;
 	}
 	closedir(d);
 
@@ -150,8 +164,8 @@ static int resolve_misc(char *out, size_t n)
 		return -1;
 	}
 
-	snprintf(path, sizeof(path), "%s/%s/size", sysblock, found);
-	if (read_file(path, buf, sizeof(buf)) < 0) {
+	if (fmt(path, sizeof(path), "%s/%s/size", sysblock, found) < 0 ||
+	    read_file(path, buf, sizeof(buf)) < 0) {
 		fprintf(stderr, "dc1-reboot-fastboot: cannot read %s\n", path);
 		return -1;
 	}
@@ -162,8 +176,7 @@ static int resolve_misc(char *out, size_t n)
 		return -1;
 	}
 
-	snprintf(out, n, "%s/%s", devdir, found);
-	return 0;
+	return fmt(out, n, "%s/%s", devdir, found);
 }
 
 static void print_command(const char *what, const char *cmd)
@@ -288,7 +301,7 @@ int main(int argc, char **argv)
 {
 	const char *misc_arg = NULL;
 	int dry_run = 0, no_reboot = 0, force = 0, i;
-	char misc[256];
+	char misc[PATH_MAX];
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-n") || !strcmp(argv[i], "--dry-run"))
@@ -317,10 +330,14 @@ int main(int argc, char **argv)
 	 * inspect is not fatal -- it is normally clear, and the nibble write is
 	 * worth doing either way -- but it is the first thing to suspect if the
 	 * device comes back to Linux instead of fastboot. */
-	if (misc_arg)
-		snprintf(misc, sizeof(misc), "%s", misc_arg);
-	else if (resolve_misc(misc, sizeof(misc)) < 0)
+	if (misc_arg) {
+		if (fmt(misc, sizeof(misc), "%s%s", misc_arg, "") < 0) {
+			fprintf(stderr, "dc1-reboot-fastboot: --misc path too long\n");
+			return 1;
+		}
+	} else if (resolve_misc(misc, sizeof(misc)) < 0) {
 		misc[0] = '\0';
+	}
 
 	if (misc[0]) {
 		printf("dc1-reboot-fastboot: misc = %s\n", misc);

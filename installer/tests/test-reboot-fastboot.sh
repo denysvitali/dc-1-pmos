@@ -19,8 +19,12 @@ bad() { failn=$((failn + 1)); echo "  FAIL: $*"; }
 
 CC=${CC:-cc}
 BIN="$TMP/dc1-reboot-fastboot"
-"$CC" -Os -Wall -Wextra -Werror -o "$BIN" "$SRC" || { echo "  FAIL: compile"; exit 1; }
-ok "compiles clean with -Wall -Wextra -Werror"
+# -D_FORTIFY_SOURCE=2 on purpose: Ubuntu's gcc turns it on by default and its
+# snprintf checks are stricter than the plain build, so CI would otherwise be
+# the first place a truncation warning shows up.
+"$CC" -Os -Wall -Wextra -Werror -D_FORTIFY_SOURCE=2 -o "$BIN" "$SRC" \
+	|| { echo "  FAIL: compile"; exit 1; }
+ok "compiles clean with -Wall -Wextra -Werror -D_FORTIFY_SOURCE=2"
 
 # A fake /sys/class/block. mkpart <name> <partname> <sectors>
 mkpart() {
@@ -96,8 +100,9 @@ echo "-- arming"
 grep -q "nibble 3 = fastboot" "$TMP/out" && ok "reports the armed value" \
 	|| bad "no confirmation line: $(cat "$TMP/out")"
 
-# The high bits of the register are not ours to touch.
-printf 'a5a5a500' | xxd -r -p | dd of="$TMP/mem" bs=1 seek=36 conv=notrunc 2>/dev/null
+# The high bits of the register are not ours to touch. (Octal escapes rather
+# than xxd: one less thing that has to exist on the runner.)
+printf '\245\245\245\000' | dd of="$TMP/mem" bs=1 seek=36 conv=notrunc 2>/dev/null
 "$BIN" --no-reboot > /dev/null 2>&1 || bad "arming over a dirty register failed"
 [ "$(od -An -tx1 -j 36 -N 4 "$TMP/mem" | tr -d ' \n')" = "a3a5a500" ] \
 	&& ok "preserves the other bits of WDT_NONRST_REG2" \
@@ -126,7 +131,6 @@ arm_bcb bootonce-bootloader
 	&& ok "leaves a command LK ignores alone" || bad "cleared a foreign BCB"
 
 # Nothing in this tool may ever write a BCB command.
-grep -q 'boot-fastboot"' "$SRC" && grep -q 'pwrite' "$SRC" || :
 if grep -nE '(strncpy|strcpy|memcpy|snprintf).*boot-(fastboot|recovery)' "$SRC"; then
 	bad "source copies a BCB command string somewhere"
 else
