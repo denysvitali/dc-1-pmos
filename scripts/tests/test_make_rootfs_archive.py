@@ -79,6 +79,10 @@ class RootfsArchiveTest(unittest.TestCase):
             (source / "usr/share/dbus-1/system.d").mkdir(parents=True)
             (source / "usr/share/dbus-1/system.d/wpa_supplicant.conf").write_text(
                 "<busconfig/>\n")
+            # file(1)'s magic database: binary, embeds the PEM banners.
+            (source / "usr/share/misc").mkdir(parents=True)
+            (source / "usr/share/misc/magic.mgc").write_bytes(
+                b"\x1c\x04\x1e\xf1\x00\x00-----BEGIN RSA PRIVATE KEY-----")
             destination.mkdir()
             self.assertEqual(self.run_builder(source, destination).returncode, 0)
 

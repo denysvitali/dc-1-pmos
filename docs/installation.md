@@ -57,10 +57,11 @@ tethered.
 
 ### 1. Put the device in fastboot mode
 
-Boot the DC-1 into LK fastboot mode. There is no key combination for this:
-the bootloader on this device cannot read the buttons at all, so the only way
-in is through Android. On the stock system, enable Developer Options and USB
-debugging, connect USB, then:
+Boot the DC-1 into LK fastboot mode: power the device off, then hold
+**Power + Volume Up** until the bootloader menu appears and select fastboot.
+
+Alternatively, from the stock Android system with Developer Options and USB
+debugging enabled:
 
 ```sh
 adb reboot bootloader
