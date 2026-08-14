@@ -236,28 +236,43 @@ static void start_debug_channels(void)
 
 	p = fork();
 	if (p == 0) {
-		int out = -1, k;
-		for (int i = 0; i < 10 && out < 0; i++) {
-			out = open("/dev/ttyGS0", O_WRONLY | O_NOCTTY);
-			if (out < 0) sleep(1);
-		}
-		if (out < 0) _exit(0);
-		k = open("/dev/kmsg", O_RDONLY);
-		if (k < 0) _exit(0);
-		/* Blocking read streams one log entry at a time, following the
-		 * kernel ring from boot. */
+		/* Reopen on error, forever. The gadget can be torn down and rebound
+		 * underneath us (adding a function re-enumerates the device), which
+		 * invalidates the old fd; a one-shot streamer would go silent for
+		 * the rest of the boot. */
 		char buf[4096];
 		for (;;) {
-			ssize_t n = read(k, buf, sizeof buf);
-			if (n > 0) (void)write(out, buf, n);
+			int out = open("/dev/ttyGS0", O_WRONLY | O_NOCTTY);
+			int k = out >= 0 ? open("/dev/kmsg", O_RDONLY) : -1;
+			if (out < 0 || k < 0) {
+				if (out >= 0) close(out);
+				sleep(1);
+				continue;
+			}
+			for (;;) {
+				ssize_t n = read(k, buf, sizeof buf);
+				if (n <= 0) break;
+				if (write(out, buf, n) < 0)
+					break;      /* gadget went away; reopen */
+			}
+			close(k);
+			close(out);
+			sleep(1);
 		}
 	}
 
 	p = fork();
 	if (p == 0) {
-		for (int i = 0; i < 10; i++) {
+		/* RESPAWN, like the installer's rc.sh does. This shell is the only
+		 * interactive way into a failed boot; losing it permanently (as a
+		 * one-shot exec does the moment the gadget re-enumerates) strands
+		 * the device with no way to drive it. */
+		for (;;) {
 			int fd = open("/dev/ttyGS1", O_RDWR | O_NOCTTY);
-			if (fd >= 0) {
+			pid_t c;
+			if (fd < 0) { sleep(1); continue; }
+			c = fork();
+			if (c == 0) {
 				setsid();
 				dup2(fd, 0); dup2(fd, 1); dup2(fd, 2);
 				if (fd > 2) close(fd);
@@ -265,9 +280,12 @@ static void start_debug_channels(void)
 				execv("/bin/busybox", av);
 				_exit(127);
 			}
+			close(fd);
+			if (c > 0)
+				while (waitpid(c, NULL, 0) < 0 && errno == EINTR)
+					;
 			sleep(1);
 		}
-		_exit(0);
 	}
 }
 
