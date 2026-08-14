@@ -1,0 +1,32 @@
+#!/sbin/openrc-run
+# dc1-rtcsync -- keep the hardware RTC tracking the synced system clock.
+#
+# chronyd runs as the unprivileged chrony user, so its rtcsync directive is a
+# silent no-op (writing /dev/rtc needs root). hwclock --systohc runs only at a
+# clean OpenRC shutdown, which `reboot -f` and a hard power-cut both bypass.
+# The s35390a RTC on this board comes up at the factory 2000-01-01 after a
+# power loss, so without a periodic write-back every such reboot starts with a
+# 2000 clock and TLS verification fails until chronyd re-syncs over the
+# network. Write the RTC hourly once the clock is being synced.
+#
+# The first write is delayed: chronyd may not have stepped the clock yet when
+# this service starts, and writing a still-factory clock would be harmless but
+# pointless. An hourly cadence keeps the RTC within an hour of real time, which
+# is far inside certificate validity and drift tolerance.
+
+description="Keep the hardware RTC in sync with the system clock"
+
+depend() {
+	need chronyd localmount
+}
+
+start() {
+	ebegin "Starting periodic RTC sync"
+	(
+		while :; do
+			sleep 3600
+			hwclock --systohc 2>/dev/null
+		done
+	) &
+	eend 0
+}

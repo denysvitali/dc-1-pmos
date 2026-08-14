@@ -4,6 +4,7 @@
 rc-update add dc1-display-gate boot 2>/dev/null || true
 rc-update add dc1-gpu boot 2>/dev/null || true
 rc-update add dc1-frontlight default 2>/dev/null || true
+rc-update add dc1-rtcsync default 2>/dev/null || true
 rc-update add dc1-usb-gadget boot 2>/dev/null || true
 rc-update add dc1-debug-shell default 2>/dev/null || true
 # sshd: register it in the default runlevel directly. openssh-server is a hard
