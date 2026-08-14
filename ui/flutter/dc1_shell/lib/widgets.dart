@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'keyboard.dart';
 import 'theme.dart';
 
 /// One onboarding step: title, optional subtitle, a body that owns the
@@ -23,6 +24,7 @@ class StepScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final String? subtitleText = subtitle;
     final Widget? footerWidget = footer;
+    final Dc1KeyboardController? keyboard = KeyboardScope.maybeOf(context);
     return Scaffold(
       backgroundColor: kBackground,
       body: SafeArea(
@@ -48,6 +50,15 @@ class StepScaffold extends StatelessWidget {
           ),
         ),
       ),
+      // The touch keyboard is docked here rather than inside each screen so
+      // every step that has a text field gets it from one place, and the
+      // steps that do not (confirm, progress) never see it. It sits outside
+      // the padded Column so it can span the full panel width, and pushes
+      // nothing: the body above is already Expanded, so the layout simply
+      // gets shorter while a field is focused.
+      bottomNavigationBar: keyboard != null && keyboard.attached
+          ? Dc1Keyboard(controller: keyboard)
+          : null,
     );
   }
 }
@@ -160,7 +171,7 @@ class OptionTile extends StatelessWidget {
   }
 }
 
-class Dc1TextField extends StatelessWidget {
+class Dc1TextField extends StatefulWidget {
   const Dc1TextField({
     required this.controller,
     this.hintText,
@@ -183,26 +194,89 @@ class Dc1TextField extends StatelessWidget {
   final ValueChanged<String>? onSubmitted;
 
   @override
+  State<Dc1TextField> createState() => _Dc1TextFieldState();
+}
+
+class _Dc1TextFieldState extends State<Dc1TextField> {
+  /// Owned here so the field can tell the touch keyboard when it is the one
+  /// being typed into. Focus is the only signal available: the shell has no
+  /// concept of a "current field" otherwise.
+  final FocusNode _focusNode = FocusNode();
+
+  /// Cached rather than looked up on demand: an inherited-widget lookup is
+  /// illegal from dispose(), and that is exactly where the last detach has to
+  /// happen.
+  Dc1KeyboardController? _keyboard;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_syncKeyboard);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _keyboard = KeyboardScope.maybeOf(context);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_syncKeyboard);
+    // Detach before the node dies, or the keyboard keeps typing into a
+    // controller that belongs to a screen that has already been popped.
+    _keyboard?.detach(widget.controller);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _syncKeyboard() {
+    final Dc1KeyboardController? keyboard = _keyboard;
+    if (keyboard == null) {
+      return;
+    }
+    // Deferred by one frame on purpose. Attaching notifies the KeyboardScope,
+    // which rebuilds StepScaffold -- and with `autofocus: true` this listener
+    // fires while that same frame is still building, which would otherwise
+    // throw "markNeedsBuild() called during build".
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      if (_focusNode.hasFocus) {
+        keyboard.attach(
+          widget.controller,
+          onChanged: widget.onChanged,
+          onSubmitted: () => widget.onSubmitted?.call(widget.controller.text),
+        );
+      } else {
+        keyboard.detach(widget.controller);
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: controller,
-      obscureText: obscureText,
-      autofocus: autofocus,
+      controller: widget.controller,
+      focusNode: _focusNode,
+      obscureText: widget.obscureText,
+      autofocus: widget.autofocus,
       autocorrect: false,
       enableSuggestions: false,
       style: kInputStyle,
       cursorColor: kAccent,
-      onChanged: onChanged,
-      onSubmitted: onSubmitted,
+      onChanged: widget.onChanged,
+      onSubmitted: widget.onSubmitted,
       decoration: InputDecoration(
-        hintText: hintText,
+        hintText: widget.hintText,
         hintStyle: kHintStyle,
-        errorText: errorText,
+        errorText: widget.errorText,
         errorStyle: kErrorStyle,
         errorMaxLines: 3,
         filled: true,
         fillColor: kSurface,
-        suffixIcon: suffix,
+        suffixIcon: widget.suffix,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 20,
           vertical: 22,

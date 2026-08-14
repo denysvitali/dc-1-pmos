@@ -33,6 +33,7 @@ for file in \
 	lib/draft.dart \
 	lib/theme.dart \
 	lib/widgets.dart \
+	lib/keyboard.dart \
 	lib/screens/wifi_screen.dart \
 	lib/screens/psk_screen.dart \
 	lib/screens/username_screen.dart \
@@ -154,5 +155,32 @@ grep -qF 'data/icudtl.dat' "$builder" ||
 grep -qF 'data/flutter_assets' "$builder" ||
 	fail "build script does not assert data/flutter_assets/"
 grep -qF 'set -eu' "$builder" || fail "build script is not fail-closed"
+
+# 9. The touch keyboard. The DC-1 has no keys beyond power and volume, so a
+#    text field with nothing to type into it is a dead end, not a cosmetic
+#    gap: onboarding asks for a username and a Wi-Fi passphrase before it can
+#    do anything. These assert the wiring end to end, because each half is
+#    silently useless without the other.
+kbd="$app/lib/keyboard.dart"
+grep -q 'class Dc1Keyboard' "$kbd" || fail "no on-screen keyboard widget"
+grep -q 'class Dc1KeyboardController' "$kbd" ||
+	fail "no keyboard controller to drive the focused field"
+grep -qF 'ExcludeFocus' "$kbd" ||
+	fail "keyboard keys can take focus, which would detach the field being typed into"
+# The keyboard mutates the controller directly, and Flutter does not fire
+# TextField.onChanged for that -- so the field's onChanged must be threaded
+# through, or validation errors never clear while the user retypes.
+grep -qF 'onChanged' "$kbd" ||
+	fail "keyboard does not forward onChanged (stale validation errors)"
+grep -qF 'Dc1Keyboard(' "$app/lib/widgets.dart" ||
+	fail "StepScaffold does not dock the keyboard"
+grep -qF 'keyboard.attach' "$app/lib/widgets.dart" ||
+	fail "Dc1TextField does not attach to the keyboard on focus"
+grep -qF 'KeyboardScope' "$app/lib/onboarding.dart" ||
+	fail "the onboarding flow does not provide a KeyboardScope"
+# No third-party package sneaking in through the keyboard either.
+if grep "^import 'package:" "$kbd" | grep -qv "^import 'package:flutter/"; then
+	fail "keyboard.dart imports a package outside the Flutter SDK"
+fi
 
 echo "flutter-ui tests passed"

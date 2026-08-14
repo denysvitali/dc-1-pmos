@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'backend.dart';
 import 'draft.dart';
+import 'keyboard.dart';
 import 'screens/confirm_screen.dart';
 import 'screens/hostname_screen.dart';
 import 'screens/password_screen.dart';
@@ -24,18 +25,36 @@ enum OnboardStep {
   progress,
 }
 
-class OnboardingApp extends StatelessWidget {
+class OnboardingApp extends StatefulWidget {
   const OnboardingApp({required this.client, super.key});
 
   final BackendClient client;
 
   @override
+  State<OnboardingApp> createState() => _OnboardingAppState();
+}
+
+class _OnboardingAppState extends State<OnboardingApp> {
+  /// One keyboard for the whole flow: it outlives the individual screens, so
+  /// moving from username to password does not tear it down and rebuild it.
+  final Dc1KeyboardController _keyboard = Dc1KeyboardController();
+
+  @override
+  void dispose() {
+    _keyboard.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'DC-1 setup',
-      debugShowCheckedModeBanner: false,
-      theme: dc1Theme(),
-      home: OnboardingFlow(client: client),
+    return KeyboardScope(
+      notifier: _keyboard,
+      child: MaterialApp(
+        title: 'DC-1 setup',
+        debugShowCheckedModeBanner: false,
+        theme: dc1Theme(),
+        home: OnboardingFlow(client: widget.client),
+      ),
     );
   }
 }
