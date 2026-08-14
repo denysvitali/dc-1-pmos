@@ -1,12 +1,11 @@
 #!/sbin/openrc-run
-# Raise the DC-1 white frontlight after the compositor has had a chance to
-# composite its first frame.
+# Raise the DC-1 white frontlight once the compositor is up.
 #
 # The rt4539 frontlight boots at 0, so a correctly scanned-out frame is
-# invisible and reads as a dead panel. It must come up only after a visible
-# frame, not on a stale/dark buffer. A fixed delay is a first-light
-# approximation; the rigorous version (an advancing OVL0 IRQ gate) belongs to
-# the compositor and is a later milestone.
+# invisible and reads as a dead panel. It must come up only after a frame is
+# composited, not on a stale/dark buffer. This first-light version waits for
+# Sway to be running plus a short grace for its first frame; the rigorous
+# visible-frame gate (an advancing OVL0 IRQ) is a later milestone.
 #
 # The amber channel is left alone on purpose.
 
@@ -19,10 +18,13 @@ depend() {
 
 start() {
 	ebegin "Raising the DC-1 white frontlight"
-	# Background the wait: openrc must not block the boot on this. Give Sway
-	# time to become DRM master and composite its first frame.
+	# Background the wait: openrc must not block the boot on this.
 	(
-		sleep 5
+		n=0
+		while ! pidof sway >/dev/null 2>&1; do
+			n=$((n + 1)); [ "$n" -ge 30 ] && break; sleep 1
+		done
+		sleep 3
 		echo 10 > /sys/class/backlight/lcd-backlight/brightness 2>/dev/null
 	) &
 	eend 0

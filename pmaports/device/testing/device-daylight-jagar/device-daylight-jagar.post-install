@@ -1,0 +1,6 @@
+#!/bin/sh
+# Register the DC-1 boot services. Best-effort and idempotent: each service
+# fails safely (panel stays dark / frontlight stays at 0) if absent.
+rc-update add dc1-display-gate boot 2>/dev/null || true
+rc-update add dc1-frontlight default 2>/dev/null || true
+exit 0

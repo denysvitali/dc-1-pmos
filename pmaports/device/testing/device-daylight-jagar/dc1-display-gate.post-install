@@ -1,5 +1,0 @@
-#!/bin/sh
-# Register the display gate to run at boot, before tinydm/sway. Best-effort:
-# the service is idempotent and fails safely (panel stays dark) if absent.
-rc-update add dc1-display-gate boot 2>/dev/null || true
-exit 0

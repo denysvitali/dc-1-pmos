@@ -13,25 +13,15 @@ options="!check !archcheck"
 depends="
 	linux-firmware-mediatek
 	linux-postmarketos-mediatek-mt6789
-	mesa-dri-gallium
 	postmarketos-base
 	wireless-regdb
 "
 makedepends="devicepkg-dev"
-install="
-	$pkgname.post-install
-	$pkgname.post-upgrade
-	$pkgname-frontlight.post-install
-	$pkgname-frontlight.post-upgrade
-"
+install="$pkgname.post-install $pkgname.post-upgrade"
 source="
 	deviceinfo
 	dc1-display-gate.initd
-	dc1-display-gate.post-install
-	dc1-display-gate.post-upgrade
 	dc1-frontlight.initd
-	dc1-frontlight.post-install
-	dc1-frontlight.post-upgrade
 	dc1-sway.conf
 "
 
@@ -58,10 +48,6 @@ package() {
 sha512sums="
 269542398027d0947ced76f2c039328e657437c8d1e31d01bc6cc9e2b176766b59d33ea58e7ce7f9a548af8342cce05c733585dfd9d1bcb4aa11fab21e48eea1  deviceinfo
 66d1dd8ae1f222e36e43d4e11e8905b8a894b35b39ad0d36157a13be3335bf6422e9ee181526afafe89d28f096874c4158feb6e7131e917b2a47cd969eb095ba  dc1-display-gate.initd
-410f171d60ae02a958563475e9dd9cf4d51c9fd234803139ac34593cfd9f098390ee00741f7cd06b7cb96952e3271d09df1d83f8fe1b5099fb6ad682be7ed15a  dc1-display-gate.post-install
-bfe08a141e1511708243c11d8f870ed315ffcc439e97e92ac545dd2d140ed058f7f414a22a9ac4660e46b4db1dbd7b00c502c8d1ae16494fafa8150eae8aa457  dc1-display-gate.post-upgrade
 184463716b43648b107cded45a5931481e31ae3a300664850a51522c1262d7f2c89b2f6f067c242c69f75cd8b2b6795a5bba962be8281a0eb9acde6d3b86a8c5  dc1-frontlight.initd
-127e2989f9a7e942550a4531caabb2cd89241e01158ef4bbb7cbdc5e41d23f9e79e6f3be8c1dea0a5252541cd06ebf463d8ccfe4616f2b4c34c56c324386117b  dc1-frontlight.post-install
-0c475885b7efa9273390b5ee90e6eaf78e851d682030caaf2cf0d225f87c7f300d9c9a4a765f4e8d79caf4b17ecfa01f68146373842c62195e19260258b129ba  dc1-frontlight.post-upgrade
 c95b166df7c18ec011bff6a7400ab42b6258f00fd21a2f7ce5a2763e455216cb8b5c0e395048024d2a619c39c0d6e4ded0ae1c1a063cbd99ec47c76b8fd142bf  dc1-sway.conf
 "
