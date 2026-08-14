@@ -119,7 +119,17 @@ rootfs_dir="$pmb_work/chroot_rootfs_daylight-jagar"
 	echo "pmbootstrap rootfs not found at pinned layout: $rootfs_dir" >&2
 	exit 1
 }
-sh "$script_dir/export-artifacts.sh" \
-	"$rootfs_dir" "$pmb_work/packages" "$work_dir/SOURCES" "$output_dir"
+# The chroot pmbootstrap installs into contains root-owned mode-0600 files
+# (e.g. /etc/.pwd.lock), so a rootless build still needs privilege to read
+# the tree back out. Elevate only the export stage and return ownership of
+# the outputs to the invoking user.
+if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null; then
+	sudo sh "$script_dir/export-artifacts.sh" \
+		"$rootfs_dir" "$pmb_work/packages" "$work_dir/SOURCES" "$output_dir"
+	sudo chown -R "$(id -u):$(id -g)" "$output_dir"
+else
+	sh "$script_dir/export-artifacts.sh" \
+		"$rootfs_dir" "$pmb_work/packages" "$work_dir/SOURCES" "$output_dir"
+fi
 
 echo "wrote non-deployable rootfs, packages, and manifests to $output_dir"
