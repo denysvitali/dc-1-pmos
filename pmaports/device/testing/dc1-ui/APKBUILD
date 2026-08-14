@@ -2,22 +2,23 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=dc1-ui
 pkgdesc="Daylight DC-1 on-device shell: Flutter UI and its control plane"
 pkgver=1
-pkgrel=0
+pkgrel=1
 url="https://github.com/denysvitali/dc-1-pmos"
 license="MIT"
 arch="aarch64"
 # !strip: the Flutter runner, its AOT snapshot and the static Go binary are
 # prebuilt payload, not something this recipe compiled -- they are shipped
 # exactly as produced and verified.
-options="!check !strip"
+# !tracedeps: abuild resolves every DT_NEEDED soname to a file present in the
+# build chroot (real_so_path searches RPATH + /usr/lib + /lib), but nothing
+# the prebuilt runner links against -- libflutter_linux_gtk.so, the GTK
+# stack -- is installed there, so tracing dies with "path not found" (CI run
+# 31824800838). Runtime linkage is carried by the manual pinned depends on
+# flutter-gtk below, whose own dependency tree provides the GTK/EGL stack.
+options="!check !strip !tracedeps"
 # libapp.so is the shell's private Dart AOT snapshot, reachable only through
-# the runner's own RUNPATH ($ORIGIN/lib). Without the mask abuild scans that
-# RUNPATH and publishes so:libapp.so into Alpine's global soname namespace,
-# where a name that generic is a collision waiting to happen. Only that one
-# is masked: libflutter_linux_gtk.so is deliberately left visible so the
-# runner's DT_NEEDED becomes an so: dependency on the flutter-gtk package,
-# alongside the version pin below.
-somask="libapp.so"
+# the runner's own RUNPATH ($ORIGIN/lib); with !tracedeps nothing is scanned
+# or published, so no so:libapp.so escapes into the global soname namespace.
 # flutter-gtk is pinned exactly: it is the GTK3 embedder the bundle is built
 # against and dlopens by soname, and a bare `flutter-gtk` silently follows
 # Alpine edge onto an engine ABI the committed bundle was not compiled for.

@@ -161,8 +161,12 @@ grep -qF '"$pkgdir"/usr/lib/dc1-ui/' "$aport/APKBUILD" ||
 	fail "the bundle is not installed to /usr/lib/dc1-ui/"
 grep -qF '/etc/sway/config.d/10-dc1-ui.conf' "$aport/APKBUILD" ||
 	fail "the sway drop-in is not installed (or lost its 10- ordering)"
-grep -qE '^somask="[^"]*libapp\.so' "$aport/APKBUILD" ||
-	fail "libapp.so would be published into Alpine's global soname namespace"
+# !tracedeps keeps abuild from scanning the prebuilt payload at all: nothing
+# is published (no so:libapp.so in the global namespace) and no DT_NEEDED is
+# resolved against a build chroot that lacks the GTK stack (CI run
+# 31824800838). A somask="libapp.so" alone covers only the publish half.
+grep -qE '^options="[^"]*!tracedeps' "$aport/APKBUILD" ||
+	fail "prebuilt payload needs options=!tracedeps (soname publish + trace both wrong)"
 # The bundle's own copy of the embedder is dropped in favour of the pinned
 # flutter-gtk apk; keeping both is how two files that must not diverge do.
 grep -qF 'rm -f "$pkgdir"/usr/lib/dc1-ui/lib/libflutter_linux_gtk.so' \
