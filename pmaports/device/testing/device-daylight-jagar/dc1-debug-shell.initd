@@ -1,0 +1,44 @@
+#!/sbin/openrc-run
+# dc1-debug-shell -- recovery channels for the installed system, mirroring the
+# installer initramfs (installer/src/rc.sh): a one-way kmsg stream on ttyGS0,
+# an interactive root shell on ttyGS1, and a persistent root shell on TCP 4444
+# over usb0. These are the only way to read the boot log when the UI does not
+# come up; the installed system otherwise ships no debug channel.
+#
+# The TCP shell binds to 172.16.42.1 (usb0) only, never 0.0.0.0, so a later
+# Wi-Fi connection cannot expose an unauthenticated root shell on the LAN.
+description="DC-1 debug shells (ttyGS0 kmsg, ttyGS1, TCP 4444 on usb0)"
+
+depend() {
+	need dc1-usb-gadget
+}
+
+start() {
+	ebegin "Starting DC-1 debug shells"
+
+	# One-way kernel log stream on the first ACM function.
+	( for _ in $(seq 1 10); do [ -c /dev/ttyGS0 ] && break; sleep 1; done
+	  if [ -c /dev/ttyGS0 ]; then
+	    { echo; echo "=== DC-1 pmOS: /dev/kmsg boot log ==="
+	      cat /proc/version
+	      echo "=== kmsg (replays from boot, then follows) ==="
+	      cat /dev/kmsg; } >/dev/ttyGS0 2>&1
+	  fi ) &
+
+	# Interactive root shell on the second ACM function.
+	( for _ in $(seq 1 10); do [ -c /dev/ttyGS1 ] && break; sleep 1; done
+	  if [ -c /dev/ttyGS1 ]; then
+	    while :; do
+	      setsid sh -c 'exec sh </dev/ttyGS1 >/dev/ttyGS1 2>&1'
+	      sleep 1
+	    done
+	  fi ) &
+
+	# Persistent root shell on TCP 4444, bound to the USB address only.
+	( while :; do
+	    nc -lk -s 172.16.42.1 -p 4444 -e /bin/sh 2>/dev/null
+	    sleep 1
+	  done ) &
+
+	eend 0
+}

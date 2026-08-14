@@ -1,0 +1,73 @@
+#!/sbin/openrc-run
+# dc1-usb-gadget -- bring up the DC-1 USB gadget (CDC-ECM ethernet + 2x CDC-ACM)
+# so a host over USB can reach the installed system: SSH and the TCP 4444 shell
+# over usb0, plus the kmsg stream (ttyGS0) and an interactive shell (ttyGS1).
+#
+# The gadget stack is built into the kernel (=y), so this is pure configfs --
+# no modules to load. The VID/PID and MACs match the installer initramfs
+# (installer/src/init.c gadget()), so the host's cdc_ether setup (host MAC
+# 02:1a:11:00:00:01, host 172.16.42.2/24) works unchanged.
+description="Bring up the DC-1 USB gadget (ECM ethernet + 2x ACM)"
+
+depend() {
+	need localmount
+	after sysfs
+}
+
+G=/sys/kernel/config/usb_gadget/g1
+DEV_IP=172.16.42.1
+
+write() {
+	printf '%s\n' "$2" >"$1" 2>/dev/null
+}
+
+start() {
+	ebegin "Bringing up the DC-1 USB gadget"
+	[ -d /sys/kernel/config ] || { eend 1 "configfs not mounted"; return 1; }
+
+	rm -rf "$G" 2>/dev/null
+	mkdir -p "$G" || { eend 1 "configfs usb_gadget unavailable"; return 1; }
+	write "$G/idVendor" 0x18d1
+	write "$G/idProduct" 0x4ee7
+	mkdir -p "$G/strings/0x409"
+	write "$G/strings/0x409/manufacturer" daylight
+	write "$G/strings/0x409/product" dc1-pmos
+	write "$G/strings/0x409/serialnumber" dc1-pmos
+
+	mkdir -p "$G/configs/c.1/strings/0x409"
+	write "$G/configs/c.1/strings/0x409/configuration" "acm+ecm"
+	mkdir -p "$G/functions/acm.0" "$G/functions/acm.1" "$G/functions/ecm.0"
+	write "$G/functions/ecm.0/dev_addr" 02:1a:11:00:00:02
+	write "$G/functions/ecm.0/host_addr" 02:1a:11:00:00:01
+	ln -sf "$G/functions/acm.0" "$G/configs/c.1/acm.0"
+	ln -sf "$G/functions/acm.1" "$G/configs/c.1/acm.1"
+	ln -sf "$G/functions/ecm.0" "$G/configs/c.1/ecm.0"
+
+	# Bind to the UDC the MUSB driver registered.
+	UDC=$(ls /sys/class/udc 2>/dev/null | head -1)
+	[ -n "$UDC" ] || { eend 1 "no UDC (MUSB not registered?)"; return 1; }
+	echo "$UDC" >"$G/UDC" 2>/dev/null || { eend 1 "UDC bind failed"; return 1; }
+
+	eend 0
+
+	# usb0 appears shortly after the UDC bind; address it statically so the
+	# host always finds the same address (matches the installer). NetworkManager
+	# is told to leave usb0 alone (see dc1-networkmanager-usb0.conf).
+	(
+		n=0
+		while [ ! -e /sys/class/net/usb0 ] && [ "$n" -lt 30 ]; do
+			n=$((n + 1)); sleep 0.5
+		done
+		[ -e /sys/class/net/usb0 ] || exit 0
+		ip link set usb0 up 2>/dev/null
+		ip addr show usb0 2>/dev/null | grep -q 'inet ' || \
+			ip addr add "$DEV_IP/24" dev usb0 2>/dev/null
+	) &
+}
+
+stop() {
+	ebegin "Stopping the DC-1 USB gadget"
+	[ -e "$G/UDC" ] && echo "" >"$G/UDC" 2>/dev/null
+	rm -rf "$G" 2>/dev/null
+	eend 0
+}

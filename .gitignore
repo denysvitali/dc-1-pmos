@@ -6,3 +6,4 @@ __pycache__/
 boot/mkboot/mkboot
 installer/dl/
 installer/root/
+flash/
