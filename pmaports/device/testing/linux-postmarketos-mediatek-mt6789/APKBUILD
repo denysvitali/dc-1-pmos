@@ -85,10 +85,9 @@ build() {
 	# pinned rather than taken from the wall clock.
 	export CCACHE_SLOPPINESS="time_macros,include_file_mtime,include_file_ctime,file_stat_matches,pch_defines,system_headers"
 
-	# Build only the one DTB the boot image consumes (scripts/export-artifacts.sh
-	# copies exactly arch/arm64/boot/dts/mediatek/mt8781-daylight-jagar.dtb).
-	# `dtbs` compiles all 113 MediaTek boards; unrelated mt7988a/mt8395 overlay
-	# builds flakily fail under clang-20, so keep the target to the device DTB.
+	# Kernel + modules with the boot-proven clang-20/LLVM boundary. This is
+	# the memory-heavy vmlinux link (Image.gz); it is built first, separate
+	# from the DTB pass below, so the two never contend for the runner.
 	make ARCH="$_carch" LLVM=/usr/lib/llvm20/bin/ \
 		LD=/usr/bin/ld.lld \
 		HOSTLD=/usr/bin/ld.lld \
@@ -98,7 +97,23 @@ build() {
 		KBUILD_BUILD_USER="postmarketos" \
 		KBUILD_BUILD_HOST="builder" \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor" \
-		Image.gz arch/arm64/boot/dts/mediatek/mt8781-daylight-jagar.dtb modules
+		Image.gz modules
+
+	# Device trees, in a separate pass with a gcc HOSTCC. dtbs builds the
+	# bundled scripts/dtc/{dtc,fdtoverlay} host tools -- the "OVL" step that
+	# applies the mt7986a/mt7988a/mt8395 overlay composites -- and compiles no
+	# kernel C, so only HOSTCC matters here. clang-20 miscompiles fdtoverlay
+	# such that the OVL step fails intermittently (9 of 11 CI runs) while the
+	# same source builds cleanly with gcc/clang-19. The clang-20 HOSTCC
+	# requirement above is a property of the LLVM= kernel build (fixdep + lld),
+	# not of these host tools. Serial (-j1) also removes any parallel overlay
+	# race. The boot image consumes exactly one of these dtbs
+	# (mt8781-daylight-jagar.dtb; see scripts/export-artifacts.sh), but kbuild
+	# has no single-subdir-dtb target, so build the set, serially.
+	make ARCH="$_carch" \
+		CC="ccache clang-20" \
+		HOSTCC="gcc" \
+		-j1 dtbs
 
 	# A positive control for the cache itself. A build that bypasses ccache
 	# produces a green package, an empty cache and a permanently cold build,
@@ -118,8 +133,8 @@ package() {
 	mkdir -p "$pkgdir"/boot
 	install -Dm644 arch/$_carch/boot/Image.gz "$pkgdir"/boot/vmlinuz
 
-	# Same compiler command as build(): a different CC here would make kbuild
-	# reconsider objects it already has and recompile them uncached.
+	# Same compiler command as build()'s kernel pass: a different CC here would
+	# make kbuild reconsider objects it already has and recompile them uncached.
 	make modules_install \
 		ARCH="$_carch" \
 		LLVM=/usr/lib/llvm20/bin/ \
@@ -131,11 +146,13 @@ package() {
 		INSTALL_MOD_STRIP=1
 	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
 
-	# The single device DTB, at the path scripts/export-artifacts.sh reads it
-	# from. Built in build(); installing it directly keeps the package from
-	# re-driving the full 113-board dtbs target (see build()).
-	install -Dm644 arch/$_carch/boot/dts/mediatek/mt8781-daylight-jagar.dtb \
-		"$pkgdir"/boot/dtbs/mediatek/mt8781-daylight-jagar.dtb
+	# Install the already-built dtbs. dtbs_install needs no compiler: it just
+	# copies the blobs produced by build()'s dtbs pass.
+	make dtbs_install \
+		ARCH="$_carch" \
+		CC="ccache clang-20" \
+		HOSTCC="gcc" \
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
 
 	install -Dm644 include/config/kernel.release \
 		"$pkgdir/usr/share/kernel/$_flavor/kernel.release"
