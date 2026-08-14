@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mount.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <errno.h>
@@ -102,11 +103,12 @@ static void say2(const char *a, const char *b)
  * we drop to the rescue shell, the petter switches to a lease: it keeps the
  * board alive only while someone demonstrably still has it, and the lease is
  * renewed from outside (`touch /tmp/wd-lease` over the debug shell). Walk away
- * -- or lose the cable -- and the board resets itself back to a known state
- * rather than sitting dark forever waiting for a power button. */
+ * -- or lose the cable -- and the board arms the fastboot boot mode and stops
+ * petting, so the watchdog reset lands in LK fastboot (a recoverable state you
+ * can re-flash from) instead of rebooting the same slot or sitting dark. */
 #define WD_DEADMAN       "/tmp/wd-deadman"
 #define WD_LEASE         "/tmp/wd-lease"
-#define WD_LEASE_SECONDS 300
+#define WD_LEASE_SECONDS 1800   /* ~30 min; petting is manual in rescue */
 
 static void touch_file(const char *path)
 {
@@ -128,6 +130,45 @@ static int lease_is_fresh(void)
 	if (now == (time_t)-1 || now < st.st_mtime)
 		return 1;
 	return (now - st.st_mtime) <= WD_LEASE_SECONDS;
+}
+
+/* Set the boot mode nibble LK reads on the way up so the pending watchdog
+ * reset lands in fastboot, not the same slot. The hardware reset itself can
+ * run no code, so this MUST happen before the petter stops petting. It is the
+ * same write the (hardware-verified) dc1-reboot-fastboot tool performs --
+ * low nibble of WDT_NONRST_REG2 (0x10007000 + 0x24) == 3 == fastboot -- kept
+ * inline because this is a forked child whose exec path is not trustworthy
+ * after switch_root. Best-effort: a plain reset is the safe failure mode. */
+#define WDT_NONRST2_BASE 0x10007000UL
+#define WDT_NONRST2_OFF  0x24
+#define BOOT_MODE_FASTBOOT 3
+
+static void arm_fastboot_nibble(void)
+{
+	volatile unsigned int *p;
+	unsigned int old, want;
+	int fd = open("/dev/mem", O_RDWR | O_SYNC);
+
+	if (fd < 0) {
+		say("watchdog: no /dev/mem -- the reset will be a plain one");
+		return;
+	}
+	p = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
+		 (off_t)WDT_NONRST2_BASE);
+	close(fd);
+	if (p == MAP_FAILED) {
+		say("watchdog: mmap /dev/mem failed -- the reset will be a plain one");
+		return;
+	}
+	old = p[WDT_NONRST2_OFF / 4];
+	want = (old & ~0x0fU) | BOOT_MODE_FASTBOOT;
+	p[WDT_NONRST2_OFF / 4] = want;
+	__sync_synchronize();
+	if ((p[WDT_NONRST2_OFF / 4] & 0x0fU) != BOOT_MODE_FASTBOOT)
+		say("watchdog: nibble write did not take -- the reset will be a plain one");
+	else
+		say("watchdog: armed fastboot boot mode; the reset will reach LK fastboot");
+	munmap((void *)p, 0x1000);
 }
 
 /* Fork the sole watchdog owner. It holds the fd open forever -- including
@@ -153,11 +194,13 @@ static void start_watchdog_petter(void)
 	say("watchdog: petter running (sole owner, survives switch_root)");
 	for (;;) {
 		if (access(WD_DEADMAN, F_OK) == 0 && !lease_is_fresh()) {
-			say("watchdog: deadman lease expired -- ceasing to pet;"
-			    " the board will reset and LK can retry/fall back");
-			/* Stop petting. Do not exit: exiting is indistinguishable
-			 * from a crash, and staying parked keeps the fd owned so
-			 * nothing else re-arms it before the reset lands. */
+			say("watchdog: deadman lease expired -- arming fastboot"
+			    " and ceasing to pet; the reset will land in LK fastboot");
+			/* Point the reset at fastboot, then stop petting. Do not
+			 * exit: exiting is indistinguishable from a crash, and
+			 * staying parked keeps the fd owned so nothing else
+			 * re-arms it before the reset lands. */
+			arm_fastboot_nibble();
 			for (;;)
 				sleep(3600);
 		}
