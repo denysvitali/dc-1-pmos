@@ -10,6 +10,7 @@ mean the artifacts built by any given CI run were booted — releases carry
 | Display | Works | DSI panel; Wayland sessions (Sway, GNOME) run. |
 | GPU | Works | Mali-G57 MC2 via Panfrost. |
 | Touchscreen | Works | ILI2910, 10-point multitouch. |
+| On-device UI | Works | Flutter shell + Go backend, hardware-rendered via Panfrost; onboarding on unprovisioned first boot. |
 | Frontlight | Works | Dual RT4539 backlight drivers. |
 | Wi-Fi | Works | MT7902 via mainline mt76; firmware from upstream linux-firmware. |
 | Bluetooth | Works | MT7902, same upstream firmware. |

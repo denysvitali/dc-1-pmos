@@ -145,8 +145,21 @@ If the device is already in installation mode, run the script without
 `--installer-boot` and finish manually with
 `fastboot flash boot_a jagar-boot.img && fastboot reboot`. Other options:
 `--answers FILE` supplies pre-made answers non-interactively;
+`--skip-provision` installs with **no** answers at all — the image is written
+but not provisioned, so on first boot the installed system's on-device UI runs
+onboarding (Wi-Fi, username, password, hostname, timezone) on the panel's
+touchscreen instead of asking at install time;
 `--device-ip` / `--host-ip` override the defaults. See the header comment
 of `installer/host/dc1-install.sh` for the full usage.
+
+## On-device UI
+
+The installed system ships a Flutter shell (hardware-rendered via Panfrost on
+the Mali-G57) backed by a Go control plane. On a provisioned install it shows
+a first-light screen; on an **unprovisioned** install (`--skip-provision`) it
+runs first-boot onboarding on the touchscreen. The control plane binds a Unix
+socket only — it never listens on a network address, so neither the USB host
+nor any Wi-Fi peer can reach onboarding.
 
 ## Watching progress and debugging
 
