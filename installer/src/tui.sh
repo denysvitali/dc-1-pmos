@@ -273,6 +273,6 @@ while :; do
 		   status "WAITING FOR HOST
 USB: 172.16.42.1
 RUN DC1-INSTALL.SH ON HOST" ;;
-		2) /bin/rebootbl ;;
+		2) /bin/dc1-reboot-fastboot -f ;;
 	esac
 done

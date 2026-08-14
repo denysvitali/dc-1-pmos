@@ -76,8 +76,12 @@ is why the installer is flashed and later replaced.
 - the network install additionally writes the release's `jagar-boot.img`
   (SHA-256 verified, then read back and compared) to the GPT partition
   named `boot_a` — the same slot the user already flashed — and reboots
-  into the system; the USB install instead ends with `rebootbl` (BCB
-  `boot-fastboot`) so the host can flash the boot image itself.
+  into the system; the USB install instead ends with
+  `dc1-reboot-fastboot` (boot mode nibble 3 in `0x10007024`) so the host
+  can flash the boot image itself. That tool's source lives with the
+  device package, which also installs it as
+  `/usr/sbin/dc1-reboot-fastboot` on the installed system; it is compiled
+  into both initramfses from the same file.
 
 Progress is painted on the panel by `src/init.c` (from
 `/tmp/installer-status`; suppressed while `/tmp/ui-active` marks a touch

@@ -22,8 +22,9 @@ MediaTek MT8781/MT6789). This repository does two things:
 
 Download `installer-boot.img` and `SHA256SUMS` from the
 [rolling release](https://github.com/denysvitali/dc-1-pmos/releases),
-verify, put the device in fastboot mode (Power + Volume Up at power-on, or
-`adb reboot bootloader`), then:
+verify, put the device in fastboot mode (Power + Volume Up at power-on,
+`adb reboot bootloader` from stock Android, or `sudo dc1-reboot-fastboot`
+from an already-installed postmarketOS), then:
 
 ```sh
 sha256sum --ignore-missing -c SHA256SUMS

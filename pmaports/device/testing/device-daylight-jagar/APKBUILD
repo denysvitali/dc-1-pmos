@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=10
+pkgrel=11
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -30,10 +30,17 @@ source="
 	dc1-networkmanager-usb0.conf
 	dc1-sway.conf
 	00-logo-key.conf
+	dc1-reboot-fastboot.c
 "
 
 build() {
 	devicepkg_build "$startdir" "$pkgname"
+
+	# No tarball, so no $builddir to compile in -- keep both ends in
+	# $srcdir, where abuild has already put the source.
+	# shellcheck disable=SC2086
+	${CC:-gcc} $CFLAGS $LDFLAGS -o "$srcdir"/dc1-reboot-fastboot \
+		"$srcdir"/dc1-reboot-fastboot.c
 }
 
 package() {
@@ -65,6 +72,11 @@ package() {
 	# Satisfy upstream's unconditional include (see the file's header).
 	install -Dm644 "$srcdir"/00-logo-key.conf \
 		"$pkgdir"/etc/sway/config.d/00-logo-key.conf
+
+	# The only route from a running system back into LK's fastboot, and so
+	# the only route back to flashing. See the source for the LK evidence.
+	install -Dm755 "$srcdir"/dc1-reboot-fastboot \
+		"$pkgdir"/usr/sbin/dc1-reboot-fastboot
 }
 
 sha512sums="
@@ -78,4 +90,5 @@ ee90a6b36e45008b76cc6d2dcc5aaa264e7c2cecfc691263762b92758353c72995e34f02f55f5cf1
 40cc32d4b8f241071f438bdf86c2a559b2145b004ec69aa3e17daec680385a35becfc70f4cec5d4bf1dbabd5efeca1d4163ce2ce6d69870ff4cd5996d1db527c  dc1-networkmanager-usb0.conf
 2d4e1aa8e64d152922d962bd67885d8fab8653dc3bda9daeaf19f4fc41b5e5dd99f6efe15a51b8fb27bcbee26632d6fd5eb6b20816253def5a287942bf98dae9  dc1-sway.conf
 45bfbe7279140132e722b1bf7f34b96b71a45f4bd3b4c393d0865c0bd193eafb99104da438d67b3025401d0da4720bbc82ffc64294487c2ce9a0779f3d53724e  00-logo-key.conf
+f2358a1568cec27c6bb71f2b25b6e929bb656b190ac9caaed9cc6ee9fcf49243cf6471bfc89418a9bbe4cad3768bd315edd154fbc944db4aa7a12db67114471a  dc1-reboot-fastboot.c
 "

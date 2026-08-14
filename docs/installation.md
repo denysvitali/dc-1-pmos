@@ -65,9 +65,24 @@ debugging enabled:
 adb reboot bootloader
 ```
 
-From a running Linux system the same transition is done by writing
-`boot-fastboot` to the misc partition's bootloader control block; the
-installer initramfs ships a `rebootbl` tool that does exactly this.
+From a running postmarketOS system, run:
+
+```sh
+sudo dc1-reboot-fastboot
+```
+
+It does what LK's own `fastboot reboot-bootloader` does: put 3 in the boot
+mode nibble of the watchdog register that survives a reset (`0x10007024`),
+then reboot. LK reads it on the way up and enters fastboot. `-n` reports what
+it would do and changes nothing.
+
+What it does *not* do is write `boot-fastboot` into the misc partition's
+bootloader control block. That is the AOSP-shaped answer, and on this LK it is
+a trap: the only two commands it compares against are `boot-recovery` and
+`boot-fastboot`, **both mean recovery**, and a match returns before LK ever
+looks at the nibble or at the Volume-Up boot menu — so an armed BCB does not
+reach fastboot and takes the other two ways in with it. `dc1-reboot-fastboot`
+clears a stale one for exactly that reason.
 
 Confirm the host sees it:
 

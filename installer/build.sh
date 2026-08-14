@@ -227,12 +227,18 @@ mkdir -p "$OUT" "$ROOT"
 	-o "$OUT/installer-init" "$SRC/init.c"
 "$STRIP" "$OUT/installer-init"
 
-# rebootbl: busybox `reboot` only does RB_AUTOBOOT, which LK treats as an
-# ordinary reboot. Ending the install in LK fastboot (so the host can flash
-# the real boot image over the installer) needs the BCB "boot-fastboot"
-# write, which is what rebootbl does.
-"$CC" -static -Os -Wall -Wextra -o "$OUT/rebootbl" "$SRC/rebootbl.c"
-"$STRIP" "$OUT/rebootbl"
+# dc1-reboot-fastboot: busybox `reboot` only does RB_AUTOBOOT, which LK treats
+# as an ordinary reboot and answers by booting the same slot again. Ending the
+# install in LK fastboot (so the host can flash the real boot image over the
+# installer) needs the boot mode nibble in WDT_NONRST_REG2; see the source.
+#
+# ONE source, compiled twice: the same file ships in the device package as
+# /usr/sbin/dc1-reboot-fastboot on the installed system. A second copy here
+# would be a second thing to get wrong about a bootloader we cannot debug.
+RFSRC="$HERE/../pmaports/device/testing/device-daylight-jagar/dc1-reboot-fastboot.c"
+[ -f "$RFSRC" ] || fatal "missing $RFSRC"
+"$CC" -static -Os -Wall -Wextra -o "$OUT/dc1-reboot-fastboot" "$RFSRC"
+"$STRIP" "$OUT/dc1-reboot-fastboot"
 
 # bootctl: read-only A/B bootloader_control dump, for diagnostics over the
 # debug shell. All mutations are refused by design.
@@ -259,13 +265,14 @@ mkdir -p "$d"/dev "$d"/proc "$d"/sys "$d"/tmp "$d"/etc/installer "$d"/bin \
 mknod -m 600 "$d/dev/console" c 5 1
 mknod -m 666 "$d/dev/null"    c 1 3
 mknod -m 660 "$d/dev/kmsg"    c 1 11
+mknod -m 600 "$d/dev/mem"     c 1 1
 mknod -m 620 "$d/dev/tty0"    c 4 0
 mknod -m 620 "$d/dev/tty1"    c 4 1
 mknod -m 660 "$d/dev/ttyS0"   c 4 64
 mknod -m 666 "$d/dev/tty"     c 5 0
 
 install -m 0755 "$OUT/installer-init" "$d/init"
-install -m 0755 "$OUT/rebootbl" "$d/bin/rebootbl"
+install -m 0755 "$OUT/dc1-reboot-fastboot" "$d/bin/dc1-reboot-fastboot"
 install -m 0755 "$OUT/bootctl"  "$d/bin/bootctl"
 install -m 0755 "$OUT/dc1-ask"  "$d/bin/dc1-ask"
 install -m 0755 "$BUSYBOX" "$d/bin/busybox"
@@ -377,8 +384,8 @@ fi
 # --------------------------------------------------------- 3. system skeleton
 # The SYSTEM boot initramfs (goes into jagar-boot.img): verify the installed
 # jagar-root filesystem and switch_root into it. No gadget, no daemon, no
-# secrets -- just busybox, the shared partition resolver, and rebootbl so a
-# rescue shell can get back to fastboot.
+# secrets -- just busybox, the shared partition resolver, and
+# dc1-reboot-fastboot so a rescue shell can get back to fastboot.
 s="$ROOT/system"
 mkdir -p "$s"/dev "$s"/proc "$s"/sys "$s"/tmp "$s"/etc "$s"/bin "$s"/sbin \
          "$s"/mnt/root
@@ -386,6 +393,7 @@ mkdir -p "$s"/dev "$s"/proc "$s"/sys "$s"/tmp "$s"/etc "$s"/bin "$s"/sbin \
 mknod -m 600 "$s/dev/console" c 5 1
 mknod -m 666 "$s/dev/null"    c 1 3
 mknod -m 660 "$s/dev/kmsg"    c 1 11
+mknod -m 600 "$s/dev/mem"     c 1 1
 mknod -m 620 "$s/dev/tty0"    c 4 0
 mknod -m 620 "$s/dev/tty1"    c 4 1
 mknod -m 660 "$s/dev/ttyS0"   c 4 64
@@ -395,7 +403,7 @@ install -m 0755 "$OUT/system-init" "$s/init"
 install -m 0755 "$BUSYBOX" "$s/bin/busybox"
 install -m 0755 "$SRC/system/boot.sh" "$s/etc/boot.sh"
 install -m 0644 "$SRC/partlib.sh" "$s/etc/partlib.sh"
-install -m 0755 "$OUT/rebootbl" "$s/bin/rebootbl"
+install -m 0755 "$OUT/dc1-reboot-fastboot" "$s/bin/dc1-reboot-fastboot"
 for a in sh ash cat ls ln mount mountpoint umount echo sleep mkdir rm cp \
          chmod tr head tail wc grep sed cut od dd find blkid seq date sync \
          reboot basename dirname readlink printf stat switch_root dmesg setsid; do

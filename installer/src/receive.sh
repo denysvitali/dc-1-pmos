@@ -128,11 +128,12 @@ install_session() {
 		> "$STATUS_FILE" 2>/dev/null
 	echo "[installd] install complete; rebooting to bootloader" > /dev/kmsg 2>/dev/null
 	# Give the host a moment to read the OK line, then reboot into LK
-	# fastboot (BCB "boot-fastboot") so the host can flash the real boot
+	# fastboot (boot mode nibble 3) so the host can flash the real boot
 	# image over the installer.
 	sleep 3
-	if [ -x /bin/rebootbl ]; then
-		exec /bin/rebootbl
+	if [ -x /bin/dc1-reboot-fastboot ]; then
+		# -f: this initramfs has no init system to hand the reboot to.
+		exec /bin/dc1-reboot-fastboot -f
 	fi
 	reboot -f
 }

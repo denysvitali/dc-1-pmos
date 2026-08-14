@@ -78,9 +78,9 @@ jobs:
       # define __user empty exactly as build.sh does.
       - name: Installer C smoke build
         run: |
-          for src in installer/src/init.c installer/src/rebootbl.c \
-                     installer/src/bootctl.c installer/src/ask.c \
-                     installer/src/system/init.c; do
+          for src in installer/src/init.c installer/src/bootctl.c \
+                     installer/src/ask.c installer/src/system/init.c \
+                     pmaports/device/testing/device-daylight-jagar/dc1-reboot-fastboot.c; do
             out=$(mktemp)
             gcc -static -Os -Wall -Wextra -D__user= -I installer/src/uapi -o "$out" "$src"
             rm -f "$out"
