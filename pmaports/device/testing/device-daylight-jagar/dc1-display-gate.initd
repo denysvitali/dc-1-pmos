@@ -1,0 +1,78 @@
+#!/sbin/openrc-run
+# Open the DC-1 panel gate at runtime, with NO modeset.
+#
+# The panel driver parks its probe at boot behind two module parameters
+# (jagar_probe_stage=0 "hold", jagar_production_sequence=N). Opening them too
+# early during boot DOES NOT BOOT (LK falls back to the other slot), so this
+# is a runtime step. The gate is runtime-only -- module params plus
+# deferred-probe pokes -- it resets on reboot and writes no storage.
+#
+# It deliberately performs no modeset and does not touch the frontlight.
+# jagar_skip_drm_client=Y suppresses the kernel's intermediate DRM client (and
+# its fbdev helper), so Sway -- the next thing to run -- is the first DRM
+# master and performs the first atomic commit. The rt4539 white frontlight
+# boots at 0 and is raised by the compositor only after a visible frame.
+#
+# This sequence is the same one proven on the live installer kernel
+# (installer/src/init.c open_panel_gate()) and the bring-up panel-gate.sh;
+# do not re-derive it. The probe order matters: GCE/CMDQ binds before the
+# panel gate opens, or the dependent DRM chain can wedge the interconnect.
+
+description="Open the DC-1 display gate (no modeset)"
+
+depend() {
+	need localmount
+	before tinydm
+}
+
+write_sysfs() {
+	local path=$1 value=$2
+	[ -w "$path" ] || { eerror "$path not writable"; return 1; }
+	printf '%s\n' "$value" > "$path" || { eerror "write $path"; return 1; }
+}
+
+wait_for() {
+	local path=$1 tries=$2 n=0
+	while [ ! -e "$path" ]; do
+		n=$((n + 1))
+		[ "$n" -ge "$tries" ] && { eerror "timed out waiting for $path"; return 1; }
+		sleep 1
+	done
+	return 0
+}
+
+start() {
+	ebegin "Opening the DC-1 display gate"
+
+	local panel=/sys/module/panel_novatek_nt36523/parameters
+	local gce=/sys/bus/platform/devices/10228000.gce
+
+	[ -d "$panel" ] || { eend 1 "panel driver not present (wrong kernel?)"; return 1; }
+
+	# Suppress the intermediate DRM client so no fbdev helper steals the first
+	# modeset. Must happen before the panel probe pokes mediatek-drm to bind.
+	write_sysfs /sys/module/mediatek_drm/parameters/jagar_skip_drm_client Y \
+		|| { eend 1; return 1; }
+
+	# Bind GCE/CMDQ first (opening the panel first can wedge the interconnect).
+	if [ ! -L "$gce/driver" ]; then
+		write_sysfs /sys/module/mtk_cmdq_mailbox/parameters/jagar_mt6789_probe_stage 4 \
+			|| { eend 1; return 1; }
+		printf '10228000.gce\n' > /sys/bus/platform/drivers_probe \
+			|| { eend 1 "GCE drivers_probe write"; return 1; }
+		wait_for "$gce/driver" 5 || { eend 1 "GCE did not bind"; return 1; }
+	fi
+
+	wait_for /sys/bus/mipi-dsi/devices/14013000.dsi.0 15 \
+		|| { eend 1 "DSI panel device did not appear"; return 1; }
+
+	# Power the panel and poke the deferred probe to retry.
+	write_sysfs "$panel/jagar_production_sequence" Y || { eend 1; return 1; }
+	write_sysfs "$panel/jagar_probe_stage" 3 || { eend 1; return 1; }
+	printf '14013000.dsi.0\n' > /sys/bus/mipi-dsi/drivers_probe \
+		|| { eend 1 "DSI drivers_probe write"; return 1; }
+
+	wait_for /dev/dri/card0 15 || { eend 1 "/dev/dri/card0 did not appear"; return 1; }
+
+	eend 0
+}

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Re-register after an upgrade (the runlevel entry survives, but re-assert it
+# in case the service was dropped or renamed between versions).
+rc-update add dc1-display-gate boot 2>/dev/null || true
+exit 0

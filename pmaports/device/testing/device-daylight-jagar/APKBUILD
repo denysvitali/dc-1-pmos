@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -17,7 +17,13 @@ depends="
 	wireless-regdb
 "
 makedepends="devicepkg-dev"
-source="deviceinfo"
+install="$pkgname.post-install $pkgname.post-upgrade"
+source="
+	deviceinfo
+	dc1-display-gate.initd
+	dc1-display-gate.post-install
+	dc1-display-gate.post-upgrade
+"
 
 build() {
 	devicepkg_build "$startdir" "$pkgname"
@@ -25,8 +31,17 @@ build() {
 
 package() {
 	devicepkg_package "$startdir" "$pkgname"
+
+	# The display gate: open the panel at runtime with no modeset, so the
+	# compositor is the first DRM master. Device-specific (panel driver module
+	# params, GCE/DSI addresses), so it lives here, not in a UI package.
+	install -Dm755 "$srcdir"/dc1-display-gate.initd \
+		"$pkgdir"/etc/init.d/dc1-display-gate
 }
 
 sha512sums="
 269542398027d0947ced76f2c039328e657437c8d1e31d01bc6cc9e2b176766b59d33ea58e7ce7f9a548af8342cce05c733585dfd9d1bcb4aa11fab21e48eea1  deviceinfo
+66d1dd8ae1f222e36e43d4e11e8905b8a894b35b39ad0d36157a13be3335bf6422e9ee181526afafe89d28f096874c4158feb6e7131e917b2a47cd969eb095ba  dc1-display-gate.initd
+410f171d60ae02a958563475e9dd9cf4d51c9fd234803139ac34593cfd9f098390ee00741f7cd06b7cb96952e3271d09df1d83f8fe1b5099fb6ad682be7ed15a  dc1-display-gate.post-install
+bfe08a141e1511708243c11d8f870ed315ffcc439e97e92ac545dd2d140ed058f7f414a22a9ac4660e46b4db1dbd7b00c502c8d1ae16494fafa8150eae8aa457  dc1-display-gate.post-upgrade
 "
