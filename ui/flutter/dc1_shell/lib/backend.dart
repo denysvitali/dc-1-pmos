@@ -162,6 +162,17 @@ class BackendClient {
     });
   }
 
+  /// Reboot into the system the user just described.
+  ///
+  /// Onboarding renames the autologin user and moves its home out from under
+  /// the running Sway session, so there is nowhere for this session to go;
+  /// the backend reboots shortly after replying. The call therefore either
+  /// returns just before the device goes down or fails because it already
+  /// did -- callers must treat a transport error here as success.
+  Future<void> finish() async {
+    await _requestJson('POST', '/finish', null);
+  }
+
   /// NDJSON progress stream: one JSON object per line, no framing beyond
   /// the newline. Malformed lines are skipped rather than killing the UI.
   Stream<ProgressEvent> events() async* {

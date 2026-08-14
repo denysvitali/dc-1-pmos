@@ -51,6 +51,8 @@ func newHarness(t *testing.T) *harness {
 				return []byte(scanOutput), nil
 			}
 			return nil, nil
+		case "reboot":
+			return nil, nil
 		}
 		t.Errorf("unexpected command %q", name)
 		return nil, nil
@@ -499,5 +501,48 @@ func TestEventsReplaysTheLastStateToALateSubscriber(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("handler did not return after the client went away")
+	}
+}
+
+// The "Done" screen has to lead somewhere: onboarding renames the autologin
+// user out from under the running session, so the shell asks for a reboot.
+func TestFinishRebootsOnlyAfterProvisioning(t *testing.T) {
+	h := newHarness(t)
+	rebootGrace = time.Millisecond
+	t.Cleanup(func() { rebootGrace = 1500 * time.Millisecond })
+
+	// Before onboarding it must refuse: a stray call cannot reboot a device
+	// that is still mid-setup.
+	resp, body := h.do(t, http.MethodPost, "/finish", "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", resp.StatusCode, body)
+	}
+	if _, err := h.fake.FindCall("reboot"); err == nil {
+		t.Fatal("rebooted an unprovisioned device")
+	}
+
+	req := `{"user":"alice","password":"` + testPassword + `","hostname":"mydc1","timezone":"Europe/Zurich"}`
+	if resp, body := h.do(t, http.MethodPost, "/onboard", req); resp.StatusCode != http.StatusOK {
+		t.Fatalf("onboard status = %d: %s", resp.StatusCode, body)
+	}
+
+	resp, body = h.do(t, http.MethodPost, "/finish", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d: %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `"status":"rebooting"`) {
+		t.Fatalf("body = %s", body)
+	}
+	// The reboot is deferred so the reply lands first; wait for it rather
+	// than asserting on a race.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, err := h.fake.FindCall("reboot"); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("never rebooted: %+v", h.fake.Calls())
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }

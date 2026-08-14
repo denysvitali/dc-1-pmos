@@ -8,6 +8,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,10 +43,11 @@ type Config struct {
 
 // Server holds the handlers and the state they share.
 type Server struct {
-	bus  *events.Bus
-	prov *provision.Provisioner
-	wifi *wifi.Manager
-	mux  *http.ServeMux
+	bus    *events.Bus
+	prov   *provision.Provisioner
+	wifi   *wifi.Manager
+	mux    *http.ServeMux
+	runner cmdrunner.Runner
 
 	// onboardMu serialises onboarding so two concurrent submissions cannot
 	// both pass the marker gate.
@@ -78,15 +80,55 @@ func New(cfg Config) *Server {
 			Bus:     bus,
 			NewUUID: cfg.NewUUID,
 		},
-		mux: http.NewServeMux(),
+		mux:    http.NewServeMux(),
+		runner: cfg.Runner,
 	}
 	s.mux.HandleFunc("/wifi/scan", s.handleWiFiScan)
 	s.mux.HandleFunc("/wifi/connect", s.handleWiFiConnect)
 	s.mux.HandleFunc("/onboard", s.handleOnboard)
 	s.mux.HandleFunc("/events", s.handleEvents)
 	s.mux.HandleFunc("/status", s.handleStatus)
+	s.mux.HandleFunc("/finish", s.handleFinish)
 	return s
 }
+
+// POST /finish -> {"status":"rebooting"}
+//
+// Onboarding renames the autologin user, moves its home, sets the hostname and
+// may join a network -- but the Sway session that is running while all that
+// happens still holds the pre-onboarding identity. Without this the user is
+// left on a "Done" screen with no way into the system they just described.
+// Rebooting is the honest finish: every service comes back up against the new
+// passwd, hostname and connection.
+//
+// Gated on the marker so a stray call cannot reboot a device that is still
+// mid-setup, or one that never onboarded at all.
+func (s *Server) handleFinish(w http.ResponseWriter, r *http.Request) {
+	if !allow(w, r, http.MethodPost) {
+		return
+	}
+	if !s.prov.Provisioned() {
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": "not provisioned",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "rebooting"})
+	// Reply first. The reboot is deferred a moment so the shell actually
+	// receives it -- otherwise the socket dies mid-write and the last thing
+	// the user sees is a transport error on a run that in fact succeeded.
+	go func() {
+		time.Sleep(rebootGrace)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, _ = s.runner.Run(ctx, "reboot", nil, nil)
+	}()
+}
+
+// Long enough for the JSON reply to reach the shell and be drawn, short
+// enough that the device does not look hung. A var so the tests can shrink
+// it rather than sleeping a second and a half.
+var rebootGrace = 1500 * time.Millisecond
 
 // Handler exposes the routes (also used by the tests).
 func (s *Server) Handler() http.Handler { return s.mux }

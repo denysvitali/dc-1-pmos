@@ -80,7 +80,7 @@ if grep -rnE '127\.0\.0\.1|InternetAddress\.loopback|localhost|ServerSocket|RawS
 		"$app/lib" >&2
 	fail "a TCP endpoint appears in the UI sources"
 fi
-for endpoint in /wifi/scan /wifi/connect /onboard /events; do
+for endpoint in /wifi/scan /wifi/connect /onboard /events /finish; do
 	grep -qF "'$endpoint'" "$app/lib/backend.dart" ||
 		fail "backend client lost the $endpoint endpoint"
 done

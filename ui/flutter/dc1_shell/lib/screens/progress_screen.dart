@@ -38,6 +38,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
   String _message = 'Applying your settings.';
   double? _fraction;
   bool _finished = false;
+  bool _restarting = false;
 
   @override
   void initState() {
@@ -55,6 +56,23 @@ class _ProgressScreenState extends State<ProgressScreen> {
     unawaited(_events?.cancel() ?? Future<void>.value());
     _events = null;
     super.dispose();
+  }
+
+  /// The last step of onboarding. The account, hostname and network the user
+  /// just chose only take effect on a fresh boot -- this session is still
+  /// running as the pre-onboarding user -- so "Done" has to lead here rather
+  /// than leaving them on a screen with no way forward.
+  Future<void> _restart() async {
+    setState(() {
+      _restarting = true;
+    });
+    try {
+      await widget.client.finish();
+    } on Object {
+      // Expected: the backend reboots moments after replying, so the socket
+      // frequently dies mid-response. There is nothing useful to report and
+      // nothing to retry -- the device is on its way down either way.
+    }
   }
 
   void _subscribe() {
@@ -154,6 +172,11 @@ class _ProgressScreenState extends State<ProgressScreen> {
       ),
       footer: failed
           ? SecondaryButton(label: 'Back', onPressed: widget.onRetry)
+          : complete
+          ? PrimaryButton(
+              label: _restarting ? 'Restarting...' : 'Restart now',
+              onPressed: _restarting ? null : _restart,
+            )
           : null,
     );
   }

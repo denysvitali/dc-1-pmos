@@ -53,6 +53,7 @@ module.
 | `GET` | `/wifi/scan` | — | `[{"ssid":"…","signal":72}, …]`, strongest first |
 | `POST` | `/wifi/connect` | `{"ssid","psk"}` | `{"status":"connected","ssid":"…"}` |
 | `POST` | `/onboard` | `{"user","password","hostname","timezone"[,"ssid","psk"]}` | `{"status":"provisioned"\|"already-provisioned",…}` |
+| `POST` | `/finish` | — | `{"status":"rebooting"}`; 409 until provisioned |
 | `GET` | `/events` | — | NDJSON stream: `{"ts","state","detail"}` per line |
 
 Errors are `{"error":"…"}` with a 4xx/5xx status and never quote a credential.
