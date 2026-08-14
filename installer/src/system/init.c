@@ -44,6 +44,15 @@ static int g_kmsg = -1;
 
 static size_t slen(const char *s) { size_t n = 0; while (s[n]) n++; return n; }
 
+static int wr(const char *path, const char *val)
+{
+	int fd = open(path, O_WRONLY | O_TRUNC);
+	if (fd < 0) return -1;
+	int r = (int)write(fd, val, slen(val));
+	close(fd);
+	return r < 0 ? -1 : 0;
+}
+
 /* Broadcast one line to every text channel we might have. */
 static void say(const char *msg)
 {
@@ -130,6 +139,90 @@ static int run_script(const char *script)
 	return -1;
 }
 
+/* Bring up a CDC-ACM composite gadget over configfs so the SYSTEM initramfs
+ * has a debug channel BEFORE the rootfs/OpenRC runs. This is the only way to
+ * read the boot log when boot.sh or switch_root hangs: without it the hang is
+ * invisible (the rescue shell below writes only to tty1/ttyS0, which are not
+ * reachable over USB). Mirrors the installer initramfs gadget() minus ECM --
+ * a serial stream + a shell are all a diagnosable boot needs. The MUSB UDC
+ * name candidates match the installer. Fails silently. */
+static void gadget(void)
+{
+	const char *G = "/sys/kernel/config/usb_gadget/g1";
+	char p[256];
+
+	if (mkdir("/sys/kernel/config/usb_gadget/g1", 0755) && errno != EEXIST) {
+		say("gadget: no configfs usb_gadget");
+		return;
+	}
+#define P(sub) (memcpy(p, G, slen(G)), memcpy(p + slen(G), sub, slen(sub) + 1), p)
+	wr(P("/idVendor"),  "0x18d1\n");
+	wr(P("/idProduct"), "0x4ee7\n");
+	mkdir(P("/strings/0x409"), 0755);
+	wr(P("/strings/0x409/manufacturer"), "daylight\n");
+	wr(P("/strings/0x409/product"),      "dc1-system\n");
+	wr(P("/strings/0x409/serialnumber"), "dc1-system\n");
+	mkdir(P("/configs/c.1"), 0755);
+	mkdir(P("/configs/c.1/strings/0x409"), 0755);
+	wr(P("/configs/c.1/strings/0x409/configuration"), "acm\n");
+	mkdir(P("/functions/acm.0"), 0755);
+	mkdir(P("/functions/acm.1"), 0755);
+	symlink(P("/functions/acm.0"), "/sys/kernel/config/usb_gadget/g1/configs/c.1/acm.0");
+	symlink(P("/functions/acm.1"), "/sys/kernel/config/usb_gadget/g1/configs/c.1/acm.1");
+
+	static const char *cand[] = { "musb-hdrc.1.auto", "musb-hdrc.0.auto",
+				      "11201000.usb", "11200000.usb", NULL };
+	for (int i = 0; cand[i]; i++) {
+		if (wr(P("/UDC"), cand[i]) == 0) { say2("gadget: bound UDC ", cand[i]); return; }
+	}
+	say("gadget: UDC bind failed");
+#undef P
+}
+
+/* Fork a one-way kmsg stream on ttyGS0 and an interactive root shell on
+ * ttyGS1, best-effort. These make the boot diagnosable from the host
+ * (/dev/ttyACM0 and /dev/ttyACM1) regardless of what boot.sh/switch_root do. */
+static void start_debug_channels(void)
+{
+	pid_t p;
+
+	p = fork();
+	if (p == 0) {
+		int out = -1, k;
+		for (int i = 0; i < 10 && out < 0; i++) {
+			out = open("/dev/ttyGS0", O_WRONLY | O_NOCTTY);
+			if (out < 0) sleep(1);
+		}
+		if (out < 0) _exit(0);
+		k = open("/dev/kmsg", O_RDONLY);
+		if (k < 0) _exit(0);
+		/* Blocking read streams one log entry at a time, following the
+		 * kernel ring from boot. */
+		char buf[4096];
+		for (;;) {
+			ssize_t n = read(k, buf, sizeof buf);
+			if (n > 0) (void)write(out, buf, n);
+		}
+	}
+
+	p = fork();
+	if (p == 0) {
+		for (int i = 0; i < 10; i++) {
+			int fd = open("/dev/ttyGS1", O_RDWR | O_NOCTTY);
+			if (fd >= 0) {
+				setsid();
+				dup2(fd, 0); dup2(fd, 1); dup2(fd, 2);
+				if (fd > 2) close(fd);
+				char *av[] = { (char *)"/bin/busybox", (char *)"sh", NULL };
+				execv("/bin/busybox", av);
+				_exit(127);
+			}
+			sleep(1);
+		}
+		_exit(0);
+	}
+}
+
 /* Rescue: a respawning shell on each plausible console. Never returns. */
 static void rescue(const char *why)
 {
@@ -182,6 +275,14 @@ int main(void)
 
 	g_kmsg = open("/dev/kmsg", O_WRONLY);
 	say("init: proc/sys/dev mounted");
+
+	/* USB debug channel: configfs + ACM gadget + log/shell, BEFORE boot.sh,
+	 * so a hang there is observable from the host (/dev/ttyACM0 log,
+	 * /dev/ttyACM1 shell). This is what makes a boot failure diagnosable. */
+	mkdir("/sys/kernel/config", 0755);
+	mount("configfs", "/sys/kernel/config", "configfs", 0, NULL);
+	gadget();
+	start_debug_channels();
 
 	start_watchdog_petter();
 
