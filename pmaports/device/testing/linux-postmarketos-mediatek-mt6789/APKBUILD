@@ -1,7 +1,7 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=linux-postmarketos-mediatek-mt6789
 pkgver=7.2_rc5_git20260813
-pkgrel=3
+pkgrel=4
 pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
 arch="aarch64"
 _carch="arm64"
@@ -31,10 +31,15 @@ makedepends="
 
 _repository="dc-1-linux-kernel"
 _commit="3522feccb58506b19bd72fe0936be7264e23a723"
-_config="config-$_flavor.$arch"
+# The kernel source tarball is the ONLY distfile. The config used to be
+# fetched separately from raw.githubusercontent.com under a commit-independent
+# filename (config-$_flavor.$arch), which collided with the persisted distfiles
+# cache: after a kernel pin bump the cached old config failed the new
+# sha512sum and abuild refused it. The tarball already contains the exact
+# config (and is itself pinned by sha512sum), so copy it out of there instead
+# of maintaining a second, cache-fragile fetch.
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/denysvitali/$_repository/archive/$_commit.tar.gz
-	$_config::https://raw.githubusercontent.com/denysvitali/$_repository/$_commit/arch/arm64/configs/jagar_defconfig
 "
 builddir="$srcdir/$_repository-$_commit"
 
@@ -47,7 +52,7 @@ prepare() {
 	command -v clang-20 >/dev/null
 	command -v ld.lld >/dev/null
 	test -x /usr/lib/llvm20/bin/llvm-ar
-	cp "$srcdir/$_config" .config
+	cp "$builddir/arch/arm64/configs/jagar_defconfig" .config
 }
 
 build() {
@@ -172,5 +177,4 @@ package() {
 
 sha512sums="
 0ed642eac40c29eadd030b29587ad3d68398f03b32a406e42905fef87ef45909999e4d4ef792a51d324ef68a348bbf8899f87e67d1f7cacb00d341473af8b995  linux-postmarketos-mediatek-mt6789-3522feccb58506b19bd72fe0936be7264e23a723.tar.gz
-2db87c9e22eae6928e5dad9b711e3f93e55131a1bc9f39b99189d0e3830e5903dfd449fc92904b974f95042965225fb365f9004089b2bc59fcfd2ca09648cbbc  config-postmarketos-mediatek-mt6789.aarch64
 "
