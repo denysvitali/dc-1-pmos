@@ -184,6 +184,24 @@ func run(u *ui, args []string, stdout, stderr io.Writer) int {
 	return 2
 }
 
+// surface is a panel dc1-ask can paint: a canvas plus the blit that puts it
+// on the glass. drmFB is the real path on this panel; framebuffer (fbdev or
+// the LK scanout) is the fallback that only ever worked before PID 1 began
+// holding the panel for the whole boot.
+type surface interface {
+	canvas() *canvas
+	blit()
+	close()
+}
+
+// openSurface acquires the panel, preferring DRM.
+func openSurface() (surface, error) {
+	if d, err := openDRM(); err == nil {
+		return d, nil
+	}
+	return openFB()
+}
+
 // Main is the `dc1-ask` applet entry point.
 func Main(args []string, stdout, stderr io.Writer) int {
 	if len(args) < 2 {
@@ -191,12 +209,12 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	fb, err := openFB()
+	s, err := openSurface()
 	if err != nil {
-		fmt.Fprintln(stderr, "dc1-ask: no framebuffer")
+		fmt.Fprintln(stderr, "dc1-ask: no display")
 		return 2
 	}
-	defer fb.close()
+	defer s.close()
 
 	t, err := openTouch()
 	if err != nil {
@@ -205,10 +223,11 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	}
 	defer t.close()
 
+	c := s.canvas()
 	u := &ui{
-		canvas: fb.c,
-		blit:   fb.blit,
-		tap:    func() (int, int, error) { return t.tap(fb.c.w, fb.c.h) },
+		canvas: c,
+		blit:   s.blit,
+		tap:    func() (int, int, error) { return t.tap(c.w, c.h) },
 	}
 	return run(u, args, stdout, stderr)
 }

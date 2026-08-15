@@ -5,6 +5,8 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/drm"
 )
 
 // Ops is every effect PID 1 has on the world. Behind an interface so the boot
@@ -48,13 +50,17 @@ type Ops interface {
 }
 
 // Surface is an acquired panel: a shadow buffer plus the blit that puts it on
-// the glass.
+// the glass, and the master handover that lets dc1-ask take the panel over.
 type Surface interface {
 	Size() (w, h int)
 	// Paint hands the caller the shadow buffer to draw into.
 	Paint(func(pix []byte, stride int))
 	Blit() error
 	How() string
+	// DropMaster releases DRM master while the touch UI owns the panel.
+	DropMaster() error
+	// Reacquire takes DRM master back and re-commits the status screen.
+	Reacquire() error
 }
 
 type sysOps struct{}
@@ -192,4 +198,4 @@ func (sysOps) Reap() {
 
 func (sysOps) Sleep(d time.Duration) { time.Sleep(d) }
 
-func (o sysOps) Display() (Surface, error) { return acquireDRM(o) }
+func (o sysOps) Display() (Surface, error) { return drm.Acquire() }

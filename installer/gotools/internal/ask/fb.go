@@ -151,6 +151,8 @@ func mapFB(f *os.File, off int64, length, w, h, stride, bpp int) (*framebuffer, 
 // half-drawn is ever visible.
 func (fb *framebuffer) blit() { copy(fb.mem, fb.c.pix) }
 
+func (fb *framebuffer) canvas() *canvas { return fb.c }
+
 func (fb *framebuffer) close() {
 	syscall.Munmap(fb.mem)
 	fb.f.Close()

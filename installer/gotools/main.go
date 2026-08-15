@@ -39,12 +39,15 @@ func applets() map[string]func([]string) int {
 			return ask.Main(a, os.Stdout, os.Stderr)
 		},
 		"dc1-installd": installd.Main,
-		// Neither init is the image's /init yet -- build.sh still stages the
-		// C ones. The applets exist so the ports can be exercised and
-		// reviewed; each refuses to do anything unless it is genuinely PID 1,
-		// and prints its ordered plan instead. The switch happens only once a
-		// Go init has demonstrably booted, because the device's recovery path
-		// runs through the image it would replace.
+		// The installer image stages this binary AS /init (a symlink), so the
+		// kernel's ramdisk_execute_command "/init" reaches it with argv[0]
+		// "/init", i.e. filepath.Base == "init". "system-init" and
+		// "dc1-installer-init" remain as the explicit subcommands for review
+		// and dry-run. Each init refuses to do anything unless genuinely PID 1
+		// and prints its ordered plan otherwise.
+		"init": func(a []string) int {
+			return installerinit.Main(a, os.Stdout, os.Stderr)
+		},
 		"system-init": func(a []string) int {
 			return systeminit.Main(a, os.Stdout, os.Stderr)
 		},

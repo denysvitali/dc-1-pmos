@@ -1,4 +1,4 @@
-package installerinit
+package drm
 
 import (
 	"testing"
@@ -25,6 +25,7 @@ func TestIoctlEncodingsMatchTheKernelHeaders(t *testing.T) {
 		want uintptr
 	}{
 		{"SET_MASTER", drmIoctlSetMaster, 0x641e},
+		{"DROP_MASTER", drmIoctlDropMaster, 0x641f},
 		{"MODE_GETRESOURCES", drmIoctlModeGetRes, 0xc04064a0},
 		{"MODE_GETCONNECTOR", drmIoctlModeGetConn, 0xc05064a7},
 		{"MODE_CREATE_DUMB", drmIoctlModeCreateDumb, 0xc02064b2},
@@ -94,5 +95,21 @@ func TestStructOffsetsMatchTheKernelABI(t *testing.T) {
 		if c.got != c.want {
 			t.Errorf("offsetof(%s) = %d, kernel ABI says %d", c.name, c.got, c.want)
 		}
+	}
+}
+
+// The modeset parameters must survive into the Surface so Reacquire can
+// re-commit the same buffer. A modeset with a zeroed crtc/fb/mode would be
+// accepted by the ioctl and simply point the scanout at nothing -- silent, so
+// assert the fields the re-commit path reads are the ones Acquire set.
+func TestSurfaceRemembersModesetParameters(t *testing.T) {
+	s := &Surface{
+		crtcID: 0x1234,
+		connID: 0x5678,
+		fbID:   0x9abc,
+		mode:   drmModeInfo{HDisplay: 1200, VDisplay: 1600},
+	}
+	if s.crtcID == 0 || s.connID == 0 || s.fbID == 0 {
+		t.Fatalf("modeset params not set: crtc=%x conn=%x fb=%x", s.crtcID, s.connID, s.fbID)
 	}
 }

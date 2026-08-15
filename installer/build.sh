@@ -267,7 +267,11 @@ mknod -m 620 "$d/dev/tty1"    c 4 1
 mknod -m 660 "$d/dev/ttyS0"   c 4 64
 mknod -m 666 "$d/dev/tty"     c 5 0
 
-install -m 0755 "$OUT/installer-init" "$d/init"
+# The installer PID 1 is the Go dc1tools binary, reached as /init via argv[0]
+# dispatch ("init" -> installerinit). The kernel execs ramdisk_execute_command
+# "/init" with argv[0] "/init", so filepath.Base == "init". The C installer-init
+# is still compiled above as the boot-proven reference, but is no longer staged.
+ln -sf /bin/dc1tools "$d/init"
 install -m 0755 "$OUT/dc1tools" "$d/bin/dc1tools"
 # argv[0] dispatch: these are the names the rest of the image (and the
 # recovery notes) already call, so they stay callable without knowing that one

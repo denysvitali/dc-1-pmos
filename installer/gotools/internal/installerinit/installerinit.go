@@ -219,16 +219,30 @@ func acquireDisplay(ops Ops, log io.Writer) (Surface, error) {
 
 // loop repaints, heartbeats and reaps forever.
 func loop(ops Ops, surface Surface, log io.Writer) {
+	uiActive := false
 	for tick := uint64(0); ; tick++ {
 		status, err := ops.ReadFile(StatusFile)
 		if err != nil || strings.TrimSpace(status) == "" {
 			status = DefaultStatus
 		}
 
-		// While the touch UI (dc1-ask, run by tui.sh) owns the panel it
-		// creates /tmp/ui-active; painting over it would fight the keyboard
-		// screen. The status screen resumes the moment the flag is gone.
-		if surface != nil && !ops.Exists("/tmp/ui-active") {
+		// The touch UI (dc1-ask) owns the panel while /tmp/ui-active exists.
+		// A modeset is a DRM_MASTER ioctl and DRM allows one master per
+		// device, so PID 1 must drop master to let dc1-ask paint, and
+		// re-acquire (which re-commits the status screen) once it is gone.
+		nowActive := ops.Exists("/tmp/ui-active")
+		if surface != nil && nowActive != uiActive {
+			if nowActive {
+				if err := surface.DropMaster(); err != nil {
+					fmt.Fprintf(log, "[dc1-installer] drop-master: %v\n", err)
+				}
+			} else if err := surface.Reacquire(); err != nil {
+				fmt.Fprintf(log, "[dc1-installer] re-acquire: %v\n", err)
+			}
+			uiActive = nowActive
+		}
+
+		if surface != nil && !nowActive {
 			w, h := surface.Size()
 			lines := StatusLines(status)
 			surface.Paint(func(pix []byte, stride int) {
