@@ -18,6 +18,11 @@ depends="
 	wireless-regdb
 "
 makedepends="devicepkg-dev"
+# This package ships its own /etc/gdm/custom.conf (autologin to dc1), which
+# gdm's meson install also installs as a default. `replaces` lets our file
+# win the apk conflict without removing gdm -- the same pattern
+# postmarketos-ui-os-installer uses to override gdm's custom.conf.
+replaces="gdm"
 install="$pkgname.post-install $pkgname.post-upgrade"
 source="
 	deviceinfo
