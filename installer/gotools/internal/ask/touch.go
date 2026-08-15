@@ -172,40 +172,20 @@ func le32(b []byte) uint32 {
 func (t *touch) close() { t.f.Close() }
 
 // tap blocks until a complete tap and returns the release position scaled to
-// screen coordinates: a straight linear scale per axis, no swap and no
-// inversion, i.e. the touchscreen is assumed to be oriented like the
-// framebuffer.
+// scanout coordinates.
 //
-// THIS MAPPING IS PROBABLY WRONG, and it is untested: it is carried over from
-// src/ask.c, which was never run on the device (016d7e0 shipped with
-// "hardware_verified=false", and the one end-to-end install since then went
-// over the USB host script, which never invokes dc1-ask). The repo's own
-// evidence points the other way:
+// The mapping was MEASURED on hardware (2026-08-15, the "touchprobe" mode,
+// commit fdebcb6): the raw touch frame is aligned with the physical glass
+// (top-left corner -> raw ~(711,349), bottom-right -> raw ~(15658,15738),
+// axes x=(0,16384) y=(0,16384), no swap, no inversion), but the scanout this
+// tool paints is rotated 180 degrees relative to the glass -- the status
+// banner painted at scanout (0,0) appears at the physical bottom-right. So a
+// tap is mapped raw->scanout by inverting BOTH axes (a 180 rotation), not by
+// the straight scale the C tool used.
 //
-//   - device-daylight-jagar/dc1-sway.conf ships `output DSI-1 transform 180`
-//     together with `input "type:touch" { map_to_output DSI-1;
-//     calibration_matrix -1 0 1 0 -1 1 }`, recorded as confirmed by hardware
-//     corner testing, and the failing test that motivated the matrix already
-//     had map_to_output in place.
-//   - wlroots applies the output transform to touch events itself
-//     (types/wlr_cursor.c, handle_touch_down -> apply_output_transform), and
-//     WL_OUTPUT_TRANSFORM_180 is x' = 1-x, y' = 1-y; sway consumes the
-//     already-transformed coordinates (sway/input/cursor.c).
-//
-// Composing those: the compositor had already un-rotated by 180 and taps still
-// landed diametrically opposite the finger, so raw evdev coordinates are
-// inverted on BOTH axes relative to the untransformed CRTC scanout -- which is
-// the buffer this tool paints into. If that holds, every tap here registers at
-// the point mirrored through screen centre: the two install options swap, the
-// cancel and OK corners swap, and no PSK can be typed on the keyboard.
-//
-// It is NOT changed here, because guessing a second time is how you get an
-// interface that is wrong in a new way, and a wrong-but-responsive UI is worse
-// than the exit-2 fallback. The decisive test costs no boot cycle: paint a
-// marker at scanout (0,0), evtest the ilitek node, touch that physical corner;
-// raw X/Y near max rather than min confirms the inversion. Pre-register that
-// before touching this function.
-// [inferred from dc1-sway.conf + wlroots/sway sources; never measured directly]
+// No sub-range offset is applied: the reported axis bounds (0..16384) map to
+// the full 1200x1600 panel; the corner taps landed slightly inside the edges,
+// which is the finger, not a calibration offset.
 func (t *touch) tap(w, h int) (int, int, error) {
 	for {
 		if _, err := io.ReadFull(t.f, t.buf); err != nil {
@@ -214,8 +194,24 @@ func (t *touch) tap(w, h int) (int, int, error) {
 		if !t.st.feed(decodeEvent(t.buf)) {
 			continue
 		}
-		x := (t.st.x - t.minX) * w / (t.maxX - t.minX)
-		y := (t.st.y - t.minY) * h / (t.maxY - t.minY)
+		x := w - (t.st.x-t.minX)*w/(t.maxX-t.minX)
+		y := h - (t.st.y-t.minY)*h/(t.maxY-t.minY)
 		return x, y, nil
+	}
+}
+
+// rawTap blocks until a complete tap and returns the raw device coordinates,
+// unscaled. It is the calibration probe's primitive: the decisive question is
+// what raw position arrives for a touch at a known scanout corner, so tap()'s
+// scaling can be derived rather than guessed.
+func (t *touch) rawTap() (int, int, error) {
+	for {
+		if _, err := io.ReadFull(t.f, t.buf); err != nil {
+			return 0, 0, err
+		}
+		if !t.st.feed(decodeEvent(t.buf)) {
+			continue
+		}
+		return t.st.x, t.st.y, nil
 	}
 }

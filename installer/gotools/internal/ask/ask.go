@@ -204,8 +204,14 @@ func openSurface() (surface, error) {
 
 // Main is the `dc1-ask` applet entry point.
 func Main(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "probe" {
+		return probe(args[1:], stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "touchprobe" {
+		return touchprobe(args[1:], stdout, stderr)
+	}
 	if len(args) < 2 {
-		fmt.Fprintln(stderr, "usage: dc1-ask menu|text|secret|info TITLE ...")
+		fmt.Fprintln(stderr, "usage: dc1-ask menu|text|secret|info|probe|touchprobe TITLE ...")
 		return 2
 	}
 

@@ -176,7 +176,8 @@ func TestTouchStateFeed(t *testing.T) {
 }
 
 // tap() over a file of synthetic events: the read loop and the scaling from
-// raw device units onto the panel.
+// raw device units onto the panel, including the 180-degree rotation measured
+// on hardware (raw is aligned with the glass; scanout is rotated 180).
 func TestTapScaling(t *testing.T) {
 	var raw []byte
 	for _, e := range [][]byte{
@@ -204,8 +205,10 @@ func TestTapScaling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tap: %v", err)
 	}
-	if x != 600 || y != 400 {
-		t.Errorf("tap = %d,%d, want 600,400", x, y)
+	// raw x = half -> scanout x = 600 (inverting a half leaves it centred);
+	// raw y = quarter -> scanout y = 1600 - 400 = 1200 (inverted).
+	if x != 600 || y != 1200 {
+		t.Errorf("tap = %d,%d, want 600,1200", x, y)
 	}
 
 	// Out of events: the caller must see the error, not a phantom tap at
