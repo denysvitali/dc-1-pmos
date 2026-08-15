@@ -91,8 +91,11 @@ for buildonly in flutter-desktop flutter-common flutter-tool dart-sdk; do
 	! printf '%s\n' "$ui_depends" | grep -q "$buildonly" ||
 		fail "build-only Flutter package in the shipped package: $buildonly"
 done
-grep -q '^extra_packages = .*dc1-ui' "$script_dir/build-rootfs.sh" ||
-	fail "the rootfs no longer installs dc1-ui"
+# The installed rootfs is GNOME Mobile only: onboarding is an install-time
+# concern handled by the installer's own (sway) touch UI, so the Flutter shell
+# must not ship into the desktop.
+! grep -q '^extra_packages = .*dc1-ui' "$script_dir/build-rootfs.sh" ||
+	fail "the installed rootfs must not ship the Flutter shell (dc1-ui)"
 
 grep -q "_commit=\"$KERNEL_COMMIT\"" "$kernel_dir/APKBUILD" ||
 	fail "kernel commit drift"

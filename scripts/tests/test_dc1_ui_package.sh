@@ -64,23 +64,22 @@ grep -qF 'sha256sum' "$scripts/verify-flutter-gtk.sh" ||
 
 # --- what the shipped rootfs may and may not contain ---------------------
 # The installed package set is extra_packages plus every overlay package's
-# depends. flutter-gtk must be in it (nothing renders otherwise) and the
-# build-time-only Flutter toolchain must not be (that is the ~2 GB the
-# chroot carries and the device does not).
+# depends. The desktop is GNOME Mobile only -- onboarding is install-time, in
+# the installer's own touch UI -- so the Flutter shell (dc1-ui) and its
+# flutter-gtk embedder must NOT be shipped, and neither may the build-time
+# Flutter toolchain (the ~2 GB the chroot carries and the device does not).
 extra=$(sed -n 's/^extra_packages = //p' "$scripts/build-rootfs.sh" | tr ',' ' ')
 [ -n "$extra" ] || fail "could not read extra_packages from build-rootfs.sh"
 shipped="$extra"
-for package in dc1-ui device-daylight-jagar linux-postmarketos-mediatek-mt6789; do
+for package in device-daylight-jagar linux-postmarketos-mediatek-mt6789; do
 	shipped="$shipped $(sed -n '/^depends="/,/^[[:space:]]*"/p' \
 		"$overlay/$package/APKBUILD" | sed 's/depends="//; s/"//')"
 done
 case " $(echo "$shipped" | tr -s ' \t\n' ' ') " in
-	*" dc1-ui "*) : ;;
-	*) fail "dc1-ui is not installed into the rootfs (extra_packages)" ;;
+	*" dc1-ui "*|*" dc1-ui="*) fail "dc1-ui is shipped into the rootfs" ;;
 esac
 case " $(echo "$shipped" | tr -s ' \t\n' ' ') " in
-	*" flutter-gtk=$pin "*) : ;;
-	*) fail "the shipped package set does not include flutter-gtk=$pin" ;;
+	*" flutter-gtk="*) fail "flutter-gtk is shipped into the rootfs" ;;
 esac
 for forbidden in flutter-desktop flutter-common flutter-tool dart-sdk; do
 	case " $(echo "$shipped" | tr -s ' \t\n' ' ') " in
