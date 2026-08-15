@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=dc1-ui
 pkgdesc="Daylight DC-1 on-device shell: Flutter UI and its control plane"
 pkgver=1
-pkgrel=5
+pkgrel=6
 url="https://github.com/denysvitali/dc-1-pmos"
 license="MIT"
 arch="aarch64"
@@ -28,6 +28,7 @@ options="!check !strip !tracedeps"
 depends="
 	flutter-gtk=3.38.4-r2
 	font-dejavu
+	grim
 	mesa-dri-gallium
 	networkmanager-cli
 	"
@@ -55,7 +56,7 @@ package() {
 	# going and ships the broken payload it just complained about.
 	[ -d "$_payload" ] || die "payload/ is missing: run scripts/build-ui-payload.sh"
 
-	for member in dc1-backend bundle/dc1_shell bundle/lib/libapp.so \
+	for member in dc1-backend version bundle/dc1_shell bundle/lib/libapp.so \
 			bundle/data/icudtl.dat; do
 		[ -s "$_payload/$member" ] || die "payload/$member is missing or empty"
 	done
@@ -63,6 +64,10 @@ package() {
 		die "payload/bundle/data/flutter_assets/ is empty"
 
 	install -Dm755 "$_payload"/dc1-backend "$pkgdir"/usr/sbin/dc1-backend
+	# The commit this UI was built from. dc1-backend serves it on GET
+	# /status and the onboarding footer shows it, so a photograph of a
+	# device identifies the build running on it.
+	install -Dm644 "$_payload"/version "$pkgdir"/usr/share/dc1-ui/version
 	install -Dm755 "$srcdir"/dc1-backend.initd "$pkgdir"/etc/init.d/dc1-backend
 	install -Dm644 "$srcdir"/dc1-backend.confd "$pkgdir"/etc/conf.d/dc1-backend
 

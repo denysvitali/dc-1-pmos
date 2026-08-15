@@ -88,6 +88,16 @@ class ProgressEvent {
 /// [BackendClient]; they never construct one, so the concrete choice
 /// (Unix socket vs web mock) stays confined to `main.dart`.
 abstract class BackendClient {
+  /// The commit this build came from, for the footer line.
+  ///
+  /// Returns the empty string when it cannot be established -- a system
+  /// installed before the version file shipped, or a payload that lost it.
+  /// The empty string means "not known" and is rendered as such; it is never
+  /// substituted with a placeholder, which on a panel would be
+  /// indistinguishable from a build that really recorded that placeholder.
+  /// Never throws: an unidentifiable build must not stop setup.
+  Future<String> installerVersion();
+
   Future<List<WifiNetwork>> scanWifi();
 
   /// The PSK must never be logged, put on an argv, or rendered.

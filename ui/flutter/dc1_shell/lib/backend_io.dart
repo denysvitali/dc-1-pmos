@@ -76,6 +76,26 @@ class IoBackendClient implements BackendClient {
     _http = null;
   }
 
+  /// GET /status -> {"provisioned":bool,"version":"<commit>"}.
+  ///
+  /// Swallows everything: this is a footer caption, and no failure of it may
+  /// stop somebody setting up their tablet.
+  @override
+  Future<String> installerVersion() async {
+    try {
+      final Object? decoded = await _requestJson('GET', '/status', null);
+      if (decoded is Map<String, Object?>) {
+        final Object? version = decoded['version'];
+        if (version is String) {
+          return version;
+        }
+      }
+    } on Object {
+      return '';
+    }
+    return '';
+  }
+
   @override
   Future<List<WifiNetwork>> scanWifi() async {
     final Object? decoded = await _requestJson('GET', '/wifi/scan', null);

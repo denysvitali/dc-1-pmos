@@ -215,4 +215,28 @@ if grep "^import 'package:" "$kbd" | grep -qv "^import 'package:flutter/"; then
 	fail "keyboard.dart imports a package outside the Flutter SDK"
 fi
 
+# --- the build caption ---------------------------------------------------
+# The version reaches the panel through four hops in four files. Any one of
+# them silently degrades the footer to "unknown build", which looks exactly
+# like a device that legitimately has no version file, so nothing else here
+# would notice.
+ver="$app/lib/version.dart"
+[ -f "$ver" ] || fail "lib/version.dart is missing"
+grep -qF 'VersionCaption' "$app/lib/widgets.dart" ||
+	fail "StepScaffold does not render the build caption"
+grep -qF 'InstallerVersion(' "$app/lib/onboarding.dart" ||
+	fail "the onboarding flow does not resolve the installer version"
+# Both transports, or the footer is blank on the device (the case that
+# matters) or in the published preview.
+grep -qF "Future<String> installerVersion()" "$app/lib/backend_io.dart" ||
+	fail "the device transport does not implement installerVersion"
+grep -qF "Future<String> installerVersion()" "$app/lib/backend_web.dart" ||
+	fail "the web transport does not implement installerVersion"
+grep -qF "'/status'" "$app/lib/backend_io.dart" ||
+	fail "the device transport does not read the version from GET /status"
+# An empty version must render as an explicit unknown rather than as a blank
+# line that reads like a build with no identity.
+grep -qF "unknown build" "$ver" ||
+	fail "an unavailable version does not render as an explicit unknown"
+
 echo "flutter-ui tests passed"

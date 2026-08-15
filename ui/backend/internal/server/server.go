@@ -16,6 +16,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -23,6 +25,7 @@ import (
 	"github.com/denysvitali/dc-1-pmos/ui/backend/internal/cmdrunner"
 	"github.com/denysvitali/dc-1-pmos/ui/backend/internal/events"
 	"github.com/denysvitali/dc-1-pmos/ui/backend/internal/provision"
+	"github.com/denysvitali/dc-1-pmos/ui/backend/internal/screen"
 	"github.com/denysvitali/dc-1-pmos/ui/backend/internal/secret"
 	"github.com/denysvitali/dc-1-pmos/ui/backend/internal/validate"
 	"github.com/denysvitali/dc-1-pmos/ui/backend/internal/wifi"
@@ -39,6 +42,8 @@ type Config struct {
 	Bus     *events.Bus
 	Now     func() time.Time
 	NewUUID func() string
+	// Screen captures the panel for GET /screenshot. Defaults to grim.
+	Screen screen.Capturer
 }
 
 // Server holds the handlers and the state they share.
@@ -48,6 +53,8 @@ type Server struct {
 	wifi   *wifi.Manager
 	mux    *http.ServeMux
 	runner cmdrunner.Runner
+	root   string
+	screen screen.Capturer
 
 	// onboardMu serialises onboarding so two concurrent submissions cannot
 	// both pass the marker gate.
@@ -82,6 +89,11 @@ func New(cfg Config) *Server {
 		},
 		mux:    http.NewServeMux(),
 		runner: cfg.Runner,
+		root:   root,
+		screen: cfg.Screen,
+	}
+	if s.screen == nil {
+		s.screen = screen.Grim{Root: root}
 	}
 	s.mux.HandleFunc("/wifi/scan", s.handleWiFiScan)
 	s.mux.HandleFunc("/wifi/connect", s.handleWiFiConnect)
@@ -89,6 +101,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("/events", s.handleEvents)
 	s.mux.HandleFunc("/status", s.handleStatus)
 	s.mux.HandleFunc("/finish", s.handleFinish)
+	s.mux.HandleFunc("/screenshot", s.handleScreenshot)
 	return s
 }
 
@@ -136,12 +149,57 @@ func (s *Server) Handler() http.Handler { return s.mux }
 // Bus exposes the progress bus.
 func (s *Server) Bus() *events.Bus { return s.bus }
 
-// GET /status -> {"provisioned":bool}
+// GET /status -> {"provisioned":bool,"version":"<commit>"}
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if !allow(w, r, http.MethodGet) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"provisioned": s.prov.Provisioned()})
+	writeJSON(w, http.StatusOK, statusResponse{
+		Provisioned: s.prov.Provisioned(),
+		Version:     s.installerVersion(),
+	})
+}
+
+type statusResponse struct {
+	Provisioned bool   `json:"provisioned"`
+	Version     string `json:"version"`
+}
+
+// VersionPath is where the dc1-ui package stages the commit it was built
+// from, relative to the rootfs root. scripts/build-ui-payload.sh writes it
+// into the payload and the APKBUILD installs it; the file is one line.
+const VersionPath = "usr/share/dc1-ui/version"
+
+// versionMax bounds the read. The value is rendered on the panel, so a file
+// that is not what we think it is must not turn into a screenful of text --
+// and must not be streamed into a JSON response unbounded either.
+const versionMax = 128
+
+// installerVersion returns the build this system was installed from, or ""
+// when it cannot be established.
+//
+// "" is a real answer and the UI renders it as such: a missing or unreadable
+// file means we do not know, and inventing "unknown" here would be
+// indistinguishable from a build that literally recorded the string
+// "unknown". Anything non-printable is dropped rather than escaped, because
+// the only consumer is a line of text under a setup screen.
+func (s *Server) installerVersion() string {
+	f, err := os.Open(filepath.Join(s.root, VersionPath))
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, versionMax))
+	if err != nil {
+		return ""
+	}
+	line, _, _ := strings.Cut(string(b), "\n")
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r > 0x7e {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(line))
 }
 
 // GET /wifi/scan -> [{"ssid":...,"signal":...}, ...], strongest first.

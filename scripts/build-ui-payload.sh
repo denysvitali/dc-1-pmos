@@ -37,7 +37,7 @@ fatal() {
 check_payload() {
 	cp_dir=$1
 	[ -d "$cp_dir" ] || fatal "payload directory missing: $cp_dir"
-	for cp_member in dc1-backend bundle/dc1_shell bundle/lib/libapp.so \
+	for cp_member in dc1-backend version bundle/dc1_shell bundle/lib/libapp.so \
 			bundle/lib/libflutter_linux_gtk.so bundle/data/icudtl.dat; do
 		[ -f "$cp_dir/$cp_member" ] || fatal "payload is missing $cp_member"
 		[ -s "$cp_dir/$cp_member" ] || fatal "payload member is empty: $cp_member"
@@ -113,6 +113,28 @@ as_root rm -rf -- "$payload_dir"
 mkdir -p "$payload_dir"
 
 sh "$script_dir/build-backend.sh" "$payload_dir/dc1-backend"
+
+# The commit this UI was built from, shown in the onboarding footer so a
+# photograph of a device is enough to identify the build on it. dc1-backend
+# reads it from usr/share/dc1-ui/version and serves it on GET /status.
+#
+# Determined, never guessed: an unknown commit is a build fault, not a value
+# to invent. Writing a placeholder would be indistinguishable, on the panel,
+# from a real build that recorded that placeholder. GITHUB_SHA covers CI,
+# where the checkout is detached and `git rev-parse HEAD` would name the
+# merge commit rather than the pushed one.
+version=${DC1_VERSION:-${GITHUB_SHA:-}}
+if [ -z "$version" ]; then
+	version=$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null || true)
+	# A local build with edits in the tree is not the commit it names.
+	[ -z "$version" ] ||
+		git -C "$repo_dir" diff --quiet HEAD 2>/dev/null ||
+		version="$version-dirty"
+fi
+[ -n "$version" ] ||
+	fatal "cannot determine the commit to record as the UI version: set
+	DC1_VERSION, or build from a git checkout"
+printf '%s\n' "$version" >"$payload_dir/version"
 
 # `pmb chroot -b aarch64` resolves to the native chroot on an aarch64 host --
 # pmb.core.chroot.Chroot collapses a buildroot whose arch is the host arch --

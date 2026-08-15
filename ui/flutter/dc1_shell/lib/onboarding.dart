@@ -12,6 +12,7 @@ import 'screens/timezone_screen.dart';
 import 'screens/username_screen.dart';
 import 'screens/wifi_screen.dart';
 import 'theme.dart';
+import 'version.dart';
 
 /// The onboarding screens, in the order installer/src/tui.sh asks them.
 enum OnboardStep {
@@ -49,13 +50,16 @@ class _OnboardingAppState extends State<OnboardingApp> {
 
   @override
   Widget build(BuildContext context) {
-    return KeyboardScope(
-      notifier: _keyboard,
-      child: MaterialApp(
-        title: 'DC-1 setup',
-        debugShowCheckedModeBanner: false,
-        theme: dc1Theme(),
-        home: OnboardingFlow(client: widget.client),
+    return InstallerVersion(
+      client: widget.client,
+      child: KeyboardScope(
+        notifier: _keyboard,
+        child: MaterialApp(
+          title: 'DC-1 setup',
+          debugShowCheckedModeBanner: false,
+          theme: dc1Theme(),
+          home: OnboardingFlow(client: widget.client),
+        ),
       ),
     );
   }

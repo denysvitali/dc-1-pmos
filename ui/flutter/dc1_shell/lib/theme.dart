@@ -28,6 +28,10 @@ const TextStyle kBodyStyle = TextStyle(color: kForeground, fontSize: 22);
 const TextStyle kInputStyle = TextStyle(color: kForeground, fontSize: 24);
 const TextStyle kHintStyle = TextStyle(color: kMuted, fontSize: 22);
 const TextStyle kErrorStyle = TextStyle(color: kError, fontSize: 18);
+// The build caption under every step. Deliberately the smallest and quietest
+// thing on the panel: it is for identifying a device in a photograph, not for
+// the person setting one up.
+const TextStyle kCaptionStyle = TextStyle(color: kMuted, fontSize: 14);
 const TextStyle kButtonStyle = TextStyle(
   fontSize: 22,
   fontWeight: FontWeight.w600,

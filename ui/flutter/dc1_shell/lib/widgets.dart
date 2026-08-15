@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'keyboard.dart';
 import 'theme.dart';
+import 'version.dart';
 
 /// One onboarding step: title, optional subtitle, a body that owns the
 /// remaining height, and a footer of full-width buttons. Touch-first: every
@@ -46,6 +47,12 @@ class StepScaffold extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 16),
                   child: footerWidget,
                 ),
+              // Below the buttons, and suppressed while the keyboard is up:
+              // with a field focused the panel is already short, and a
+              // caption is not worth a line of the space the user is typing
+              // into.
+              if (keyboard == null || !keyboard.attached)
+                const VersionCaption(),
             ],
           ),
         ),

@@ -37,6 +37,7 @@ type harness struct {
 	root   string
 	socket string
 	bus    *events.Bus
+	srv    *Server
 }
 
 func newHarness(t *testing.T) *harness {
@@ -88,7 +89,7 @@ func newHarness(t *testing.T) *harness {
 			},
 		},
 	}
-	return &harness{client: client, fake: fake, root: root, socket: socket, bus: bus}
+	return &harness{client: client, fake: fake, root: root, socket: socket, bus: bus, srv: srv}
 }
 
 func (h *harness) do(t *testing.T, method, path, body string) (*http.Response, string) {
@@ -544,5 +545,61 @@ func TestFinishRebootsOnlyAfterProvisioning(t *testing.T) {
 			t.Fatalf("never rebooted: %+v", h.fake.Calls())
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// writeVersion stages the file the dc1-ui package installs.
+func writeVersion(t *testing.T, root, content string) {
+	t.Helper()
+	path := filepath.Join(root, VersionPath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStatusReportsTheInstallerVersion(t *testing.T) {
+	h := newHarness(t)
+	writeVersion(t, h.root, "a54581c024438918cfb5db77ee4d727b17ee2dc5\n")
+
+	_, body := h.do(t, http.MethodGet, "/status", "")
+	if !strings.Contains(body, `"version":"a54581c024438918cfb5db77ee4d727b17ee2dc5"`) {
+		t.Fatalf("status did not carry the version: %s", body)
+	}
+}
+
+// No file is the state of every system installed before this shipped, and of
+// any build whose payload lost the file. It must read as "unknown" rather
+// than failing the whole status call the onboarding UI starts up against.
+func TestStatusWithNoVersionFileStillAnswers(t *testing.T) {
+	h := newHarness(t)
+	resp, body := h.do(t, http.MethodGet, "/status", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d: %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `"version":""`) {
+		t.Fatalf("expected an empty version, got %s", body)
+	}
+}
+
+// The value is rendered on the panel, so a file that is not what we think it
+// is must not become a screenful of text or smuggle control characters into
+// the UI.
+func TestVersionIsBoundedAndPrintable(t *testing.T) {
+	h := newHarness(t)
+	writeVersion(t, h.root, "dead\x00beef\x1b[31m\n"+strings.Repeat("x", 4096))
+
+	_, body := h.do(t, http.MethodGet, "/status", "")
+	var got statusResponse
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("status is not JSON: %v: %s", err, body)
+	}
+	if len(got.Version) > versionMax {
+		t.Fatalf("version is %d bytes, past the %d cap", len(got.Version), versionMax)
+	}
+	if got.Version != "deadbeef[31m" {
+		t.Fatalf("version = %q; control characters survived", got.Version)
 	}
 }

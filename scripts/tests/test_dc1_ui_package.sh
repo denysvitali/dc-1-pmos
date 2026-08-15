@@ -153,6 +153,25 @@ grep '^for_window ' "$aport/dc1-ui.sway.conf" | tr -d '\\' |
 	grep -qF "app_id=\"^$app_id\$\"" ||
 	fail "no sway window rule matches the built app_id ($app_id)"
 
+# dc1-backend's /screenshot endpoint shells out to grim; without the package
+# the endpoint 503s on every device and the only way to see the panel goes
+# back to being a photograph.
+grep -qF 'grim' "$aport/APKBUILD" ||
+	fail "dc1-ui does not depend on grim, which /screenshot shells out to"
+grep -qF 'grim' "$root/ui/backend/internal/screen/screen.go" ||
+	fail "the capture path no longer uses grim; the dependency above is now wrong"
+
+# The build writes the commit into the payload, the package installs it, and
+# dc1-backend reads it back to serve GET /status. Three files, one path: if
+# they drift the footer silently reads "unknown build" on every device, which
+# is precisely the state this feature exists to end, and nothing else fails.
+backend_path=$(sed -n 's/^const VersionPath = "\(.*\)"$/\1/p' \
+	"$root/ui/backend/internal/server/server.go")
+[ -n "$backend_path" ] ||
+	fail "dc1-backend no longer declares VersionPath"
+grep -qF "\"\$pkgdir\"/$backend_path" "$aport/APKBUILD" ||
+	fail "the APKBUILD does not install the version file to /$backend_path (the path dc1-backend reads)"
+
 grep -qF 'GDK_BACKEND=wayland' "$aport/dc1-ui-session" ||
 	fail "the wrapper does not force the Wayland GDK backend"
 grep -qF 'MESA_LOADER_DRIVER_OVERRIDE=panfrost' "$aport/dc1-ui-session" ||
@@ -226,6 +245,7 @@ make_payload() {
 	elf "$mp/bundle/dc1_shell"
 	elf "$mp/bundle/lib/libapp.so"
 	elf "$mp/bundle/lib/libflutter_linux_gtk.so"
+	printf '%s\n' 0123456789abcdef0123456789abcdef01234567 >"$mp/version"
 	printf 'icu\n' >"$mp/bundle/data/icudtl.dat"
 	printf 'font\n' >"$mp/bundle/data/flutter_assets/fonts/MaterialIcons"
 	chmod 755 "$mp/dc1-backend" "$mp/bundle/dc1_shell"
@@ -245,6 +265,13 @@ make_payload "$tmp/payload"
 : >"$tmp/payload/bundle/lib/libapp.so"
 ! sh "$checker" --check-payload "$tmp/payload" >/dev/null 2>&1 ||
 	fail "a payload with an empty libapp.so was accepted"
+
+# Without this the onboarding footer says "unknown build" and a photograph of
+# a device stops identifying what is on it.
+make_payload "$tmp/payload"
+rm -f "$tmp/payload/version"
+! sh "$checker" --check-payload "$tmp/payload" >/dev/null 2>&1 ||
+	fail "a payload with no version file was accepted"
 
 make_payload "$tmp/payload"
 rm -f "$tmp/payload/bundle/data/icudtl.dat"

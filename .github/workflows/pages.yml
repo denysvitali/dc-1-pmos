@@ -51,7 +51,11 @@ jobs:
         working-directory: ui/flutter/dc1_shell
         run: |
           flutter config --no-analytics
-          flutter build web --release --base-href /dc-1-pmos/
+          # The device reads its build from a file the payload build writes;
+          # in a browser there is no such file, so the same commit is compiled
+          # in and the preview's footer names the build it is previewing.
+          flutter build web --release --base-href /dc-1-pmos/ \
+            --dart-define=DC1_VERSION="$GITHUB_SHA"
 
       - name: Upload the site
         uses: actions/upload-pages-artifact@v3

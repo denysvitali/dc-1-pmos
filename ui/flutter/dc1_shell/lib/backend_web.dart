@@ -21,6 +21,14 @@ class WebBackendClient implements BackendClient {
     _closed = true;
   }
 
+  /// On the device this comes from a file the build wrote; in the browser
+  /// there is no file, so the pages workflow passes the same commit in with
+  /// `--dart-define=DC1_VERSION=$GITHUB_SHA`. Empty when it was not passed,
+  /// which renders as "unknown build" exactly as it would on a panel.
+  @override
+  Future<String> installerVersion() async =>
+      const String.fromEnvironment('DC1_VERSION');
+
   @override
   Future<List<WifiNetwork>> scanWifi() async {
     // A short pause so the "Scanning for networks..." state is visible, the
