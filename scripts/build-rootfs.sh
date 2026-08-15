@@ -78,7 +78,7 @@ nonfree_firmware = False
 qemu_size = 1024M
 ssh_keys = False
 timezone = UTC
-ui = sway
+ui = gnome-mobile
 user = dc1
 work = $pmb_work
 EOF
