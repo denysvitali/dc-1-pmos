@@ -30,10 +30,18 @@ depend() {
 start() {
 	ebegin "Bringing up the Mali-G57 GPU"
 
+	# The braces are load-bearing: `a || b; return 1` parses as
+	# `(a || b); return 1`, so the return fires whether or not modprobe
+	# succeeded. Measured on hardware 2026-08-15: this service had never once
+	# started -- it reported "failed to start" immediately after a modprobe
+	# that worked, so panfrost never bound, there was no renderD128, and the
+	# Flutter shell fell back to llvmpipe on a device with a perfectly good
+	# Mali-G57. The drivers_probe check below always had its braces, which is
+	# why only these two lines were wrong.
 	modprobe mt6789-live-gpu-overlay 2>/dev/null \
-		|| eend 1 "could not load the GPU overlay module"; return 1
+		|| { eend 1 "could not load the GPU overlay module"; return 1; }
 	modprobe panfrost 2>/dev/null \
-		|| eend 1 "could not load panfrost"; return 1
+		|| { eend 1 "could not load panfrost"; return 1; }
 
 	# Re-probe the mali platform device so panfrost binds it. The overlay
 	# changes its status from disabled to okay; the deferred probe has
