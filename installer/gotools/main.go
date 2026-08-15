@@ -22,6 +22,7 @@ import (
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/ask"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/bootctl"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/installd"
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/installerinit"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/rebootfastboot"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/systeminit"
 )
@@ -38,11 +39,17 @@ func applets() map[string]func([]string) int {
 			return ask.Main(a, os.Stdout, os.Stderr)
 		},
 		"dc1-installd": installd.Main,
-		// Not yet the image's /init -- build.sh still stages the C one. The
-		// applet exists so the port can be exercised; it refuses to do
-		// anything unless it is genuinely PID 1.
+		// Neither init is the image's /init yet -- build.sh still stages the
+		// C ones. The applets exist so the ports can be exercised and
+		// reviewed; each refuses to do anything unless it is genuinely PID 1,
+		// and prints its ordered plan instead. The switch happens only once a
+		// Go init has demonstrably booted, because the device's recovery path
+		// runs through the image it would replace.
 		"system-init": func(a []string) int {
 			return systeminit.Main(a, os.Stdout, os.Stderr)
+		},
+		"dc1-installer-init": func(a []string) int {
+			return installerinit.Main(a, os.Stdout, os.Stderr)
 		},
 	}
 }
