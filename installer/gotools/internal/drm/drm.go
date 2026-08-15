@@ -198,8 +198,22 @@ func (s *Surface) Paint(draw func(pix []byte, stride int)) {
 }
 
 // Blit puts the finished shadow on the panel in one copy.
+//
+// The DC-1 scanout is rotated 180 degrees relative to the physical glass
+// (verified on hardware: content painted at scanout (0,0) appears at the
+// physical bottom-right). The shadow buffer is drawn in LOGICAL coordinates
+// aligned with the glass, so blit rotates 180 before the scanout sees it:
+// logical (x,y) lands at scanout (w-1-x, h-1-y), which the hardware shows at
+// physical (x,y). A 180 rotation is "reverse every 4-byte pixel", done here
+// row-by-row so a driver stride wider than w*4 still maps correctly.
 func (s *Surface) Blit() error {
-	copy(s.mem, s.shadow)
+	for y := 0; y < s.h; y++ {
+		src := s.shadow[y*s.stride : y*s.stride+s.w*4]
+		dst := s.mem[(s.h-1-y)*s.stride : (s.h-1-y)*s.stride+s.w*4]
+		for x := 0; x < s.w; x++ {
+			copy(dst[(s.w-1-x)*4:(s.w-1-x)*4+4], src[x*4:x*4+4])
+		}
+	}
 	return nil
 }
 

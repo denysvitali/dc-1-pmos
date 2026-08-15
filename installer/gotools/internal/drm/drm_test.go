@@ -113,3 +113,30 @@ func TestSurfaceRemembersModesetParameters(t *testing.T) {
 		t.Fatalf("modeset params not set: crtc=%x conn=%x fb=%x", s.crtcID, s.connID, s.fbID)
 	}
 }
+
+// Blit rotates the shadow 180 degrees into the scanout: logical (x,y) must
+// land at scanout (w-1-x, h-1-y). This is the hardware-measured panel
+// orientation -- a straight copy would leave every screen upside-down.
+func TestBlitRotates180(t *testing.T) {
+	// 2x2 logical pixels, stride 8 bytes, each pixel one distinguishable u32.
+	px := func(b byte) []byte { return []byte{0, 0, 0, b} }
+	var shadow []byte
+	shadow = append(shadow, px(0xAA)...) // logical (0,0)
+	shadow = append(shadow, px(0xBB)...) // logical (1,0)
+	shadow = append(shadow, px(0xCC)...) // logical (0,1)
+	shadow = append(shadow, px(0xDD)...) // logical (1,1)
+
+	s := &Surface{w: 2, h: 2, stride: 8, shadow: shadow, mem: make([]byte, 16)}
+	if err := s.Blit(); err != nil {
+		t.Fatalf("Blit: %v", err)
+	}
+
+	// After a 180 rotation, scanout (0,0) == logical (1,1) == 0xDD, etc.
+	want := append(px(0xDD), append(px(0xCC), append(px(0xBB), px(0xAA)...)...)...)
+	for i := range want {
+		if s.mem[i] != want[i] {
+			t.Fatalf("mem[%d] = %#x, want %#x (full: % x vs % x)",
+				i, s.mem[i], want[i], s.mem, want)
+		}
+	}
+}

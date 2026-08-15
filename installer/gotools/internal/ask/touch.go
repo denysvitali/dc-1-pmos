@@ -172,16 +172,15 @@ func le32(b []byte) uint32 {
 func (t *touch) close() { t.f.Close() }
 
 // tap blocks until a complete tap and returns the release position scaled to
-// scanout coordinates.
+// LOGICAL (physical-aligned) coordinates.
 //
-// The mapping was MEASURED on hardware (2026-08-15, the "touchprobe" mode,
-// commit fdebcb6): the raw touch frame is aligned with the physical glass
-// (top-left corner -> raw ~(711,349), bottom-right -> raw ~(15658,15738),
-// axes x=(0,16384) y=(0,16384), no swap, no inversion), but the scanout this
-// tool paints is rotated 180 degrees relative to the glass -- the status
-// banner painted at scanout (0,0) appears at the physical bottom-right. So a
-// tap is mapped raw->scanout by inverting BOTH axes (a 180 rotation), not by
-// the straight scale the C tool used.
+// The mapping was MEASURED on hardware (2026-08-15, the "touchprobe" mode):
+// the raw touch frame is aligned with the physical glass -- top-left corner ->
+// raw ~(711,349), bottom-right -> raw ~(15658,15738), axes x=(0,16384)
+// y=(0,16384), no swap, no inversion. The drawing is done in logical
+// coordinates aligned with the glass, and the 180-degree scanout rotation is
+// handled once at the blit boundary (internal/drm.Surface.Blit), NOT here. So
+// tap() is a straight linear scale: raw and logical share an origin.
 //
 // No sub-range offset is applied: the reported axis bounds (0..16384) map to
 // the full 1200x1600 panel; the corner taps landed slightly inside the edges,
@@ -194,8 +193,8 @@ func (t *touch) tap(w, h int) (int, int, error) {
 		if !t.st.feed(decodeEvent(t.buf)) {
 			continue
 		}
-		x := w - (t.st.x-t.minX)*w/(t.maxX-t.minX)
-		y := h - (t.st.y-t.minY)*h/(t.maxY-t.minY)
+		x := (t.st.x - t.minX) * w / (t.maxX - t.minX)
+		y := (t.st.y - t.minY) * h / (t.maxY - t.minY)
 		return x, y, nil
 	}
 }
