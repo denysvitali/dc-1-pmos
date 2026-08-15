@@ -206,6 +206,23 @@ apply_user() {
 	set_password
 }
 
+apply_gdm_autologin() {
+	# gdm autologs in by NAME, not uid (tinydm used AUTOLOGIN_UID=10000, which
+	# survives the rename; gdm's AutomaticLogin does not). The device package
+	# ships /etc/gdm/custom.conf with AutomaticLogin=dc1 for the unprovisioned
+	# first boot; once this script renames the user, that target is stale and
+	# gdm would fall back to the greeter. Point it at the final username.
+	# No-op unless gdm is present (the GNOME/systemd image ships the config; a
+	# sway image has no gdm and therefore no custom.conf).
+	conf="$ROOT/etc/gdm/custom.conf"
+	[ -f "$conf" ] || return 0
+	if grep -q '^AutomaticLogin=' "$conf"; then
+		sed -i "s/^AutomaticLogin=.*/AutomaticLogin=$A_USER/" "$conf"
+	else
+		sed -i "/^\[daemon\]/a AutomaticLogin=$A_USER" "$conf"
+	fi
+}
+
 apply_wifi() {
 	[ -n "$A_SSID" ] || return 0
 	if [ -d "$ROOT/etc/NetworkManager" ]; then
@@ -307,6 +324,7 @@ validate_answers
 apply_hostname
 apply_timezone
 apply_user
+apply_gdm_autologin
 apply_wifi
 write_marker
 echo "provisioned: user=$A_USER hostname=$A_HOSTNAME tz=$A_TZ wifi=$([ -n "$A_SSID" ] && echo yes || echo no)"

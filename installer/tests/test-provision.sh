@@ -167,6 +167,19 @@ grep -q '^dc1:x:10000:' "$R/etc/passwd" && ok "existing user kept" \
 grep -qF 'dc1:$6$testsalt$' "$R/etc/shadow" && ok "password set on existing user" \
 	|| bad "existing user hash wrong"
 
+# ------------------------------------------------- apply: gdm autologin
+echo "== apply: gdm autologin follows the rename =="
+R="$TMP/root5"
+make_rootfs "$R"
+mkdir -p "$R/etc/gdm"
+printf '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=dc1\n' \
+	> "$R/etc/gdm/custom.conf"
+write_answers "$TMP/ans3"
+sh "$PROV" "$R" "$TMP/ans3" >/dev/null || bad "provision run failed"
+grep -q '^AutomaticLogin=alice$' "$R/etc/gdm/custom.conf" \
+	&& ok "gdm autologin rewritten to the renamed user" \
+	|| bad "gdm autologin not rewritten (still: $(tr '\n' ' ' < "$R/etc/gdm/custom.conf"))"
+
 echo
 echo "test-provision: $pass ok, $failn failed"
 [ "$failn" -eq 0 ]
