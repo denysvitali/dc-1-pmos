@@ -28,19 +28,25 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/imagewrite"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/partition"
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/rebootfastboot"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/wire"
 )
 
 const (
-	answersPath  = "/tmp/answers"
+	answersPath = "/tmp/answers"
+	// The file PID 1 paints on the panel; rc.sh and the installer share it.
+	statusPath   = "/tmp/installer-status"
 	finalizePath = "/etc/installer/finalize.sh"
 	lockDir      = "/tmp/install.lock"
 )
@@ -79,8 +85,16 @@ func Main(args []string) int {
 // serve handles one session. Every reply the host sees is written here, and
 // the session always ends in exactly one OK or FAIL line.
 func serve(conn net.Conn, finalize string) {
+	// Progress goes to BOTH the host socket and the status file PID 1 paints.
+	// Measured on hardware 2026-08-15: without the second half the panel says
+	// "WAITING FOR HOST" for the entire multi-minute install, so the person
+	// holding the tablet sees nothing while the host sees everything. The
+	// shell receiver this replaced wrote the file; dropping it was a
+	// regression, not a simplification.
 	say := func(format string, args ...any) {
-		fmt.Fprintf(conn, "DC1: "+format+"\n", args...)
+		line := fmt.Sprintf(format, args...)
+		fmt.Fprintf(conn, "DC1: %s\n", line)
+		_ = os.WriteFile(statusPath, []byte(line+"\n"), 0o644)
 	}
 	fail := func(format string, args ...any) {
 		fmt.Fprintf(conn, "DC1-INSTALL: FAIL "+format+"\n", args...)
@@ -171,6 +185,38 @@ func serve(conn net.Conn, finalize string) {
 	fmt.Fprintf(conn, "DC1-INSTALL: OK %d bytes sha256=%s rebooting-to-bootloader\n",
 		res.Bytes, res.SHA256)
 	log.Printf("install complete: %d bytes, sha256 %s", res.Bytes, res.SHA256)
+	_ = os.WriteFile(statusPath,
+		[]byte("INSTALL COMPLETE\nREBOOTING TO FASTBOOT\nFLASH THE REAL BOOT IMAGE\n"), 0o644)
+
+	// And then actually do it. Measured on hardware 2026-08-15: this printed
+	// "rebooting-to-bootloader" and then sat in installation mode forever,
+	// because the reboot the message promises was never issued -- the shell
+	// receiver ended with `exec /bin/dc1-reboot-fastboot -f` and the port
+	// dropped it. The host script waits for fastboot that never arrives.
+	//
+	// Give the host a moment to read the OK line first; the socket dies with
+	// the reboot.
+	go func() {
+		time.Sleep(rebootGrace)
+		if err := rebootToFastboot(); err != nil {
+			log.Printf("reboot to fastboot failed: %v", err)
+		}
+	}()
+}
+
+// rebootGrace lets the final OK line reach the host before the link drops.
+var rebootGrace = 2 * time.Second
+
+// rebootToFastboot arms the boot-mode nibble LK reads on the way up and
+// resets. In-process rather than exec: this binary already contains that
+// logic as the dc1-reboot-fastboot applet, and a second implementation of a
+// bootloader register write is exactly what the consolidation removed.
+func rebootToFastboot() error {
+	if err := rebootfastboot.ArmNibble(false, io.Discard); err != nil {
+		return err
+	}
+	syscall.Sync()
+	return syscall.Reboot(syscall.LINUX_REBOOT_CMD_RESTART)
 }
 
 func writeAnswers(answers []byte) error {

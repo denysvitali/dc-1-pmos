@@ -1,6 +1,26 @@
 #!/bin/sh
-# Register the control plane. Best-effort and idempotent, like the device
-# package: if this fails the shell still starts and falls back to the
-# first-light screen rather than leaving a dark panel.
+# Register the control plane.
+#
+# Measured on hardware 2026-08-15: after a clean install this service was NOT
+# in the default runlevel, so /run/dc1-ui.sock never appeared and first-boot
+# onboarding could not run at all -- the device came up to an empty Sway
+# session. The device package's own post-install had registered its services
+# fine, so the trigger mechanism works; this one simply did not take, and
+# `|| true` hid it. Running `rc-update add dc1-backend default` by hand on the
+# installed system worked immediately, which rules out a bad initd.
+#
+# So: try rc-update, and if it does not produce the symlink, create it
+# directly. That is all rc-update does, and it removes the dependency on
+# openrc being fully set up at the moment apk runs this trigger.
+set -e
+
 rc-update add dc1-backend default 2>/dev/null || true
+
+if [ ! -e /etc/runlevels/default/dc1-backend ] && [ -e /etc/init.d/dc1-backend ]; then
+	mkdir -p /etc/runlevels/default
+	ln -sf /etc/init.d/dc1-backend /etc/runlevels/default/dc1-backend
+fi
+
+# Still best-effort overall: a shell with no backend falls back to the
+# first-light screen, which is a degraded device rather than a dark one.
 exit 0
