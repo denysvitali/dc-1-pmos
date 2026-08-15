@@ -246,11 +246,22 @@ class _Dc1KeyboardState extends State<Dc1Keyboard> {
       240.0,
       520.0,
     );
-    return ExcludeFocus(
-      // Without this a key press would move focus off the text field, the
-      // field would detach, and the keyboard would vanish under the user's
-      // finger.
-      child: SizedBox(
+    // TextFieldTapRegion puts the whole keyboard in the SAME tap group as the
+    // text field it types into. Without it the keyboard is unusable, and the
+    // failure is quietly total: EditableText wraps itself in a
+    // TextFieldTapRegion whose default onTapOutside calls unfocus(), so a tap
+    // on the keyboard counts as a tap OUTSIDE the field. The field unfocuses,
+    // the focus listener detaches, the keyboard disappears mid-press -- and
+    // because focus is already gone by the time the key's onTap runs, insert()
+    // finds a nil target and drops the character too. One cause, both
+    // symptoms; observed on the device 2026-08-15.
+    //
+    // ExcludeFocus below is a different guarantee and still needed: it stops
+    // the keys THEMSELVES from taking focus. It does nothing about the field
+    // giving focus up, which is what actually went wrong.
+    return TextFieldTapRegion(
+      child: ExcludeFocus(
+        child: SizedBox(
         height: height,
         child: Container(
           color: kSurface,
@@ -314,7 +325,8 @@ class _Dc1KeyboardState extends State<Dc1Keyboard> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }
 

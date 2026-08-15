@@ -38,6 +38,14 @@ esac
 # the rootfs gets flutter-gtk (the runtime embedder) only.
 FLUTTER_DESKTOP_VERSION=3.38.4-r2
 PROJECT_NAME=dc1_shell
+# The Wayland app_id the shell presents to sway, and the id every window rule
+# in dc1-ui.sway.conf keys off. `flutter create` bakes its template default
+# ("com.example.<project>") into linux/CMakeLists.txt, the runner passes it to
+# g_set_prgname(), and GTK hands that to xdg_toplevel_set_app_id -- so this is
+# the only lever, and it is patched in below rather than committed, because
+# linux/ is generated.
+APPLICATION_ID=it.denv.dc1.shell
+TEMPLATE_APPLICATION_ID=com.example.$PROJECT_NAME
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 src_dir=$(CDPATH= cd -- "$script_dir/../ui/flutter/$PROJECT_NAME" && pwd)
@@ -164,6 +172,22 @@ for artifact in /usr/lib/flutter/icudtl.dat /usr/lib/libflutter_linux_gtk.so; do
 	cp "$artifact" "$ephemeral/"
 done
 
+# Rewrite the generated application id. Asserted before and after: a silent
+# no-op here leaves the app running as com.example.dc1_shell, every window
+# rule in dc1-ui.sway.conf stops matching, and onboarding comes back up inside
+# a titled, bordered window with the status bar over it.
+runner_cmake="$project_dir/linux/CMakeLists.txt"
+grep -qF "set(APPLICATION_ID \"$TEMPLATE_APPLICATION_ID\")" "$runner_cmake" ||
+	fatal "linux/CMakeLists.txt does not declare APPLICATION_ID as
+	$TEMPLATE_APPLICATION_ID; the flutter template changed, so the app_id
+	patch below no longer knows what it is rewriting"
+sed -i "s|set(APPLICATION_ID \"$TEMPLATE_APPLICATION_ID\")|set(APPLICATION_ID \"$APPLICATION_ID\")|" \
+	"$runner_cmake" || fatal "rewriting APPLICATION_ID failed"
+grep -qF "set(APPLICATION_ID \"$APPLICATION_ID\")" "$runner_cmake" ||
+	fatal "APPLICATION_ID was not rewritten to $APPLICATION_ID"
+! grep -qF "$TEMPLATE_APPLICATION_ID" "$runner_cmake" ||
+	fatal "linux/CMakeLists.txt still mentions $TEMPLATE_APPLICATION_ID"
+
 rm -rf "$project_dir/lib" "$project_dir/test"
 cp -R "$src_dir/lib" "$project_dir/lib"
 cp "$src_dir/pubspec.yaml" "$src_dir/analysis_options.yaml" "$project_dir/"
@@ -191,6 +215,13 @@ for member in "$PROJECT_NAME" lib/libapp.so lib/libflutter_linux_gtk.so; do
 	[ -s "$bundle/$member" ] || fatal "bundle member is empty: $member"
 done
 [ -x "$bundle/$PROJECT_NAME" ] || fatal "bundle runner is not executable"
+# The CMake rewrite above only matters if it reached the compiled runner: the
+# id is a string literal in the binary (a -D define consumed by
+# g_set_prgname()), so it is checkable without running anything.
+grep -qF "$APPLICATION_ID" "$bundle/$PROJECT_NAME" ||
+	fatal "the built runner does not carry the app id $APPLICATION_ID"
+! grep -qF "$TEMPLATE_APPLICATION_ID" "$bundle/$PROJECT_NAME" ||
+	fatal "the built runner still carries $TEMPLATE_APPLICATION_ID"
 [ -d "$bundle/data/flutter_assets" ] ||
 	fatal "bundle is missing data/flutter_assets/"
 [ -s "$bundle/data/icudtl.dat" ] ||

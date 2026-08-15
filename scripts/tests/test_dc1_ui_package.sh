@@ -141,6 +141,18 @@ grep -qF 'exec /usr/bin/dc1-ui-session' "$aport/dc1-ui.sway.conf" ||
 	fail "the sway drop-in does not launch the session wrapper"
 [ "$(grep -c '^exec ' "$aport/dc1-ui.sway.conf")" -eq 1 ] ||
 	fail "the sway drop-in must contain exactly one exec line"
+# The window rules are keyed on the app_id the build bakes into the runner,
+# and the two live in different files. Derive the id from the build script so
+# changing it there without changing the rule here is a test failure and not a
+# title bar in front of somebody's first boot.
+app_id=$(sed -n 's/^APPLICATION_ID=\([^ ]*\)$/\1/p' "$scripts/build-flutter-ui.sh")
+[ -n "$app_id" ] || fail "build-flutter-ui.sh no longer sets APPLICATION_ID"
+# Sway criteria are regexes, so the committed rule escapes the dots; strip the
+# backslashes before comparing against the literal id.
+grep '^for_window ' "$aport/dc1-ui.sway.conf" | tr -d '\\' |
+	grep -qF "app_id=\"^$app_id\$\"" ||
+	fail "no sway window rule matches the built app_id ($app_id)"
+
 grep -qF 'GDK_BACKEND=wayland' "$aport/dc1-ui-session" ||
 	fail "the wrapper does not force the Wayland GDK backend"
 grep -qF 'MESA_LOADER_DRIVER_OVERRIDE=panfrost' "$aport/dc1-ui-session" ||

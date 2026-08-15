@@ -191,6 +191,14 @@ grep -q 'class Dc1KeyboardController' "$kbd" ||
 	fail "no keyboard controller to drive the focused field"
 grep -qF 'ExcludeFocus' "$kbd" ||
 	fail "keyboard keys can take focus, which would detach the field being typed into"
+# The one that actually made the keyboard unusable on hardware. EditableText
+# wraps itself in a TextFieldTapRegion whose default onTapOutside calls
+# unfocus(), so without putting the keyboard in the SAME tap group every key
+# press unfocuses the field: the keyboard vanishes mid-press AND the character
+# is dropped, because insert() then has no target. ExcludeFocus does not help
+# -- it stops the keys taking focus, not the field giving it up.
+grep -qE '^[[:space:]]*return TextFieldTapRegion\(' "$kbd" ||
+	fail "keyboard is not in the field's tap region; every keypress will unfocus the field and be lost"
 # The keyboard mutates the controller directly, and Flutter does not fire
 # TextField.onChanged for that -- so the field's onChanged must be threaded
 # through, or validation errors never clear while the user retypes.
