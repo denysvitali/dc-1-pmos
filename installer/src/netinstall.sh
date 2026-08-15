@@ -198,8 +198,13 @@ net_install() {
 
 	wr_lock || fail "another install is running"
 
-	/etc/installer/provision.sh --validate "$answers" \
-		|| fail "answers failed validation"
+	# An unprovisioned install (DC1_SKIP_PROVISION, set by tui.sh's "set up
+	# later" or the USB host's unprovisioned=1 header) has no answers to
+	# validate: the first-boot Flutter onboarding provisions instead.
+	if [ -z "${DC1_SKIP_PROVISION:-}" ]; then
+		/etc/installer/provision.sh --validate "$answers" \
+			|| fail "answers failed validation"
+	fi
 
 	mkdir -p "$NET_DIR"
 	chmod 700 "$NET_DIR"
