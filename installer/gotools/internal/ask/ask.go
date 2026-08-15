@@ -16,10 +16,16 @@
 // (CONFIG_INPUT_UINPUT is absent from jagar_defconfig); unl0kr is no longer
 // packaged in Alpine, shows only a hardcoded password prompt, and drags in
 // libinput + xkbcommon + a running udevd -- none of which can be exercised
-// before first boot on hardware. This tool reuses the two interfaces the
-// installer ALREADY proves out: the framebuffer painting path from src/init.c
-// (fbdev-or-devmem, cached shadow buffer) and the built-in evdev touchscreen
-// (CONFIG_TOUCHSCREEN_ILITEK=y, CONFIG_INPUT_EVDEV=y).
+// before first boot on hardware. This tool is one static binary with no
+// runtime dependencies: a cached shadow buffer blitted to the panel (fb.go)
+// and the built-in evdev touchscreen (CONFIG_TOUCHSCREEN_ILITEK=y,
+// CONFIG_INPUT_EVDEV=y).
+//
+// NEITHER of those two paths has been observed working on the device, and the
+// framebuffer one is inherited from a channel PID 1 has since abandoned --
+// read fb.go's header and touch.go's tap() before trusting this screen.
+// dc1-ask is an addition; the USB install flow is the proven path and the
+// fallback, and tui.sh takes it whenever this exits 2.
 //
 // Secrets: the entered text goes to stdout only. Nothing is written to kmsg,
 // no temp files, no argv leakage.

@@ -43,6 +43,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/pid1"
 )
 
 // StatusFile is written by rc.sh and installd as the install progresses; PID 1
@@ -90,6 +92,9 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	// A Go PID 1 is killable where the C one was not; see pid1.Shield.
+	pid1.Shield()
+
 	Run(SysOps(), stderr)
 	return 0 // unreachable on the device
 }
@@ -108,10 +113,32 @@ func Plan() []string {
 	}
 }
 
+// progress is where every line PID 1 emits goes: its own fds, /dev/kmsg once
+// there is one, and every console node, each written independently.
+//
+// NOT io.MultiWriter: that stops at the first writer that errors, so a dark VT
+// or a gadget with no host would silently take the rest of the channels with
+// it. init.c's say() wrote each channel with its own unchecked write(2) for
+// exactly this reason -- the whole point of the fan-out is that a boot failure
+// is legible on whatever channel happens to be alive.
+type progress struct {
+	ops Ops
+	w   []io.Writer
+}
+
+func (p *progress) Write(b []byte) (int, error) {
+	for _, w := range p.w {
+		_, _ = w.Write(b)
+	}
+	p.ops.Broadcast(string(b))
+	return len(b), nil
+}
+
 // Run is the boot sequence. It never returns.
 func Run(ops Ops, log io.Writer) {
+	out := &progress{ops: ops, w: []io.Writer{log}}
 	say := func(format string, a ...any) {
-		fmt.Fprintf(log, "[dc1-installer] "+format+"\n", a...)
+		fmt.Fprintf(out, "[dc1-installer] "+format+"\n", a...)
 	}
 
 	say("init: entered userspace (installation mode)")
@@ -120,23 +147,24 @@ func Run(ops Ops, log io.Writer) {
 	if kmsg := ops.OpenKmsg(); kmsg != nil {
 		// Everything after this point is visible in dmesg, which is what
 		// the USB serial log actually carries.
-		log = io.MultiWriter(log, kmsg)
-		say = func(format string, a ...any) {
-			fmt.Fprintf(log, "[dc1-installer] "+format+"\n", a...)
-		}
+		out.w = append(out.w, kmsg)
 	}
 	say("init: proc/sys/dev/configfs mounted")
 
 	// A controlling tty, so our writes and kernel messages coexist.
 	_ = ops.GrabTTY("/dev/tty1")
 
-	if err := Gadget(ops, log); err != nil {
+	if err := Gadget(ops, out); err != nil {
 		// Not fatal: rc.sh retries the UDC bind with the real name from
 		// /sys/class/udc once any staged gadget modules are loaded.
 		say("gadget: %v (rc.sh retries)", err)
 	}
 
-	if err := ops.WriteFile(StatusFile, "STARTING\n"); err != nil {
+	// CreateFile, not WriteFile: /tmp is an empty tmpfs at this point and
+	// nothing stages the status file, so an O_WRONLY|O_TRUNC open would fail
+	// with ENOENT every boot -- a false error line where an operator is
+	// scanning for real ones, and no STARTING on the panel.
+	if err := ops.CreateFile(StatusFile, "STARTING\n"); err != nil {
 		say("init: cannot write %s: %v", StatusFile, err)
 	}
 
@@ -144,14 +172,14 @@ func Run(ops Ops, log io.Writer) {
 	// and the display gate can outlast it.
 	startSecondStage(ops, say)
 
-	surface, err := acquireDisplay(ops, log)
+	surface, err := acquireDisplay(ops, out)
 	if err != nil {
 		say("fb: no display (%v) -- status only on serial/kmsg", err)
 	} else {
 		say("fb: acquired via %s", surface.How())
 	}
 
-	loop(ops, surface, log)
+	loop(ops, surface, out)
 }
 
 func mountAll(ops Ops) {

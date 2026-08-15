@@ -567,3 +567,30 @@ func TestShellHelperRespawnsOnItsOwnTTY(t *testing.T) {
 		t.Fatalf("no shell on %s:\n%s", shellTTY, strings.Join(f.calls, "\n"))
 	}
 }
+
+// A helper is a re-exec, not a fork: it starts with no /dev/kmsg, where the C's
+// forked helpers inherited the g_kmsg fd main() opened before forking them
+// (system/init.c:389 vs :404-406). Say's console list has no ttyGS0, and the
+// ttyGS0 boot log the host reads as /dev/ttyACM0 is streamed FROM /dev/kmsg --
+// so a helper that never opens it reports to nobody. The watchdog petter is the
+// one that matters: "no /dev/watchdog", "pet failed" and "deadman lease
+// expired" are the difference between a diagnosable reset and a mystery one.
+func TestHelpersOpenKmsgBeforeSayingAnything(t *testing.T) {
+	for _, helper := range []string{helperWatchdog, helperKmsg, helperShell} {
+		f := newFake()
+		f.wdErr = syscall.ENOENT // make the petter say something immediately
+		cfg := Config{Helper: helper, Once: true, TTY: shellTTY}
+		if rc := runHelper(f, cfg); rc != 0 {
+			t.Fatalf("%s returned %d", helper, rc)
+		}
+		at := indexOf(f.calls, "openkmsg")
+		if at < 0 {
+			t.Fatalf("-helper %s never opened /dev/kmsg; its diagnostics reach "+
+				"no channel the host can see:\n%s", helper, strings.Join(f.calls, "\n"))
+		}
+		if at != 0 {
+			t.Fatalf("-helper %s did work before opening /dev/kmsg (openkmsg at %d):\n%s",
+				helper, at, strings.Join(f.calls, "\n"))
+		}
+	}
+}

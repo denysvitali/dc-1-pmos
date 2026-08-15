@@ -26,14 +26,22 @@ import (
 // The ioctl numbers are COMPUTED from the struct sizes, never written down.
 //
 // An ioctl encoding carries sizeof(arg) in bits 16..29, so a hardcoded number
-// and a struct that disagree is a silent ABI break: the kernel rejects the
-// call with EINVAL and, here, the panel simply never lights. That is not
-// hypothetical -- the first draft of this file hardcoded ADDFB2 as
+// and a struct that disagree is an ABI break with no fixed symptom. That is
+// not hypothetical -- the first draft of this file hardcoded ADDFB2 as
 // 0xc06464b8, encoding 100 bytes, while drm_mode_fb_cmd2 is 104 (the
 // [4]uint64 modifier forces 8-byte alignment padding after the three uint32
-// arrays). Deriving them from unsafe.Sizeof makes that class of mistake
-// impossible, and drm_abi_test.go pins the results against the values the
-// kernel's own headers produce.
+// arrays).
+//
+// What the kernel does with a short encoding, read rather than assumed:
+// drm_ioctl() dispatches on _IOC_NR alone, takes ksize = max(in_size,
+// out_size, drv_size), copies in_size bytes from userspace and zero-fills the
+// rest. So that particular mistake would have been ACCEPTED -- the four
+// truncated bytes were modifier[3], which is zero anyway. A wrong size is
+// silent, not loud: it can zero fields the caller set, or (with a larger
+// encoding) copy back over memory the caller did not offer. Deriving the
+// numbers from unsafe.Sizeof makes the class of mistake impossible, and
+// drm_abi_test.go pins the results against the values the kernel's own headers
+// produce.
 const (
 	iocNRBits   = 8
 	iocTypeBits = 8

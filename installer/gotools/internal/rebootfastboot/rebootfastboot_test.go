@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"unsafe"
 )
 
 func fakeSysfs(t *testing.T, parts map[string]struct {
@@ -195,5 +197,58 @@ func TestArmNibbleDryRunChangesNothing(t *testing.T) {
 	}
 	if binary.LittleEndian.Uint32(got[wdtNonRST2:]) != 0x38002070 {
 		t.Fatal("dry run wrote to the register")
+	}
+}
+
+// msyncRefuses reports whether the kernel refuses to msync(MS_SYNC) this
+// mapping -- the property the fixture below needs, asserted rather than
+// assumed.
+func msyncRefuses(b []byte) error {
+	_, _, errno := syscall.Syscall(syscall.SYS_MSYNC,
+		uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), syscall.MS_SYNC)
+	if errno == 0 {
+		return nil
+	}
+	return errno
+}
+
+// Arming must not be conditional on the mapping being syncable.
+//
+// WDT_NONRST_REG2 is reached through /dev/mem, and msync(MS_SYNC) on a
+// MAP_SHARED mapping of an O_RDWR /dev/mem fd ALWAYS fails with EINVAL:
+// mm/msync.c routes that case into vfs_fsync_range(), which returns -EINVAL
+// when the file has no ->fsync, and drivers/char/mem.c's mem_fops has none. An
+// earlier draft of this port synced between the store and the read-back, so on
+// hardware dc1-reboot-fastboot wrote the nibble, reported "msync: invalid
+// argument" and never rebooted -- taking out the only route back to fastboot
+// from the rescue shell, the watchdog deadman and the installed system. The
+// other tests here cannot see it: they point DC1_MEMDEV at a regular file,
+// which msync is happy to flush.
+//
+// The fixture is an off-page-boundary slice, which the kernel refuses for a
+// different reason (offset_in_page(start), mm/msync.c) but refuses just the
+// same, so it reproduces the failure without needing /dev/mem.
+func TestArmingDoesNotDependOnSyncingTheMapping(t *testing.T) {
+	backing := make([]byte, wdtMapLen+64)
+	mem := backing[8 : 8+wdtMapLen] // never page-aligned, still 4-byte aligned
+	mem[wdtNonRST2] = 0xa5
+
+	if err := msyncRefuses(mem); err == nil {
+		t.Fatal("the fixture is syncable, so it no longer stands in for /dev/mem")
+	}
+
+	var out strings.Builder
+	if err := armMapping(mem, wdtBase, false, &out); err != nil {
+		t.Fatalf("arming failed on a mapping the kernel will not sync: %v\n"+
+			"on the device this is every /dev/mem mapping, i.e. no reboot at all", err)
+	}
+	if got := mem[wdtNonRST2] & bootModeMask; got != bootModeFastboot {
+		t.Fatalf("nibble = %d, want %d", got, bootModeFastboot)
+	}
+	if got := mem[wdtNonRST2] &^ bootModeMask; got != 0xa0 {
+		t.Fatalf("clobbered the high nibble: 0x%02x, want 0xa0", got)
+	}
+	if !strings.Contains(out.String(), "armed:") {
+		t.Fatalf("no arming line reported:\n%s", out.String())
 	}
 }

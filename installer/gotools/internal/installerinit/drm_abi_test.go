@@ -13,9 +13,11 @@ import (
 //
 // This is not belt-and-braces. The first draft of drm.go hardcoded ADDFB2 as
 // 0xc06464b8 -- a size of 100 where drm_mode_fb_cmd2 is 104, because the
-// [4]uint64 modifier array forces 8-byte alignment padding. The kernel would
-// have rejected the ioctl with EINVAL and the panel would simply never have
-// lit, on a device whose only feedback channel IS that panel.
+// [4]uint64 modifier array forces 8-byte alignment padding. That one would in
+// fact have WORKED: drm_ioctl() dispatches on _IOC_NR, copies in_size bytes
+// and zero-fills the tail, and the four bytes lost were modifier[3]. Which is
+// the point -- a wrong size is silent here, not an EINVAL, so the only way to
+// know the encodings are right is to pin them against the headers.
 func TestIoctlEncodingsMatchTheKernelHeaders(t *testing.T) {
 	cases := []struct {
 		name string

@@ -1,8 +1,31 @@
 package ask
 
-// Framebuffer access, the same two-step the installer's PID 1 already proves
-// out (src/init.c): fbdev if the driver bound, /dev/mem at the address LK
+// Framebuffer access: fbdev if the driver bound, /dev/mem at the address LK
 // left the panel scanning out of if it did not.
+//
+// UNPROVEN, and probably wrong. This two-step is carried over verbatim from
+// src/ask.c, which never ran on the device. PID 1 does NOT use it and no
+// longer claims to: init.c:246-250 records that two maximally different
+// framebuffers written through the fbdev emulation produced photographically
+// identical panels, and that only a DRM atomic commit reaches the glass, so
+// init.c paints via fb_via_drm() alone. Both branches here are therefore
+// suspect on this panel: fbdev is a dead instrument, and the LK scanout buffer
+// stops being scanned out the moment PID 1's modeset lands.
+//
+// The obvious repair -- give dc1-ask the DRM surface PID 1 has -- does not
+// work as long as PID 1 owns the panel: DRM allows one master per device
+// (drm_auth.c, drm_setmaster_ioctl(): "if (dev->master) return -EBUSY"), PID 1
+// takes it on open and holds card0 for the life of the boot, and SETCRTC is a
+// DRM_MASTER ioctl. Sharing the panel needs a handover protocol between the
+// two programs -- PID 1 dropping master while /tmp/ui-active exists and
+// re-modesetting after -- which is a design change, not a bug fix, and cannot
+// be validated on a device that is currently unreachable.
+//
+// So this stays as it is, honestly labelled: openFB failing is expected, it
+// exits 2, tui.sh logs "dc1-ask unavailable; USB flow only" to /dev/kmsg and
+// the USB install path -- which is hardware-proven -- carries on.
+// [inferred from init.c's recorded photographic negative + drm_auth.c;
+// dc1-ask itself has never been observed on the panel]
 
 import (
 	"errors"

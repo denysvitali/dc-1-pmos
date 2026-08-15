@@ -174,8 +174,38 @@ func (t *touch) close() { t.f.Close() }
 // tap blocks until a complete tap and returns the release position scaled to
 // screen coordinates: a straight linear scale per axis, no swap and no
 // inversion, i.e. the touchscreen is assumed to be oriented like the
-// framebuffer. [inferred: carried over from src/ask.c, which is the version
-// that was used on the device]
+// framebuffer.
+//
+// THIS MAPPING IS PROBABLY WRONG, and it is untested: it is carried over from
+// src/ask.c, which was never run on the device (016d7e0 shipped with
+// "hardware_verified=false", and the one end-to-end install since then went
+// over the USB host script, which never invokes dc1-ask). The repo's own
+// evidence points the other way:
+//
+//   - device-daylight-jagar/dc1-sway.conf ships `output DSI-1 transform 180`
+//     together with `input "type:touch" { map_to_output DSI-1;
+//     calibration_matrix -1 0 1 0 -1 1 }`, recorded as confirmed by hardware
+//     corner testing, and the failing test that motivated the matrix already
+//     had map_to_output in place.
+//   - wlroots applies the output transform to touch events itself
+//     (types/wlr_cursor.c, handle_touch_down -> apply_output_transform), and
+//     WL_OUTPUT_TRANSFORM_180 is x' = 1-x, y' = 1-y; sway consumes the
+//     already-transformed coordinates (sway/input/cursor.c).
+//
+// Composing those: the compositor had already un-rotated by 180 and taps still
+// landed diametrically opposite the finger, so raw evdev coordinates are
+// inverted on BOTH axes relative to the untransformed CRTC scanout -- which is
+// the buffer this tool paints into. If that holds, every tap here registers at
+// the point mirrored through screen centre: the two install options swap, the
+// cancel and OK corners swap, and no PSK can be typed on the keyboard.
+//
+// It is NOT changed here, because guessing a second time is how you get an
+// interface that is wrong in a new way, and a wrong-but-responsive UI is worse
+// than the exit-2 fallback. The decisive test costs no boot cycle: paint a
+// marker at scanout (0,0), evtest the ilitek node, touch that physical corner;
+// raw X/Y near max rather than min confirms the inversion. Pre-register that
+// before touching this function.
+// [inferred from dc1-sway.conf + wlroots/sway sources; never measured directly]
 func (t *touch) tap(w, h int) (int, int, error) {
 	for {
 		if _, err := io.ReadFull(t.f, t.buf); err != nil {

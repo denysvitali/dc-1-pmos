@@ -28,7 +28,6 @@
 package rebootfastboot
 
 import (
-	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
@@ -37,6 +36,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 )
 
@@ -183,7 +183,34 @@ func ArmNibble(dryRun bool, out io.Writer) error {
 	}
 	defer syscall.Munmap(mem)
 
-	old := binary.LittleEndian.Uint32(mem[wdtNonRST2:])
+	return armMapping(mem, base, dryRun, out)
+}
+
+// armMapping is the register write itself, split out from the mapping so it can
+// be exercised without /dev/mem.
+//
+// There is deliberately no msync here. The C flushed with
+// __sync_synchronize() (dc1-reboot-fastboot.c), a barrier, not a syscall; an
+// earlier draft of this port used msync(MS_SYNC) instead, which ALWAYS fails
+// with EINVAL on a MAP_SHARED mapping of an O_RDWR /dev/mem fd: mm/msync.c
+// routes that case into vfs_fsync_range(), which returns -EINVAL when the file
+// has no ->fsync, and drivers/char/mem.c's mem_fops has none. That turned the
+// only route back to fastboot -- from the rescue shell, from the watchdog
+// deadman, and from the installed system -- into a tool that wrote the
+// register, reported "msync: invalid argument" and never rebooted. The offline
+// tests could not see it because DC1_MEMDEV points at a regular file, where
+// msync succeeds.
+//
+// The store and the read-back are atomic accesses because they must be real
+// memory accesses: the read-back is the proof that the register took, and a
+// plain load of a location the compiler just stored to may be folded into the
+// stored value. LDAR/STLR on arm64, and same-address ordering makes the
+// read-back observe the store on the Device-nGnRE mapping /dev/mem gives us
+// here. Native-endian, like the C's volatile uint32_t store, and every target
+// this builds for is little-endian.
+func armMapping(mem []byte, base uint64, dryRun bool, out io.Writer) error {
+	reg := register(mem[wdtNonRST2:])
+	old := atomic.LoadUint32(reg)
 	fmt.Fprintf(out, "dc1-reboot-fastboot: WDT_NONRST_REG2 (%#x) = 0x%08x, "+
 		"boot mode nibble = %d\n", base+wdtNonRST2, old, old&bootModeMask)
 
@@ -194,26 +221,14 @@ func ArmNibble(dryRun bool, out io.Writer) error {
 	}
 
 	want := (old &^ bootModeMask) | bootModeFastboot
-	binary.LittleEndian.PutUint32(mem[wdtNonRST2:], want)
-	if err := msync(mem); err != nil {
-		return fmt.Errorf("msync: %w", err)
-	}
-	got := binary.LittleEndian.Uint32(mem[wdtNonRST2:])
+	atomic.StoreUint32(reg, want)
+	got := atomic.LoadUint32(reg)
 	if got&bootModeMask != bootModeFastboot {
 		return fmt.Errorf("wrote 0x%08x, read back 0x%08x -- register did not take, "+
 			"NOT rebooting", want, got)
 	}
 	fmt.Fprintf(out, "dc1-reboot-fastboot: armed: 0x%08x -> 0x%08x (nibble %d = fastboot)\n",
 		old, got, bootModeFastboot)
-	return nil
-}
-
-func msync(b []byte) error {
-	_, _, errno := syscall.Syscall(syscall.SYS_MSYNC,
-		uintptr(unsafePointer(b)), uintptr(len(b)), syscall.MS_SYNC)
-	if errno != 0 {
-		return errno
-	}
 	return nil
 }
 

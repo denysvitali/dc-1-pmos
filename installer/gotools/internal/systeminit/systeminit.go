@@ -44,6 +44,8 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/pid1"
 )
 
 const (
@@ -97,6 +99,30 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	if cfg.Helper != "" {
+		return runHelper(o, cfg)
+	}
+
+	// A Go PID 1 is killable where the C one was not; see pid1.Shield. Only on
+	// the init path: the helpers are ordinary children and the C's were
+	// killable too.
+	pid1.Shield()
+	return boot(o, cfg)
+}
+
+// runHelper dispatches a helper child, with /dev/kmsg opened FIRST.
+//
+// The C opened g_kmsg in main() before forking any helper (system/init.c:389
+// vs :404), so every forked helper inherited the fd and its say() reached the
+// ring buffer. Go cannot fork, so the helper re-execs this binary and starts
+// with no kmsg at all -- and the console list Say writes to has no ttyGS0,
+// while the ttyGS0 boot log is fed FROM /dev/kmsg. Without this the watchdog
+// petter's diagnostics ("no /dev/watchdog", "deadman lease expired", "pet
+// failed") reach no channel the host can see, on a device whose only real
+// observation channel is /dev/ttyACM0, and they are missing from dmesg on the
+// installed system too.
+func runHelper(o Ops, cfg Config) int {
+	o.OpenKmsg()
 	switch cfg.Helper {
 	case helperWatchdog:
 		return petter(o, cfg)
@@ -105,7 +131,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	case helperShell:
 		return respawnShell(o, cfg, cfg.TTY)
 	}
-	return boot(o, cfg)
+	return 2
 }
 
 // boot is the sequence. It returns only when it has failed; on success it has

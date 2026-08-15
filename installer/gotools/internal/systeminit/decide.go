@@ -295,9 +295,13 @@ func ParseArgs(args []string, out io.Writer) (Config, error) {
 	return cfg, nil
 }
 
-// selfPath is the binary a helper child re-execs. /proc is mounted by the time
-// we ask, but a boot that cannot answer is not a boot that should stop: the
-// staged link name is a good enough fallback.
+// selfPath is the binary a helper child re-execs.
+//
+// On the device the fallback is ALWAYS what gets used, not an edge case:
+// os.Executable() is readlink("/proc/self/exe") on Linux, Main resolves it
+// before boot() mounts /proc, so it always fails with ENOENT. /bin/dc1tools is
+// therefore a hardcoded path, and it is load-bearing -- build.sh:412 stages the
+// binary there. Move it and the watchdog petter stops starting.
 func selfPath(exe string, err error) string {
 	if err != nil || exe == "" {
 		return "/bin/dc1tools"

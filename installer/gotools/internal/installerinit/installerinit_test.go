@@ -14,9 +14,10 @@ import (
 // code mounts over the running system and never returns, so a recorded call
 // log is the only way to assert the sequence that boot correctness depends on.
 type fakeOps struct {
-	calls   []string
-	present map[string]bool
-	files   map[string]string
+	calls    []string
+	consoles []string
+	present  map[string]bool
+	files    map[string]string
 
 	failWrite  map[string]bool
 	failWait   map[string]bool
@@ -57,9 +58,30 @@ func (f *fakeOps) WriteFile(path, value string) error {
 		f.log("write %s FAILED", path)
 		return errors.New("write refused")
 	}
+	// Faithful to the real one, which has no O_CREATE: sysfs and configfs
+	// attributes always exist, /tmp is an empty tmpfs on an initramfs boot.
+	if strings.HasPrefix(path, "/tmp/") && !f.present[path] {
+		f.log("write %s ENOENT", path)
+		return os.ErrNotExist
+	}
 	f.log("write %s=%s", path, strings.TrimSpace(value))
 	f.files[path] = value
 	return nil
+}
+
+func (f *fakeOps) CreateFile(path, value string) error {
+	if f.failWrite[path] {
+		f.log("create %s FAILED", path)
+		return errors.New("write refused")
+	}
+	f.log("create %s=%s", path, strings.TrimSpace(value))
+	f.present[path] = true
+	f.files[path] = value
+	return nil
+}
+
+func (f *fakeOps) Broadcast(line string) {
+	f.consoles = append(f.consoles, strings.TrimSuffix(line, "\n"))
 }
 
 func (f *fakeOps) ReadFile(path string) (string, error) {
@@ -375,3 +397,117 @@ func TestMainRejectsUnknownArguments(t *testing.T) {
 		t.Fatalf("rc = %d, want 2", rc)
 	}
 }
+
+// runOnce drives Run to the point where the fake stops it, the way the
+// ordering tests above do.
+func runOnce(f *fakeOps) {
+	f.ticks = 1
+	f.stop = func() { panic(errStop) }
+	done := make(chan struct{})
+	go func() {
+		defer func() { recover(); close(done) }()
+		Run(f, io.Discard)
+	}()
+	<-done
+}
+
+// /tmp is an empty tmpfs on an initramfs boot and nothing stages the status
+// file, so an open without O_CREAT fails with ENOENT every single boot: no
+// STARTING on the panel and a false "cannot write" line at the exact moment an
+// operator is scanning the log for real errors. init.c:575 used
+// O_WRONLY|O_CREAT|O_TRUNC here and O_WRONLY|O_TRUNC for sysfs attributes; the
+// distinction is deliberate and has to survive.
+func TestInitialStatusIsCreatedNotJustTruncated(t *testing.T) {
+	f := newFake()
+	f.gateReady()
+	runOnce(f)
+
+	if got := f.files[StatusFile]; strings.TrimSpace(got) != "STARTING" {
+		t.Fatalf("%s = %q, want STARTING -- the first status never reached the panel:\n%s",
+			StatusFile, got, strings.Join(f.calls, "\n"))
+	}
+	for _, c := range f.calls {
+		if strings.Contains(c, "cannot write") || strings.Contains(c, "ENOENT") {
+			t.Fatalf("status write failed: %q", c)
+		}
+	}
+}
+
+// A sysfs/configfs attribute must still NOT be created: a plain file where the
+// kernel should have exposed an attribute hides a missing driver behind a
+// successful write.
+func TestSysfsWritesStillNeverCreate(t *testing.T) {
+	dir := t.TempDir()
+	o := SysOps()
+	path := dir + "/attribute-that-does-not-exist"
+	if err := o.WriteFile(path, "1\n"); err == nil {
+		t.Fatal("WriteFile created a missing file; a missing attribute must stay an error")
+	}
+	if err := o.CreateFile(path, "STARTING\n"); err != nil {
+		t.Fatalf("CreateFile: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || string(b) != "STARTING\n" {
+		t.Fatalf("CreateFile wrote %q, %v", b, err)
+	}
+}
+
+// The failure that has to reach the host: rc.sh cannot start, so the kmsg
+// streamer that feeds ttyGS0 never runs either. init.c's say() wrote every
+// console node itself, ttyGS0 included, which is why the reason appeared on
+// /dev/ttyACM0 anyway. Without that fan-out the operator gets a device that
+// shows a status screen, does nothing, and says why on no channel at all.
+func TestBootFailuresReachTheConsolesNotJustKmsg(t *testing.T) {
+	f := newFake()
+	f.gateReady()
+	f.present["/etc/rc.sh"] = false // busybox is there, rc.sh is not
+	runOnce(f)
+
+	var saw bool
+	for _, l := range f.consoles {
+		if strings.Contains(l, "no installer daemon") {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("the rc.sh failure never reached a console; consoles saw:\n%s",
+			strings.Join(f.consoles, "\n"))
+	}
+}
+
+// ttyGS0 is the one that matters: it is the host's /dev/ttyACM0, and it is the
+// only channel left once the panel is dark and rc.sh (which streams kmsg to
+// the gadget) has failed.
+func TestConsoleListCarriesTheUSBSerial(t *testing.T) {
+	var saw bool
+	for _, c := range consoles {
+		if c == "/dev/ttyGS0" {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("consoles = %v, missing /dev/ttyGS0", consoles)
+	}
+}
+
+// A dead channel must not take the live ones with it. io.MultiWriter returns
+// on the first error, and on this device the first writer is a VT that the
+// panel gate has just told the kernel not to drive.
+func TestOneDeadChannelDoesNotSilenceTheRest(t *testing.T) {
+	f := newFake()
+	p := &progress{ops: f, w: []io.Writer{deadWriter{}, &strings.Builder{}}}
+	live := p.w[1].(*strings.Builder)
+	if _, err := p.Write([]byte("init: something went wrong\n")); err != nil {
+		t.Fatalf("progress.Write reported %v; PID 1 has nowhere to report it to", err)
+	}
+	if !strings.Contains(live.String(), "something went wrong") {
+		t.Fatal("a failing first writer swallowed the line")
+	}
+	if len(f.consoles) != 1 {
+		t.Fatalf("consoles saw %v", f.consoles)
+	}
+}
+
+type deadWriter struct{}
+
+func (deadWriter) Write([]byte) (int, error) { return 0, errors.New("ENXIO") }

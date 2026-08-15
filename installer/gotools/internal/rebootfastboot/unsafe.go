@@ -2,11 +2,17 @@ package rebootfastboot
 
 import "unsafe"
 
-// unsafePointer gives msync the address of the mapping. Confined to this file
-// so the rest of the package stays free of unsafe.
-func unsafePointer(b []byte) unsafe.Pointer {
-	if len(b) == 0 {
-		return nil
+// register reinterprets the four bytes at the start of b as the 32-bit MMIO
+// register they are, so the store and the read-back can be atomic (i.e. real)
+// accesses. Confined to this file so the rest of the package stays free of
+// unsafe.
+//
+// The alignment mmap(2) guarantees is a page, and WDT_NONRST_REG2 sits at
+// offset 0x24 in it, so the pointer is 4-byte aligned by construction --
+// which arm64's LDAR/STLR require.
+func register(b []byte) *uint32 {
+	if len(b) < 4 {
+		panic("register: short mapping")
 	}
-	return unsafe.Pointer(&b[0])
+	return (*uint32)(unsafe.Pointer(&b[0]))
 }

@@ -95,14 +95,23 @@ postmarketOS **buffyboard** injects keys through `/dev/uinput`, and the
 jagar kernel config does not enable `CONFIG_INPUT_UINPUT`; **unl0kr** is no
 longer packaged in Alpine, shows only a hardcoded password prompt, and
 needs libinput + libxkbcommon + a running udevd. `dc1-ask` is instead one
-static binary (<1 MiB) with zero runtime dependencies, reusing the two
-interfaces this installer already proves out: the framebuffer path from
-`src/init.c` (fbdev-or-devmem + cached shadow buffer) and raw evdev from
-the built-in touchscreen driver (`CONFIG_TOUCHSCREEN_ILITEK=y`,
-`CONFIG_INPUT_EVDEV=y`). One screen per question: menu, text (QWERTY +
-symbols on-screen keyboard), secret (masked), info. If it cannot acquire
-the framebuffer or a touchscreen it exits and the USB flow remains — the
-touch UI is an addition, never a dependency.
+static binary (<1 MiB) with zero runtime dependencies: an fbdev-or-`/dev/mem`
+framebuffer with a cached shadow buffer, and raw evdev from the built-in
+touchscreen driver (`CONFIG_TOUCHSCREEN_ILITEK=y`, `CONFIG_INPUT_EVDEV=y`).
+One screen per question: menu, text (QWERTY + symbols on-screen keyboard),
+secret (masked), info. If it cannot acquire the framebuffer or a touchscreen
+it exits and the USB flow remains — the touch UI is an addition, never a
+dependency.
+
+**Neither of those two interfaces has been observed working on the
+device.** `dc1-ask` has never run on hardware, and its framebuffer path is
+not the one PID 1 uses: `src/init.c` records that fbdev does not reach this
+panel's glass and paints over DRM instead, and DRM allows only one master
+per device, so `dc1-ask` cannot simply borrow that surface while PID 1 holds
+it. Treat the touch installer as unproven until it is exercised on the
+panel; the USB flow is the path with hardware behind it. See the headers of
+`gotools/internal/ask/fb.go` and `touch.go` for the evidence and for the
+cheap tests that would settle both questions.
 
 ## System boot image (`jagar-boot.img`)
 
