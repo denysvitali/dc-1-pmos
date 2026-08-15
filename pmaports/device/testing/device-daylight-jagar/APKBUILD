@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=14
+pkgrel=15
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -45,6 +45,7 @@ source="
 	dc1-rtcsync.service
 	dc1-rtcsync.timer
 	80-device-daylight-jagar.preset
+	90-device-daylight-jagar.rules
 "
 
 build() {
@@ -146,4 +147,5 @@ a611b818be1a7af166b59f9b8498c28275725d1de95c3cffe6b2c38900e3a31065fc4e5d2bda023a
 7d241e69a4aaf124d949a6dc04c1ce16fc38532759f7643952b3df8645c3483bf74318c09c2eaf05742b071acbf8a5cbb4f475c96390272975efd614d2052f21  dc1-rtcsync.service
 e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99cfa9065ee15298c54054f83f997c95a99a03346d73f92d5b7  dc1-rtcsync.timer
 06c44d41c420ae0d2487b32f4ec46fb4c6f18270298b3f313226e594d7857f4ac3e99cc93df4783b0cf9956b592bcbc39660b885f6681c66bf97a46ef48901f1  80-device-daylight-jagar.preset
+90c9e9fa22039c8fe4b553fcb7e30b5ec69d8654991b9a1fa73a294ad7db6b48e01d1b67cfd246424b53d238a61db42a95a9ba01d673093fd84b034a3e99f05b  90-device-daylight-jagar.rules
 "

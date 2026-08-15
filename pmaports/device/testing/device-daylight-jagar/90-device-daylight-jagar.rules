@@ -1,0 +1,14 @@
+# DC-1 touch calibration, applied via libinput so it works under any Wayland
+# compositor (sway reads it too; mutter needs it once the desktop migrates).
+#
+# The panel's 180-degree scanout transform physically rotates the touch grid,
+# so without this matrix both axes land on the opposite side of the visible
+# desktop. The value is the same matrix proven in dc1-sway.conf's
+# calibration_matrix (hardware corner testing); sway's own config overrides
+# this with the identical value, so there is no double-application.
+#
+# Matched generically (ID_INPUT_TOUCHSCREEN) rather than by controller name:
+# the device has exactly one touchscreen, and its vendor driver is not
+# characterized in the mainline DT (the touch node is intentionally unwritten
+# there), so a name match would encode a guess.
+ACTION=="add|change", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LIBINPUT_CALIBRATION_MATRIX}="-1 0 1 0 -1 1"
