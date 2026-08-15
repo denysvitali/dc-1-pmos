@@ -1,0 +1,42 @@
+#!/bin/sh
+# Make the on-device apk able to verify a package index.
+#
+# apk-tools 3.x reads signing keys from /etc/apk/keys, but Alpine edge's
+# alpine-keys installs them under /usr/share/apk/keys only. With /etc/apk/keys
+# empty, every index is "UNTRUSTED signature" and every `apk add`/`apk upgrade`
+# ends in "no such package" -- on a device whose only other update route is
+# reflashing the whole rootfs over fastboot.
+#
+# This lives in its own file because BOTH the post-install and the
+# post-upgrade hook have to do it, and having it in only one is exactly the
+# bug this replaces: the keys were linked on a fresh install and never on an
+# upgrade, so any device that had already been installed stayed unable to
+# verify anything, permanently, with no error until someone ran apk by hand.
+#
+# Idempotent and best-effort: an existing key is never overwritten, and a
+# failure here must not fail the package transaction.
+set -u
+
+[ -d /usr/share/apk/keys ] || exit 0
+mkdir -p /etc/apk/keys 2>/dev/null || exit 0
+
+linked=0
+for key in /usr/share/apk/keys/*.pub; do
+	# The glob itself when the directory holds no .pub files.
+	[ -e "$key" ] || continue
+	[ -e "/etc/apk/keys/${key##*/}" ] && continue
+	ln -sf "$key" /etc/apk/keys/ 2>/dev/null && linked=$((linked + 1))
+done
+
+# The arch subdirectory carries the keys for THIS architecture, which is the
+# set that actually signs the packages this device installs.
+if [ -d "/usr/share/apk/keys/$(uname -m)" ]; then
+	for key in "/usr/share/apk/keys/$(uname -m)"/*.pub; do
+		[ -e "$key" ] || continue
+		[ -e "/etc/apk/keys/${key##*/}" ] && continue
+		ln -sf "$key" /etc/apk/keys/ 2>/dev/null && linked=$((linked + 1))
+	done
+fi
+
+[ "$linked" -eq 0 ] || echo "dc1: linked $linked apk signing key(s) into /etc/apk/keys"
+exit 0

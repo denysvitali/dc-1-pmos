@@ -2,18 +2,9 @@
 # Register the DC-1 boot + debug services. Best-effort and idempotent: each
 # service fails safely (panel stays dark / no shell) if absent.
 
-# apk-tools 3.x reads package-signing keys from /etc/apk/keys, but Alpine
-# edge's alpine-keys installs them under /usr/share/apk/keys only, leaving the
-# on-device apk unable to verify any index ("UNTRUSTED signature" -> "no such
-# package"). Symlink each key across so `apk add`/`apk upgrade` work on the
-# device. Never overwrite an existing key.
-if [ -d /usr/share/apk/keys ]; then
-	for k in /usr/share/apk/keys/*.pub; do
-		[ -e "$k" ] || continue
-		[ -e "/etc/apk/keys/${k##*/}" ] || \
-			ln -sf "$k" /etc/apk/keys/ 2>/dev/null || true
-	done
-fi
+# Signing keys, so apk can verify an index (see the helper for why this is
+# shared with post-upgrade rather than written out here).
+[ -x /usr/libexec/dc1-link-apk-keys ] && /usr/libexec/dc1-link-apk-keys
 
 rc-update add dc1-display-gate boot 2>/dev/null || true
 rc-update add dc1-gpu boot 2>/dev/null || true

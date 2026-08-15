@@ -153,6 +153,19 @@ grep '^for_window ' "$aport/dc1-ui.sway.conf" | tr -d '\\' |
 	grep -qF "app_id=\"^$app_id\$\"" ||
 	fail "no sway window rule matches the built app_id ($app_id)"
 
+# apk on the device cannot verify any index unless the signing keys are linked
+# into /etc/apk/keys, and that has to happen on BOTH a fresh install and an
+# upgrade. It lived in post-install only, so every already-installed device
+# stayed unable to run `apk upgrade`, permanently and silently.
+dev="$overlay/device-daylight-jagar"
+[ -x "$dev/dc1-link-apk-keys" ] || fail "dc1-link-apk-keys is missing or not executable"
+for hook in post-install post-upgrade; do
+	grep -qF '/usr/libexec/dc1-link-apk-keys' "$dev/device-daylight-jagar.$hook" ||
+		fail "device-daylight-jagar.$hook does not link the apk signing keys"
+done
+grep -qF 'usr/libexec/dc1-link-apk-keys' "$dev/APKBUILD" ||
+	fail "the device package does not install dc1-link-apk-keys"
+
 # dc1-backend's /screenshot endpoint shells out to grim; without the package
 # the endpoint 503s on every device and the only way to see the panel goes
 # back to being a photograph.

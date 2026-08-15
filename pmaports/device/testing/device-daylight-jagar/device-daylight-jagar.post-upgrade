@@ -1,6 +1,10 @@
 #!/bin/sh
 # Re-assert the boot services after an upgrade (the runlevel entries survive,
 # but re-register in case a service was dropped or renamed between versions).
+# An upgraded device never ran post-install, so without this the keys are
+# linked on fresh installs only and apk upgrade stays broken forever.
+[ -x /usr/libexec/dc1-link-apk-keys ] && /usr/libexec/dc1-link-apk-keys
+
 rc-update add dc1-display-gate boot 2>/dev/null || true
 rc-update add dc1-gpu boot 2>/dev/null || true
 rc-update add dc1-frontlight default 2>/dev/null || true

@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=12
+pkgrel=13
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -31,6 +31,7 @@ source="
 	dc1-sway.conf
 	00-logo-key.conf
 	dc1-reboot-fastboot.c
+	dc1-link-apk-keys
 "
 
 build() {
@@ -49,6 +50,8 @@ package() {
 	# The display gate: open the panel at runtime with no modeset, so the
 	# compositor is the first DRM master. Device-specific (panel driver module
 	# params, GCE/DSI addresses), so it lives here, not in a UI package.
+	install -Dm755 "$srcdir"/dc1-link-apk-keys \
+		"$pkgdir"/usr/libexec/dc1-link-apk-keys
 	install -Dm755 "$srcdir"/dc1-display-gate.initd \
 		"$pkgdir"/etc/init.d/dc1-display-gate
 	install -Dm755 "$srcdir"/dc1-frontlight.initd \
@@ -91,4 +94,5 @@ ee90a6b36e45008b76cc6d2dcc5aaa264e7c2cecfc691263762b92758353c72995e34f02f55f5cf1
 2d4e1aa8e64d152922d962bd67885d8fab8653dc3bda9daeaf19f4fc41b5e5dd99f6efe15a51b8fb27bcbee26632d6fd5eb6b20816253def5a287942bf98dae9  dc1-sway.conf
 45bfbe7279140132e722b1bf7f34b96b71a45f4bd3b4c393d0865c0bd193eafb99104da438d67b3025401d0da4720bbc82ffc64294487c2ce9a0779f3d53724e  00-logo-key.conf
 5fbf5abc67c74b4191dce70727edfe438ed60144d3f2f713e2714858036b1075df22f8a05b0f72f2bb519f3f2a45734630cf580a2ef829cd78725eb161092676  dc1-reboot-fastboot.c
+5a9537f7bb98a69f73be28e15e4e54e2e68afa53a80e8c52c44eba8bde21c3d4696e0580c958807486b7cd2f805fafc14f1c4352bef599570c0f84d0cb639493  dc1-link-apk-keys
 "
