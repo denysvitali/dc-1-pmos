@@ -4,13 +4,12 @@ import 'backend.dart';
 import 'draft.dart';
 import 'keyboard.dart';
 import 'panel_frame.dart';
+import 'screens/account_screen.dart';
 import 'screens/confirm_screen.dart';
 import 'screens/hostname_screen.dart';
-import 'screens/password_screen.dart';
 import 'screens/progress_screen.dart';
 import 'screens/psk_screen.dart';
 import 'screens/timezone_screen.dart';
-import 'screens/username_screen.dart';
 import 'screens/wifi_screen.dart';
 import 'theme.dart';
 import 'version.dart';
@@ -19,8 +18,7 @@ import 'version.dart';
 enum OnboardStep {
   wifi,
   psk,
-  username,
-  password,
+  account,
   hostname,
   timezone,
   confirm,
@@ -38,7 +36,8 @@ class OnboardingApp extends StatefulWidget {
 
 class _OnboardingAppState extends State<OnboardingApp> {
   /// One keyboard for the whole flow: it outlives the individual screens, so
-  /// moving from username to password does not tear it down and rebuild it.
+  /// moving from screen to screen -- or between fields on the account screen
+  /// -- does not tear it down and rebuild it.
   final Dc1KeyboardController _keyboard = Dc1KeyboardController(
     mode: touchKeyboardMode(),
   );
@@ -105,8 +104,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     return switch (_step) {
       OnboardStep.wifi => _wifi(),
       OnboardStep.psk => _psk(),
-      OnboardStep.username => _username(),
-      OnboardStep.password => _password(),
+      OnboardStep.account => _account(),
       OnboardStep.hostname => _hostname(),
       OnboardStep.timezone => _timezone(),
       OnboardStep.confirm => _confirm(),
@@ -123,7 +121,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       },
       onSkip: () {
         _draft.clearWifi();
-        _go(OnboardStep.username);
+        _go(OnboardStep.account);
       },
     );
   }
@@ -134,31 +132,21 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       initial: _draft.psk,
       onNext: (String psk) {
         _draft.psk = psk;
-        _go(OnboardStep.username);
+        _go(OnboardStep.account);
       },
       onBack: () => _go(OnboardStep.wifi),
     );
   }
 
-  Widget _username() {
-    return UsernameScreen(
-      initial: _draft.username,
-      onNext: (String user) {
+  Widget _account() {
+    return AccountScreen(
+      initialUsername: _draft.username,
+      onNext: (String user, String password) {
         _draft.username = user;
-        _go(OnboardStep.password);
-      },
-      onBack: () => _go(_draft.hasWifi ? OnboardStep.psk : OnboardStep.wifi),
-    );
-  }
-
-  Widget _password() {
-    return PasswordScreen(
-      username: _draft.username,
-      onNext: (String password) {
         _draft.password = password;
         _go(OnboardStep.hostname);
       },
-      onBack: () => _go(OnboardStep.username),
+      onBack: () => _go(_draft.hasWifi ? OnboardStep.psk : OnboardStep.wifi),
     );
   }
 
@@ -169,7 +157,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         _draft.hostname = hostname;
         _go(OnboardStep.timezone);
       },
-      onBack: () => _go(OnboardStep.password),
+      onBack: () => _go(OnboardStep.account),
     );
   }
 

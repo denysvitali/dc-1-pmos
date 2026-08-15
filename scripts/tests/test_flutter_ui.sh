@@ -40,8 +40,7 @@ for file in \
 	lib/panel_frame.dart \
 	lib/screens/wifi_screen.dart \
 	lib/screens/psk_screen.dart \
-	lib/screens/username_screen.dart \
-	lib/screens/password_screen.dart \
+	lib/screens/account_screen.dart \
 	lib/screens/hostname_screen.dart \
 	lib/screens/timezone_screen.dart \
 	lib/screens/confirm_screen.dart \
@@ -150,7 +149,7 @@ tz_actual=${tz_actual% }
 
 # 7. Secrets never get rendered or logged.
 ! grep -rn 'print(' "$app/lib" >/dev/null || fail "the UI writes to stdout"
-! grep -rnE 'Text\((draft\.(password|psk)|_first\.text|_second\.text)' \
+! grep -rnE 'Text\((draft\.(password|psk)|_password\.text|_repeat\.text)' \
 	"$app/lib" >/dev/null || fail "a secret is rendered on screen"
 
 # 8. The build script: exact toolchain pin, generated runner, asserted bundle.
