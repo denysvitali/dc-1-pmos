@@ -27,6 +27,7 @@
 MIB=1048576
 WR_FIRST=/tmp/first-mib
 WR_SHA256=""
+WR_BYTES=""
 WR_RESIZE_NOTE=""
 
 # wr_open_target: resolve and sanity-check the target. Sets WR_DEV and
@@ -57,12 +58,20 @@ wr_scrub() {
 }
 
 # Internal: consume the raw stream after the hash tee. Splits off exactly the
-# first MiB (busybox head -c never reads past its byte count) and writes the
-# remainder at offset 1 MiB. dd failure (ENOSPC past the partition end, I/O
-# error) is recorded and the rest of the stream is drained so the hash side
-# still sees every byte.
+# first MiB and writes the remainder at offset 1 MiB. dd failure (ENOSPC past
+# the partition end, I/O error) is recorded and the rest of the stream is
+# drained so the hash side still sees every byte.
+#
+# `dd bs=1M count=1 iflag=fullblock`, NOT `head -c`: head reads in chunks and
+# discards whatever it over-read past its byte count. On a regular file that is
+# invisible (it can seek back), which is why every offline test passed -- but
+# on a PIPE the over-read bytes are gone for good, so the body write starts
+# mid-image and every byte after the superblock lands shifted. Measured on
+# hardware: 1023 bytes swallowed, ext4 metadata and the journal shredded, and
+# the install still reported success because the SHA-256 is computed on the
+# tee branch (what ARRIVED) rather than on what dd wrote.
 wr_body_() {
-	head -c $MIB > "$WR_FIRST"
+	dd of="$WR_FIRST" bs=$MIB count=1 iflag=fullblock 2>/dev/null
 	if dd of="$WR_DEV" bs=$MIB seek=1 conv=fsync 2>/dev/null; then
 		echo ok > /tmp/dd.status
 	else
@@ -77,18 +86,27 @@ wr_body_() {
 # device write failed -- the caller must then wr_reject.
 wr_receive_stream() {
 	wr_limit=${1:-}
-	rm -f /tmp/hash.fifo /tmp/hash.out /tmp/dd.status "$WR_FIRST"
+	rm -f /tmp/hash.fifo /tmp/count.fifo /tmp/hash.out /tmp/count.out \
+		/tmp/dd.status "$WR_FIRST"
 	mkfifo /tmp/hash.fifo || fail "mkfifo failed"
+	mkfifo /tmp/count.fifo || fail "mkfifo failed"
 	sha256sum /tmp/hash.fifo > /tmp/hash.out &
 	wr_hashpid=$!
+	# Byte count of the stream, so wr_commit knows how much of the device to
+	# read back. Counted here rather than trusting the caller's declared size:
+	# a short transfer must not shorten the verification to match itself.
+	wc -c < /tmp/count.fifo > /tmp/count.out &
+	wr_countpid=$!
 	if [ -n "$wr_limit" ]; then
-		head -c "$wr_limit" | tee /tmp/hash.fifo | wr_body_
+		head -c "$wr_limit" | tee /tmp/hash.fifo /tmp/count.fifo | wr_body_
 	else
-		tee /tmp/hash.fifo | wr_body_
+		tee /tmp/hash.fifo /tmp/count.fifo | wr_body_
 	fi
 	wait "$wr_hashpid"
+	wait "$wr_countpid"
 	WR_SHA256=$(cut -d' ' -f1 < /tmp/hash.out)
-	rm -f /tmp/hash.fifo /tmp/hash.out
+	WR_BYTES=$(tr -d ' \n' < /tmp/count.out)
+	rm -f /tmp/hash.fifo /tmp/count.fifo /tmp/hash.out /tmp/count.out
 	[ "$(cat /tmp/dd.status 2>/dev/null)" = ok ]
 }
 
@@ -106,7 +124,12 @@ wr_commit() {
 	wr_first_bytes=$(wc -c < "$WR_FIRST" | tr -d ' ')
 	[ "$wr_first_bytes" -eq $MIB ] || \
 		wr_reject "held-back superblock block is $wr_first_bytes bytes"
-	dd if="$WR_FIRST" of="$WR_DEV" bs=$MIB conv=fsync 2>/dev/null \
+	# conv=notrunc is load-bearing: without it dd opens the target O_TRUNC and
+	# writing the held-back first MiB throws away everything after it. On a
+	# block device O_TRUNC is a no-op, so this is invisible on hardware and
+	# only bites file targets (the offline tests, and any future image-file
+	# deployment) -- which is exactly the kind of asymmetry that survives.
+	dd if="$WR_FIRST" of="$WR_DEV" bs=$MIB conv=notrunc,fsync 2>/dev/null \
 		|| fail "writing verified superblock failed"
 	rm -f "$WR_FIRST"
 	sync
@@ -114,6 +137,22 @@ wr_commit() {
 		|| fail "written image is not ext4"
 	blkid "$WR_DEV" 2>/dev/null | grep -q 'LABEL="jagar-root"' \
 		|| fail "written filesystem is not labelled jagar-root"
+
+	# Read the image back OFF THE DEVICE and hash it. The stream hash proves
+	# what ARRIVED; only this proves what LANDED. blkid above inspects the
+	# superblock alone, so a device write that dropped or reordered blocks
+	# anywhere past the first MiB still passes it -- and the install is then
+	# reported as successful, surfacing much later as a root that will not
+	# mount. Reading ~1.5 GiB back from UFS costs a few seconds; a silent
+	# corrupt install costs a reflash and a bisect.
+	if [ -n "$WR_BYTES" ] && [ -n "$WR_SHA256" ]; then
+		say "VERIFYING WRITTEN IMAGE"
+		wr_mibs=$(( (WR_BYTES + MIB - 1) / MIB ))
+		wr_back=$(dd if="$WR_DEV" bs=$MIB count="$wr_mibs" 2>/dev/null \
+			| head -c "$WR_BYTES" | sha256sum | cut -d' ' -f1)
+		[ "$wr_back" = "$WR_SHA256" ] || wr_reject \
+			"read-back mismatch: device has $wr_back, image is $WR_SHA256"
+	fi
 	say "IMAGE WRITTEN + VERIFIED"
 }
 

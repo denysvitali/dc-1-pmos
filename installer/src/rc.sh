@@ -173,12 +173,28 @@ else
 fi
 
 # ------------------------------------------------------- 5. installer daemon
-# One install session at a time. receive.sh talks the DC1-INSTALL-V1 protocol
-# on the socket, writes progress to /tmp/installer-status (painted by /init),
-# and reboots to the bootloader on success -- so this loop normally never
-# comes back around after a successful install.
-log "installer daemon listening on TCP 5555"
-while : ; do
-    /bin/busybox nc -l -p 5555 -e /etc/installer/receive.sh
-    sleep 1
-done
+# One install session at a time, speaking DC1-INSTALL-V1 on TCP 5555.
+#
+# dc1-installd (Go) owns this rather than `nc -e receive.sh`. The shell
+# receiver silently corrupted every install: its busybox pipeline threw away
+# whatever `head -c` over-read past the held-back superblock (1023 bytes,
+# measured on hardware), so the image body landed shifted, and the SHA-256 it
+# checked was of what ARRIVED rather than what was written. The Go receiver
+# splits exactly (io.ReadFull) and reads the image back off the device before
+# calling the install a success.
+#
+# receive.sh is still staged as a fallback: if the daemon cannot start, an
+# install over USB is the only way back into a device with no working root.
+if [ -x /bin/dc1-installd ]; then
+    log "installer daemon (dc1-installd) listening on TCP 5555"
+    while : ; do
+        /bin/dc1-installd -listen 0.0.0.0:5555
+        sleep 1
+    done
+else
+    log "dc1-installd missing; falling back to the shell receiver"
+    while : ; do
+        /bin/busybox nc -l -p 5555 -e /etc/installer/receive.sh
+        sleep 1
+    done
+fi

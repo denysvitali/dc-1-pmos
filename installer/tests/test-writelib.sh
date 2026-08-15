@@ -196,6 +196,50 @@ else
 	ok "refuses to commit a sub-MiB stream"
 fi
 
+# Byte-exactness THROUGH A PIPE. This is the regression test for the bug that
+# shipped: the body split used `head -c`, which discards whatever it over-read
+# past its count. Against a regular file that is invisible (head seeks back),
+# so every test here passed while real installs -- fed from a socket, i.e. a
+# pipe -- silently shifted the whole image by the over-read (1023 bytes,
+# measured on hardware) and produced an unmountable root.
+#
+# The stream is deliberately delivered in awkward, non-power-of-two chunks
+# through a pipe, because a pipe that hands over exact 1 MiB reads would not
+# reproduce it.
+# The split itself is what regressed, so this checks it directly rather than
+# going through wr_commit (whose ext4/label gate would reject random content).
+# Reconstructing WR_FIRST + the body must reproduce the input byte for byte.
+t_exact() {
+	wr_open_target
+	wr_scrub
+	wr_receive_stream
+}
+exact_img="$TMP/exact-image"
+head -c $((3 * MIB)) /dev/urandom > "$exact_img"
+head -c $((8 * MIB)) /dev/zero > "$target"
+# Fed in 7001-byte chunks through a pipe, so the 1 MiB boundary lands mid-read
+# and an over-reading splitter loses the remainder of that read.
+#
+# Honest limitation: this cannot FAIL on a GNU-coreutils host, because GNU
+# head -c does not over-read a pipe -- only busybox does, and how much it eats
+# varies by version and by how the pipe delivers (1023 bytes, measured on the
+# device's busybox 1.38.0; not reproducible against 1.37.0 here). So this is
+# defence-in-depth, and the structural check below is the tripwire that holds.
+if (dd if="$exact_img" bs=7001 2>/dev/null | DC1_DEV="$target" \
+	DC1_PART_BYTES=$((8 * MIB)) scenario t_exact) 2>/dev/null; then
+	{
+		cat "$TMP/first-mib"
+		dd if="$target" bs=$MIB skip=1 2>/dev/null
+	} | head -c $((3 * MIB)) > "$TMP/exact-rebuilt"
+	if cmp -s "$exact_img" "$TMP/exact-rebuilt"; then
+		ok "pipe-fed stream is split byte-exact"
+	else
+		bad "pipe-fed stream is NOT byte-exact (head -c over-read regression)"
+	fi
+else
+	bad "wr_receive_stream failed on a pipe-fed stream"
+fi
+
 echo
 echo "test-writelib: $pass ok, $failn failed"
 [ "$failn" -eq 0 ]

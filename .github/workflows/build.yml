@@ -116,6 +116,23 @@ jobs:
           go vet ./...
           go test ./...
 
+      # The installer daemon owns the byte-critical write path, so its tests
+      # (exact splitting from a dribbling reader, superblock held back until
+      # the transfer verifies, read-back catching a device that drops writes)
+      # are the regression net for the corruption that shipped.
+      - name: dc1-installd build, vet, test
+        working-directory: installer/installd
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+          # It ships into an aarch64 initramfs; prove it cross-compiles here
+          # rather than an hour into the device build.
+          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o /tmp/dc1-installd .
+          ls -l /tmp/dc1-installd
+
       - name: Boot tooling helper syntax
         run: python3 -m py_compile boot/mkboot/vendorboot_v4_verify.py
 

@@ -254,6 +254,22 @@ RFSRC="$HERE/../pmaports/device/testing/device-daylight-jagar/dc1-reboot-fastboo
 "$CC" -static -Os -Wall -Wextra -o "$OUT/dc1-ask" "$SRC/ask.c"
 "$STRIP" "$OUT/dc1-ask"
 
+# dc1-installd: the USB installer daemon (Go). It owns the byte-critical path
+# -- receive, write, and prove the bytes on the device are the bytes that were
+# sent -- because the busybox pipeline it replaces silently corrupted every
+# install: `head -c` discards what it over-reads past its count (1023 bytes,
+# measured on hardware), so the body landed shifted and nothing noticed. The
+# shell's SHA-256 hashed what ARRIVED, not what was written.
+#
+# CGO_ENABLED=0: a genuinely static binary with no libc at all, which is a
+# stronger guarantee than -static against musl, and it cross-compiles without
+# a toolchain.
+INSTALLD_SRC="$HERE/installd"
+[ -f "$INSTALLD_SRC/go.mod" ] || fatal "missing $INSTALLD_SRC/go.mod"
+( cd "$INSTALLD_SRC" && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+	go build -trimpath -ldflags='-s -w' -o "$OUT/dc1-installd" . ) \
+	|| fatal "dc1-installd build failed"
+
 # ---------------------------------------------------------------- 2. skeleton
 d="$ROOT/installer"
 mkdir -p "$d"/dev "$d"/proc "$d"/sys "$d"/tmp "$d"/etc/installer "$d"/bin \
@@ -277,7 +293,9 @@ install -m 0755 "$OUT/bootctl"  "$d/bin/bootctl"
 install -m 0755 "$OUT/dc1-ask"  "$d/bin/dc1-ask"
 install -m 0755 "$BUSYBOX" "$d/bin/busybox"
 install -m 0755 "$SRC/rc.sh" "$d/etc/rc.sh"
+install -m 0755 "$OUT/dc1-installd" "$d/bin/dc1-installd"
 install -m 0755 "$SRC/receive.sh" "$d/etc/installer/receive.sh"
+install -m 0755 "$SRC/finalize.sh" "$d/etc/installer/finalize.sh"
 install -m 0755 "$SRC/provision.sh" "$d/etc/installer/provision.sh"
 install -m 0755 "$SRC/netinstall.sh" "$d/etc/installer/netinstall.sh"
 install -m 0755 "$SRC/tui.sh" "$d/etc/installer/tui.sh"
