@@ -1,0 +1,12 @@
+[Unit]
+Description=DC-1 USB gadget (CDC-ECM ethernet + 2x CDC-ACM)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/dc1-usb-gadget start
+ExecStop=/usr/libexec/dc1-usb-gadget stop
+
+[Install]
+WantedBy=multi-user.target

@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=dc1-ui
 pkgdesc="Daylight DC-1 on-device shell: Flutter UI and its control plane"
 pkgver=1
-pkgrel=6
+pkgrel=7
 url="https://github.com/denysvitali/dc-1-pmos"
 license="MIT"
 arch="aarch64"
@@ -38,6 +38,9 @@ source="
 	dc1-backend.confd
 	dc1-ui-session
 	dc1-ui.sway.conf
+	dc1-backend.service
+	dc1-backend-socket-perms
+	80-dc1-ui.preset
 "
 
 # The Flutter bundle and the dc1-backend binary cannot be produced by abuild:
@@ -87,6 +90,16 @@ package() {
 	install -Dm755 "$srcdir"/dc1-ui-session "$pkgdir"/usr/bin/dc1-ui-session
 	install -Dm644 "$srcdir"/dc1-ui.sway.conf \
 		"$pkgdir"/etc/sway/config.d/10-dc1-ui.conf
+
+	# systemd unit alongside the OpenRC init script; the runtime init system
+	# uses whichever it knows. The ExecStartPost helper carries the socket
+	# permission handoff from dc1-backend.initd's start_post().
+	install -Dm755 "$srcdir"/dc1-backend-socket-perms \
+		"$pkgdir"/usr/libexec/dc1-backend-socket-perms
+	install -Dm644 "$srcdir"/dc1-backend.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-backend.service
+	install -Dm644 "$srcdir"/80-dc1-ui.preset \
+		"$pkgdir"/usr/lib/systemd/system-preset/80-dc1-ui.preset
 }
 
 sha512sums="
@@ -94,4 +107,7 @@ sha512sums="
 0d0d9d815855b978e522dc13689d3f9eceb02ea764db122198bd6086dcba36e37437df169681f754aefcd1790cf04451187f40793ff6a8526f76b17cb22532a7  dc1-backend.confd
 4d9ce2c8a8da97c0d5a55e1cb3adbf386c614aef8442a939346470e5185276a2ae55abcf9bc3efc0bc139bc067199145c3bf93e42bf0ecc799bfcb8a6a93e92a  dc1-ui-session
 b9b609cb1a82e4a20cadcc7443a1a9d7bc7b1aa81a50249af23ae2060c60ed96e235defa6c41125bfb6e74449a686635ff600dcdbb82b624b33ef072a8b9e13b  dc1-ui.sway.conf
+3bebb9075af648c9335d74b7f0a461de0b212e01dcec2a2dc1be356a6978a6d86147c0ae129c932fbd37f0fe178b7c77f31a0a62160fb63f017bb33c1b815925  dc1-backend.service
+46304aee1726f9ffcc6388107f90df35a2ec6d566bc12470705cdce1a561f546c526ec62dc9db4427c75993ceba9784c37436efd197c520e2114e1c2857dac52  dc1-backend-socket-perms
+0ad1a3816e2ab768763fede7aec9f4f23596c7f5da6a07e77393c0510cc7584fac71be083839371c6ff0837ae9c22add58e91bfbbb27a447e1ca2e4001fdf27a  80-dc1-ui.preset
 "

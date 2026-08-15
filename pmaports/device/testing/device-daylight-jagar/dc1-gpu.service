@@ -1,0 +1,12 @@
+[Unit]
+Description=Bring up the Mali-G57 (Panfrost) GPU
+After=local-fs.target
+Before=gdm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/dc1-gpu
+
+[Install]
+WantedBy=multi-user.target

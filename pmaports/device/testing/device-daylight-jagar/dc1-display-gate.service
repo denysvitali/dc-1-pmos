@@ -1,0 +1,12 @@
+[Unit]
+Description=Open the DC-1 display gate (no modeset)
+After=local-fs.target
+Before=gdm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/dc1-display-gate
+
+[Install]
+WantedBy=multi-user.target

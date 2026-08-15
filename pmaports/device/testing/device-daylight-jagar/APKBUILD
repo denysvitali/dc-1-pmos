@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=13
+pkgrel=14
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -32,6 +32,19 @@ source="
 	00-logo-key.conf
 	dc1-reboot-fastboot.c
 	dc1-link-apk-keys
+	dc1-usb-gadget
+	dc1-usb-gadget.service
+	dc1-debug-shell
+	dc1-debug-shell.service
+	dc1-display-gate
+	dc1-display-gate.service
+	dc1-gpu
+	dc1-gpu.service
+	dc1-frontlight
+	dc1-frontlight.service
+	dc1-rtcsync.service
+	dc1-rtcsync.timer
+	80-device-daylight-jagar.preset
 "
 
 build() {
@@ -76,6 +89,31 @@ package() {
 	install -Dm644 "$srcdir"/00-logo-key.conf \
 		"$pkgdir"/etc/sway/config.d/00-logo-key.conf
 
+	# systemd units run alongside the OpenRC init scripts; the runtime init
+	# system uses whichever it knows. The .service files exec the helpers in
+	# /usr/libexec, which carry the same sequences as the .initd files.
+	install -Dm755 "$srcdir"/dc1-usb-gadget "$pkgdir"/usr/libexec/dc1-usb-gadget
+	install -Dm755 "$srcdir"/dc1-debug-shell "$pkgdir"/usr/libexec/dc1-debug-shell
+	install -Dm755 "$srcdir"/dc1-display-gate "$pkgdir"/usr/libexec/dc1-display-gate
+	install -Dm755 "$srcdir"/dc1-gpu "$pkgdir"/usr/libexec/dc1-gpu
+	install -Dm755 "$srcdir"/dc1-frontlight "$pkgdir"/usr/libexec/dc1-frontlight
+	install -Dm644 "$srcdir"/dc1-usb-gadget.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-usb-gadget.service
+	install -Dm644 "$srcdir"/dc1-debug-shell.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-debug-shell.service
+	install -Dm644 "$srcdir"/dc1-display-gate.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-display-gate.service
+	install -Dm644 "$srcdir"/dc1-gpu.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-gpu.service
+	install -Dm644 "$srcdir"/dc1-frontlight.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-frontlight.service
+	install -Dm644 "$srcdir"/dc1-rtcsync.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-rtcsync.service
+	install -Dm644 "$srcdir"/dc1-rtcsync.timer \
+		"$pkgdir"/usr/lib/systemd/system/dc1-rtcsync.timer
+	install -Dm644 "$srcdir"/80-device-daylight-jagar.preset \
+		"$pkgdir"/usr/lib/systemd/system-preset/80-device-daylight-jagar.preset
+
 	# The only route from a running system back into LK's fastboot, and so
 	# the only route back to flashing. See the source for the LK evidence.
 	install -Dm755 "$srcdir"/dc1-reboot-fastboot \
@@ -95,4 +133,17 @@ ee90a6b36e45008b76cc6d2dcc5aaa264e7c2cecfc691263762b92758353c72995e34f02f55f5cf1
 45bfbe7279140132e722b1bf7f34b96b71a45f4bd3b4c393d0865c0bd193eafb99104da438d67b3025401d0da4720bbc82ffc64294487c2ce9a0779f3d53724e  00-logo-key.conf
 5fbf5abc67c74b4191dce70727edfe438ed60144d3f2f713e2714858036b1075df22f8a05b0f72f2bb519f3f2a45734630cf580a2ef829cd78725eb161092676  dc1-reboot-fastboot.c
 5a9537f7bb98a69f73be28e15e4e54e2e68afa53a80e8c52c44eba8bde21c3d4696e0580c958807486b7cd2f805fafc14f1c4352bef599570c0f84d0cb639493  dc1-link-apk-keys
+eba8f099ec781c8c4fbe4e9f73f544a0531d10fc3249fade605b434514f7b1efb025da08859c618e988b66a36677a8de95a742fe717f120338caf0f411f3d88f  dc1-usb-gadget
+ef0b3a6abeb2f201071f8cf136aa147e818e672d2c1ef313252269aca6670e55897912cb965c5f9cd1939f0def0571a116c4651598104d18ce4e4de2773c5ec7  dc1-usb-gadget.service
+20ea802bd872e644b2ffd27d75094a304302b59f86427c62a21872ddd3e0050883c9891ff7fddf779255f8f73a52b3dfaf381a4917dd6a321acbc082aad57d2b  dc1-debug-shell
+654db8c8e1717bab8a34fafdc1494406133aa7e50f61c57e14459bb4b471dd0ba2293d0772d0cd4346393390a98f3765fc33ef8ba7220c10c90fac402b2a084c  dc1-debug-shell.service
+376ce1dd3adb3037817c1526d375ce28fae7db697f7507e0559306e34ea93cbfa701733fa709d94c1a5a6a0af224e592cf957227f15a2ab400382bab0abb7018  dc1-display-gate
+d435afb2025114983e8e0b545f859a0bc7fbcb86d7ddf07acdd89070e1ae7384841c8d42d3cab238445316782cb1bc5b655b07837eb372d60d526d8f4886c3d7  dc1-display-gate.service
+2ab16e51fc8043aec332113621976319bbe8c12d48776673614fabbc2e6918b81979e14e74c95968d20d4a4ebc0230f26b2c2626a695bf3b42b725ab48189dd4  dc1-gpu
+e9f0a80372e63be8a04a027326af59e565760c8f97640e2a6627cdf6386fedae2be4e25f4c8888908cbf3ad246ccf5f0748d2f42038ee5ba5735f8ae344963ef  dc1-gpu.service
+f29500ad474be305cd8934aa059a50921a403b0922451a8a36fce295186cbd01bde2972616857bc32d4970161be136c9b09549010c6284f69da6f9c027285b24  dc1-frontlight
+a611b818be1a7af166b59f9b8498c28275725d1de95c3cffe6b2c38900e3a31065fc4e5d2bda023a1bd95549246a0e5ba72126450b53a733f1a5dbf3bd654af7  dc1-frontlight.service
+7d241e69a4aaf124d949a6dc04c1ce16fc38532759f7643952b3df8645c3483bf74318c09c2eaf05742b071acbf8a5cbb4f475c96390272975efd614d2052f21  dc1-rtcsync.service
+e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99cfa9065ee15298c54054f83f997c95a99a03346d73f92d5b7  dc1-rtcsync.timer
+06c44d41c420ae0d2487b32f4ec46fb4c6f18270298b3f313226e594d7857f4ac3e99cc93df4783b0cf9956b592bcbc39660b885f6681c66bf97a46ef48901f1  80-device-daylight-jagar.preset
 "

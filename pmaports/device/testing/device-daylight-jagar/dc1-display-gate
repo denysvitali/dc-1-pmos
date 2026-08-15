@@ -1,0 +1,53 @@
+#!/bin/sh
+# dc1-display-gate -- open the DC-1 panel gate at runtime, with NO modeset.
+# Systemd helper; the OpenRC path is dc1-display-gate.initd, which carries the
+# same sequence. See that file for the full rationale.
+#
+# This sequence is the same one proven on the live installer kernel
+# (installer/src/init.c open_panel_gate()) and the bring-up panel-gate.sh;
+# do not re-derive it. The probe order matters: GCE/CMDQ binds before the
+# panel gate opens, or the dependent DRM chain can wedge the interconnect.
+
+write_sysfs() {
+	local path=$1 value=$2
+	[ -w "$path" ] || { echo "$path not writable" >&2; return 1; }
+	printf '%s\n' "$value" > "$path" || { echo "write $path" >&2; return 1; }
+}
+
+wait_for() {
+	local path=$1 tries=$2 n=0
+	while [ ! -e "$path" ]; do
+		n=$((n + 1))
+		[ "$n" -ge "$tries" ] && { echo "timed out waiting for $path" >&2; return 1; }
+		sleep 1
+	done
+	return 0
+}
+
+panel=/sys/module/panel_novatek_nt36523/parameters
+gce=/sys/bus/platform/devices/10228000.gce
+
+[ -d "$panel" ] || { echo "panel driver not present (wrong kernel?)" >&2; exit 1; }
+
+# Suppress the intermediate DRM client so no fbdev helper steals the first
+# modeset. Must happen before the panel probe pokes mediatek-drm to bind.
+write_sysfs /sys/module/mediatek_drm/parameters/jagar_skip_drm_client Y || exit 1
+
+# Bind GCE/CMDQ first (opening the panel first can wedge the interconnect).
+if [ ! -L "$gce/driver" ]; then
+	write_sysfs /sys/module/mtk_cmdq_mailbox/parameters/jagar_mt6789_probe_stage 4 || exit 1
+	printf '10228000.gce\n' > /sys/bus/platform/drivers_probe \
+		|| { echo "GCE drivers_probe write" >&2; exit 1; }
+	wait_for "$gce/driver" 5 || { echo "GCE did not bind" >&2; exit 1; }
+fi
+
+wait_for /sys/bus/mipi-dsi/devices/14013000.dsi.0 15 \
+	|| { echo "DSI panel device did not appear" >&2; exit 1; }
+
+# Power the panel and poke the deferred probe to retry.
+write_sysfs "$panel/jagar_production_sequence" Y || exit 1
+write_sysfs "$panel/jagar_probe_stage" 3 || exit 1
+printf '14013000.dsi.0\n' > /sys/bus/mipi-dsi/drivers_probe \
+	|| { echo "DSI drivers_probe write" >&2; exit 1; }
+
+wait_for /dev/dri/card0 15 || { echo "/dev/dri/card0 did not appear" >&2; exit 1; }

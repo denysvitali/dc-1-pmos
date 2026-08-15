@@ -1,0 +1,6 @@
+[Unit]
+Description=Write the system clock to the hardware RTC
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'hwclock --systohc 2>/dev/null'

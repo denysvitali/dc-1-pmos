@@ -1,0 +1,12 @@
+[Unit]
+Description=Raise the DC-1 white frontlight after first light
+Requires=dc1-display-gate.service
+After=dc1-display-gate.service gdm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/dc1-frontlight
+
+[Install]
+WantedBy=multi-user.target

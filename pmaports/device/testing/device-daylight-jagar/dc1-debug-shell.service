@@ -1,0 +1,12 @@
+[Unit]
+Description=DC-1 debug shells (ttyGS0 kmsg, ttyGS1, TCP 4444 on usb0)
+Requires=dc1-usb-gadget.service
+After=dc1-usb-gadget.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/dc1-debug-shell
+
+[Install]
+WantedBy=multi-user.target

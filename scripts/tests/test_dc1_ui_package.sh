@@ -317,4 +317,29 @@ chmod 644 "$tmp/payload/dc1-backend"
 ! sh "$checker" --check-payload "$tmp/payload" >/dev/null 2>&1 ||
 	fail "a payload with a non-executable dc1-backend was accepted"
 
+# --- systemd preset enables every installable unit -----------------------
+# A service that ships but is not enabled in the preset silently never starts
+# under systemd (the OpenRC rc-update registration no-ops there). Every
+# .service/.timer that declares an [Install] section must be enabled by its
+# package's preset; units without [Install] (dc1-rtcsync.service) are
+# timer-triggered and must not be enabled directly.
+for preset in \
+	device-daylight-jagar/80-device-daylight-jagar.preset \
+	dc1-ui/80-dc1-ui.preset; do
+	preset_file="$overlay/$preset"
+	[ -f "$preset_file" ] || fail "missing preset: $preset"
+	package=${preset%%/*}
+	sed -n '/^source="/,/^"/p' "$overlay/$package/APKBUILD" |
+		sed '1d; $d' | while read -r unit _; do
+			[ -n "${unit:-}" ] || continue
+			case "$unit" in
+				*.service|*.timer) ;;
+				*) continue ;;
+			esac
+			grep -q '^\[Install\]' "$overlay/$package/$unit" || continue
+			grep -qF "enable $unit" "$preset_file" ||
+				fail "$preset does not enable $unit"
+		done || exit 1
+done
+
 echo "dc1-ui package tests passed"

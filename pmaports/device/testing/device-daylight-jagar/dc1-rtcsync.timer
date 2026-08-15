@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly RTC sync
+
+[Timer]
+OnBootSec=1h
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

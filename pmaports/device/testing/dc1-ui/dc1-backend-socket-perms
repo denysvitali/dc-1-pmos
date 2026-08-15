@@ -1,0 +1,39 @@
+#!/bin/sh
+# dc1-backend-socket-perms -- hand the dc1-backend socket to the desktop
+# user's group. Faithful port of dc1-backend.initd's start_post(); see that
+# file for the uid-vs-name rationale.
+
+socket=/run/dc1-ui.sock
+ui_group=dc1
+ui_uid=10000
+
+# dc1-backend creates the socket mode 0600 root:root. The shell runs as the
+# desktop user, so without this it gets EACCES, reports no backend and falls
+# back to the first-light screen -- a silent loss of onboarding.
+n=0
+while [ ! -S "$socket" ]; do
+	n=$((n + 1))
+	[ "$n" -ge 50 ] && break
+	sleep 0.1
+done
+if [ ! -S "$socket" ]; then
+	echo "$socket did not appear; the UI cannot reach the backend" >&2
+	exit 1
+fi
+
+# Resolve the desktop user's primary group by UID, not by name: onboarding
+# renames uid 10000 and its primary group (provision.sh rename_in_group), so a
+# group NAME goes stale after provisioning while the gid survives. ui_group
+# accepts a real group name; otherwise fall back to the primary group of the
+# desktop uid.
+gid=
+if getent group "$ui_group" >/dev/null 2>&1; then
+	gid=$(getent group "$ui_group" | cut -d: -f3)
+else
+	gid=$(getent passwd "$ui_uid" 2>/dev/null | cut -d: -f4)
+fi
+if [ -n "$gid" ]; then
+	chgrp "$gid" "$socket" && chmod 0660 "$socket"
+else
+	echo "no desktop user/group to hand $socket to; it stays root-only" >&2
+fi
