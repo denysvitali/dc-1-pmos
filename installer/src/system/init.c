@@ -475,6 +475,21 @@ int main(void)
 		}
 	}
 
+	/* Cleanly unbind the initramfs gadget's UDC before switch_root.
+	 *
+	 * switch_root deletes the configfs tree (MNT_DETACH) while this gadget is
+	 * still bound to the UDC, which leaves the UDC half-bound to a dangling
+	 * gadget. The installed system's dc1-usb-gadget.service then rebinds and
+	 * configures usb0 successfully on the device side, but the host never sees
+	 * a re-enumeration (no new 18d1:4ee7, no D+ re-assert) -- so the device
+	 * boots to a working system that is unreachable over USB. Unbinding here,
+	 * while the configfs tree still exists, leaves the UDC free for a clean
+	 * rebind. The debug serial channels (ttyGS0/ttyGS1) drop for the ~1s
+	 * switch_root window; the rescue shell is on tty1/ttyS0 and the deadman
+	 * watchdog still covers a failed switch_root, so nothing is stranded. */
+	wr("/sys/kernel/config/usb_gadget/g1/UDC", "\n");
+	say("gadget: unbound UDC for switch_root");
+
 	say2("init: switching root from verified device ", dev);
 	{
 		const char *old_mounts[] = { "/dev", "/proc", "/sys" };
