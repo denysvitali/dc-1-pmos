@@ -166,17 +166,15 @@ wr_finalize() {
 	mount -t proc  proc  /mnt/root/proc 2>/dev/null
 	mount -t sysfs sysfs /mnt/root/sys  2>/dev/null
 
-	# Grow the filesystem to the whole partition. ext4 supports online grow,
-	# so this runs from the freshly installed rootfs via chroot. Non-fatal:
-	# a system at image size still boots; the failure is reported loudly.
-	WR_RESIZE_NOTE="RESIZED"
-	if chroot /mnt/root /usr/sbin/resize2fs "$WR_DEV" 2>/dev/null \
-	   || chroot /mnt/root /sbin/resize2fs "$WR_DEV" 2>/dev/null; then
-		say "FILESYSTEM RESIZED"
-	else
-		WR_RESIZE_NOTE="RESIZE-FAILED"
-		say "WARNING: RESIZE2FS FAILED - ROOT STAYS AT IMAGE SIZE"
-	fi
+	# NOT resized here. The online chroot resize2fs (EXT4_IOC_RESIZE_FS on the
+	# mounted filesystem) corrupts the extent tree on this kernel
+	# (7.2.0-rc5 mtk-ufs): after an install that mounted cleanly and then ran
+	# the resize, every read failed with "ext4_map_blocks: inode #2: lblock 0
+	# mapped to illegal pblock" and the final umount returned EBUSY -- a fresh
+	# install left unbootable. The image write is byte-verified, so the device
+	# boots fine at image size; growing the filesystem belongs at first boot,
+	# where resize2fs runs against the real root instead of a chroot bind.
+	WR_RESIZE_NOTE="NOT-RESIZED"
 
 	# Provisioning is SKIPPED for an unprovisioned install: the rootfs is
 	# written and resized, but no user/hostname/timezone/Wi-Fi is applied and
