@@ -169,6 +169,25 @@ func (s *Surface) Size() (int, int) { return s.w, s.h }
 func (s *Surface) Stride() int      { return s.stride }
 func (s *Surface) How() string      { return "DRM dumb-buffer" }
 
+// DebugLine returns a one-line root-cause probe for the black-panel bug. It
+// reports the resolved modeset parameters and the first bytes of both the
+// drawn shadow buffer and the scanout mapping, so a boot log alone can tell
+// "paint produced white" (shadow_head = ff..) from "blit reached the mmap"
+// (mem_head = ff..) from "modeset resolved wrong" (bad mode/ids).
+func (s *Surface) DebugLine() string {
+	sh := s.shadow
+	if len(sh) > 16 {
+		sh = sh[:16]
+	}
+	me := s.mem
+	if len(me) > 16 {
+		me = me[:16]
+	}
+	return fmt.Sprintf("mode=%dx%d crtc=%d conn=%d fb=%d pitch=%d size=%d shadow=% x mem=% x",
+		s.mode.HDisplay, s.mode.VDisplay, s.crtcID, s.connID, s.fbID,
+		s.stride, len(s.mem), sh, me)
+}
+
 // Shadow returns the shadow buffer. Nothing draws straight into the scanout:
 // the user must never see a half-drawn screen.
 func (s *Surface) Shadow() []byte { return s.shadow }

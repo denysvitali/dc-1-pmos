@@ -61,6 +61,8 @@ type Surface interface {
 	DropMaster() error
 	// Reacquire takes DRM master back and re-commits the status screen.
 	Reacquire() error
+	// DebugLine is the black-panel root-cause probe (see drm.Surface).
+	DebugLine() string
 }
 
 type sysOps struct{}
@@ -144,17 +146,23 @@ var consoles = []string{"/dev/tty0", "/dev/tty1", "/dev/console",
 	"/dev/ttyS0", "/dev/ttyGS0"}
 
 // Broadcast reproduces init.c's say(): open, write, close, per line and per
-// node, best effort. O_NONBLOCK because a gadget with no host attached would
-// otherwise block PID 1 forever.
+// node, best effort.
+//
+// It MUST use raw syscall writes, not os.File.Write. os.File.Write on a
+// non-blocking fd that returns EAGAIN parks the goroutine in netpoll waiting
+// for writability -- and a gadget serial (ttyGS0) nobody is draining never
+// becomes writable, so PID 1 would hang here on the first status line emitted
+// after the gadget comes up, before the paint loop ever runs. init.c used
+// unchecked write(2), which returns EAGAIN and moves on. This reproduces that.
 func (sysOps) Broadcast(line string) {
 	b := []byte(line)
 	for _, t := range consoles {
-		f, err := os.OpenFile(t, os.O_WRONLY|syscall.O_NONBLOCK|syscall.O_NOCTTY, 0)
+		fd, err := syscall.Open(t, syscall.O_WRONLY|syscall.O_NONBLOCK|syscall.O_NOCTTY, 0)
 		if err != nil {
 			continue
 		}
-		_, _ = f.Write(b)
-		_ = f.Close()
+		_, _ = syscall.Write(fd, b)
+		_ = syscall.Close(fd)
 	}
 }
 

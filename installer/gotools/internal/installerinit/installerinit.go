@@ -249,6 +249,9 @@ func loop(ops Ops, surface Surface, log io.Writer) {
 				PaintStatus(pix, stride, w, h, lines, tick)
 			})
 			_ = surface.Blit()
+			if tick == 0 {
+				fmt.Fprintf(log, "[dc1-installer] DIAG %s\n", surface.DebugLine())
+			}
 		}
 
 		if tick%15 == 0 {
