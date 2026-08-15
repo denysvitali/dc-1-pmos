@@ -140,6 +140,46 @@ class _ProgressScreenState extends State<ProgressScreen> {
     return kAccent;
   }
 
+  /// The checklist mirrors _apply()'s order. Items are checked off by
+  /// substring against the live state -- the same free-form vocabulary the
+  /// terminal states are matched with -- so a step lights up as soon as the
+  /// stream or _apply() moves past it.
+  bool _wifiJoined(String state) {
+    if (!widget.draft.hasWifi) {
+      return true; // Wi-Fi was skipped, so there is nothing to join.
+    }
+    return state.contains('PROVISIONING') ||
+        state.contains('HASHING') ||
+        state.contains('APPLYING') ||
+        state.contains('COMPLETE') ||
+        state.contains('ALREADY');
+  }
+
+  bool _userCreated(String state) =>
+      state.contains('APPLYING HOSTNAME') ||
+      state.contains('COMPLETE') ||
+      state.contains('ALREADY');
+
+  bool _hostApplied(String state) =>
+      state.contains('COMPLETE') || state.contains('ALREADY');
+
+  Widget _step(String label, bool done) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            done ? Icons.check_circle : Icons.radio_button_unchecked,
+            color: done ? kOk : kMuted,
+            size: 26,
+          ),
+          const SizedBox(width: 12),
+          Text(label, style: done ? kBodyStyle : kSubtitleStyle),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final double? fraction = _fraction;
@@ -149,6 +189,11 @@ class _ProgressScreenState extends State<ProgressScreen> {
       title: complete ? 'Done' : (failed ? 'Failed' : 'Setting up'),
       body: ListView(
         children: <Widget>[
+          if (widget.draft.hasWifi)
+            _step('Wi-Fi joined', _wifiJoined(_state)),
+          _step('User created', _userCreated(_state)),
+          _step('Hostname and timezone applied', _hostApplied(_state)),
+          const SizedBox(height: 24),
           Text(
             _state,
             style: TextStyle(

@@ -129,12 +129,12 @@ class OptionTile extends StatelessWidget {
 
   final String label;
   final VoidCallback onTap;
-  final String? trailing;
+  final Widget? trailing;
   final bool selected;
 
   @override
   Widget build(BuildContext context) {
-    final String? trailingText = trailing;
+    final Widget? trailingWidget = trailing;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: ElevatedButton(
@@ -153,16 +153,10 @@ class OptionTile extends StatelessWidget {
             Expanded(
               child: Text(label, overflow: TextOverflow.ellipsis, maxLines: 1),
             ),
-            if (trailingText != null)
+            if (trailingWidget != null)
               Padding(
                 padding: const EdgeInsets.only(left: 12),
-                child: Text(
-                  trailingText,
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: selected ? kBackground : kMuted,
-                  ),
-                ),
+                child: trailingWidget,
               ),
           ],
         ),

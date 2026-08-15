@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'theme.dart';
@@ -232,6 +234,8 @@ class _Dc1KeyboardState extends State<Dc1Keyboard> {
               _Row(
                 children: <Widget>[
                   _Key(
+                    // One-shot, like a phone keyboard: the accent fill says
+                    // "armed" at a glance, and the label shouts with it.
                     label: _shift ? 'SHIFT' : 'shift',
                     flex: 3,
                     highlighted: _shift,
@@ -253,6 +257,7 @@ class _Dc1KeyboardState extends State<Dc1Keyboard> {
                   _Key(
                     label: '⌫',
                     flex: 3,
+                    repeats: true,
                     onTap: widget.controller.backspace,
                   ),
                   _Key(
@@ -287,13 +292,18 @@ class _Row extends StatelessWidget {
   }
 }
 
-class _Key extends StatelessWidget {
+/// A single key. Owns its own pressed state so a press reads as a distinct
+/// background rather than the ink splash alone (which is nearly invisible
+/// against the dark surface), and -- for the backspace key -- repeats while
+/// held.
+class _Key extends StatefulWidget {
   const _Key({
     required this.label,
     required this.onTap,
     this.flex = 2,
     this.accent = false,
     this.highlighted = false,
+    this.repeats = false,
   });
 
   final String label;
@@ -302,15 +312,69 @@ class _Key extends StatelessWidget {
   final bool accent;
   final bool highlighted;
 
+  /// Hold-to-repeat: fire once on press, then again ~450 ms later and every
+  /// ~60 ms until release.
+  final bool repeats;
+
+  @override
+  State<_Key> createState() => _KeyState();
+}
+
+class _KeyState extends State<_Key> {
+  static const Duration _repeatDelay = Duration(milliseconds: 450);
+  static const Duration _repeatInterval = Duration(milliseconds: 60);
+
+  bool _pressed = false;
+  Timer? _repeatTimer;
+
+  @override
+  void dispose() {
+    _stopRepeat();
+    super.dispose();
+  }
+
+  void _startRepeat() {
+    _repeatTimer = Timer(_repeatDelay, () {
+      _repeatTimer = Timer.periodic(_repeatInterval, (_) => widget.onTap());
+    });
+  }
+
+  void _stopRepeat() {
+    _repeatTimer?.cancel();
+    _repeatTimer = null;
+  }
+
+  void _down() {
+    setState(() => _pressed = true);
+    if (widget.repeats) {
+      widget.onTap();
+      _startRepeat();
+    }
+  }
+
+  void _up() {
+    if (!_pressed) {
+      // InkWell reports a cancelled press through both onTapCancel and
+      // onTapUp; only the first one is a real release.
+      return;
+    }
+    setState(() => _pressed = false);
+    _stopRepeat();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final Color background = accent
+    final Color background = _pressed
+        ? widget.accent
+              ? Color.lerp(kAccent, kForeground, 0.4)!
+              : kAccent.withValues(alpha: 0.45)
+        : widget.accent
         ? kAccent
-        : highlighted
+        : widget.highlighted
         ? kAccent.withValues(alpha: 0.30)
         : kBackground;
     return Expanded(
-      flex: flex,
+      flex: widget.flex,
       child: Padding(
         padding: const EdgeInsets.all(3),
         child: Material(
@@ -318,14 +382,25 @@ class _Key extends StatelessWidget {
           borderRadius: kRadius,
           child: InkWell(
             borderRadius: kRadius,
-            onTap: onTap,
+            onTapDown: (_) => _down(),
+            onTapUp: (_) => _up(),
+            onTapCancel: _up,
+            // A repeating key fires from _down() and its timers; firing
+            // again on release would double the last deletion.
+            onTap: widget.repeats ? () {} : widget.onTap,
             child: Center(
               child: Text(
-                label,
+                widget.label,
                 style: TextStyle(
-                  color: accent ? kBackground : kForeground,
+                  color: widget.accent
+                      ? kBackground
+                      : widget.highlighted
+                      ? kAccent
+                      : kForeground,
                   fontSize: 22,
-                  fontWeight: accent ? FontWeight.w600 : FontWeight.normal,
+                  fontWeight: widget.accent || widget.highlighted
+                      ? FontWeight.w600
+                      : FontWeight.normal,
                 ),
               ),
             ),

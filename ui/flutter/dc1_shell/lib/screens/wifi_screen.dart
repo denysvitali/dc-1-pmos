@@ -66,7 +66,12 @@ class _WifiScreenState extends State<WifiScreen> {
     try {
       found = await widget.client.scanWifi();
     } catch (failure) {
-      error = 'Scan failed: $failure';
+      // BackendException carries a sentence worth showing; anything else is
+      // a transport detail, and a raw socket dump helps nobody on a panel.
+      error = failure is BackendException
+          ? 'Could not scan for networks. ${failure.message}'
+          : 'Could not scan for networks. Check that the setup service is '
+                'running, then try again.';
     }
     if (!mounted) {
       return;
@@ -90,7 +95,10 @@ class _WifiScreenState extends State<WifiScreen> {
   }
 
   Widget _buildBody() {
-    if (_scanning) {
+    // First scan: nothing to show yet, so the full-panel spinner is the
+    // honest state. A rescan keeps the previous list under a small
+    // "Rescanning" affordance instead of blanking it.
+    if (_scanning && _networks.isEmpty) {
       return const Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -104,6 +112,27 @@ class _WifiScreenState extends State<WifiScreen> {
     }
 
     final List<Widget> children = <Widget>[];
+    if (_scanning) {
+      children.add(
+        const Padding(
+          padding: EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: <Widget>[
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: kAccent,
+                ),
+              ),
+              SizedBox(width: 12),
+              Text('Rescanning...', style: kSubtitleStyle),
+            ],
+          ),
+        ),
+      );
+    }
     final String? scanError = _scanError;
     if (scanError != null) {
       children.add(ErrorBanner(message: scanError));
@@ -162,7 +191,16 @@ class _WifiScreenState extends State<WifiScreen> {
       children.add(
         OptionTile(
           label: network.ssid,
-          trailing: signal == null ? null : '$signal%',
+          trailing: signal == null
+              ? null
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    SignalBars(signal: signal),
+                    const SizedBox(width: 8),
+                    Text('$signal%', style: const TextStyle(fontSize: 18)),
+                  ],
+                ),
           onTap: () => _choose(network.ssid),
         ),
       );
@@ -182,7 +220,7 @@ class _WifiScreenState extends State<WifiScreen> {
         children: <Widget>[
           if (!_manual) ...<Widget>[
             SecondaryButton(
-              label: 'Rescan',
+              label: _scanning ? 'Rescanning...' : 'Rescan',
               onPressed: _scanning ? null : () => unawaited(_scan()),
             ),
             const SizedBox(height: 12),
@@ -199,6 +237,54 @@ class _WifiScreenState extends State<WifiScreen> {
             label: 'Continue without Wi-Fi',
             onPressed: widget.onSkip,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Signal strength as four bars, the way every phone shows it: percentages
+/// ask the user to guess where "good" starts, bars do not.
+class SignalBars extends StatelessWidget {
+  const SignalBars({required this.signal, super.key});
+
+  final int signal;
+
+  static const List<double> _heights = <double>[8, 13, 18, 23];
+
+  int get _filledBars {
+    if (signal >= 75) {
+      return 4;
+    }
+    if (signal >= 50) {
+      return 3;
+    }
+    if (signal >= 25) {
+      return 2;
+    }
+    return 1;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 28,
+      height: 23,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: <Widget>[
+          for (int i = 0; i < _heights.length; i++)
+            Container(
+              width: 5,
+              height: _heights[i],
+              decoration: BoxDecoration(
+                color: i < _filledBars
+                    ? kForeground
+                    : kMuted.withValues(alpha: 0.35),
+                borderRadius: const BorderRadius.all(Radius.circular(1)),
+              ),
+            ),
         ],
       ),
     );
