@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=16
+pkgrel=17
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -47,6 +47,8 @@ source="
 	80-device-daylight-jagar.preset
 	90-device-daylight-jagar.rules
 	10-dc1-watchdog.conf
+	gdm-custom.conf
+	monitors.xml
 "
 
 build() {
@@ -118,6 +120,14 @@ package() {
 	install -Dm644 "$srcdir"/10-dc1-watchdog.conf \
 		"$pkgdir"/etc/systemd/system.conf.d/10-dc1-watchdog.conf
 
+	# gdm autologin + panel orientation for the GNOME (systemd) desktop. The
+	# 180-degree scanout rotation is a panel-hardware property (the scanout
+	# is upside-down relative to the glass); mutter applies it from a
+	# system-wide monitors.xml that both the greeter and the user session
+	# read. sway still gets the equivalent from dc1-sway.conf.
+	install -Dm644 "$srcdir"/gdm-custom.conf "$pkgdir"/etc/gdm/custom.conf
+	install -Dm644 "$srcdir"/monitors.xml "$pkgdir"/etc/xdg/monitors.xml
+
 	# The only route from a running system back into LK's fastboot, and so
 	# the only route back to flashing. See the source for the LK evidence.
 	install -Dm755 "$srcdir"/dc1-reboot-fastboot \
@@ -152,4 +162,6 @@ e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99c
 06c44d41c420ae0d2487b32f4ec46fb4c6f18270298b3f313226e594d7857f4ac3e99cc93df4783b0cf9956b592bcbc39660b885f6681c66bf97a46ef48901f1  80-device-daylight-jagar.preset
 90c9e9fa22039c8fe4b553fcb7e30b5ec69d8654991b9a1fa73a294ad7db6b48e01d1b67cfd246424b53d238a61db42a95a9ba01d673093fd84b034a3e99f05b  90-device-daylight-jagar.rules
 4a4422c7156a260131069161dda42efc778233f7f09e6d085c3c4fb176ddaf8395e76fcdbba2abdb270d668bd450efd7e4faa0e7919585401b81570cfb0b78b4  10-dc1-watchdog.conf
+353598a3b9f8225bea0a7f091d43d7301789ba0323f5cb4b8f9d26783c039c0bf5b0293cd1dae0bcdd3da50f647ca6160f448f3cfc00565bdef0bba4477939c6  gdm-custom.conf
+21e1d1a5b412890feb45066e8e4cf48b00fcc1cd0ae32e970ef0b841853f7b6d24079b975d2bcfd27561d1a6adde9f475b39952164c5d8dc1d80c4f1c87718e0  monitors.xml
 "
