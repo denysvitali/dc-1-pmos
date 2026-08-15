@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 )
 
 // MiB is the held-back superblock window.
@@ -111,12 +112,20 @@ func Write(dst Target, src io.Reader, size int64, wantSHA string, report Progres
 		_ = scrub(dst)
 		return nil, fmt.Errorf("sync: %w", err)
 	}
+	// The block layer buffers the writes above. On the DC-1's UFS, the per-fd
+	// fsync alone does NOT durably land the superblock -- a mount immediately
+	// after read stale bytes ("Invalid argument"/"Data consistency error",
+	// ext4 magic gone), while the read-back below still "passed" because it
+	// was reading the page cache, not the disk. A global sync forces the
+	// whole device's dirty pages out before anything else reads them.
+	syscall.Sync()
 
-	// Read the image back OFF the device. The hash above proves what arrived;
-	// only this proves what landed. Without it a dropped or shifted device
-	// write is reported as a successful install and surfaces later as a root
-	// that will not mount.
+	// Read the image back OFF the device -- from DISK, not the page cache we
+	// just wrote. Drop the cache first so the hash proves what actually
+	// landed: a cached read-back passes even when the flush was lost, which
+	// is exactly the false "verified" that has cost re-installs on hardware.
 	report("VERIFYING WRITTEN IMAGE")
+	dropCaches()
 	back, err := readBackSHA(dst, size)
 	if err != nil {
 		_ = scrub(dst)
@@ -133,6 +142,14 @@ func Write(dst Target, src io.Reader, size int64, wantSHA string, report Progres
 // Scrub zeroes the first MiB, leaving nothing mountable behind. Exported so
 // the caller can reject a session that failed outside Write.
 func Scrub(dst Target) error { return scrub(dst) }
+
+// dropCaches drops the page cache so a subsequent read hits the block device
+// instead of the pages Write just dirtied. Best-effort: on a non-Linux host
+// (or a missing /proc) it is a no-op and the read-back degrades to the old
+// cache-backed check, not an error.
+func dropCaches() {
+	_ = os.WriteFile("/proc/sys/vm/drop_caches", []byte("3\n"), 0o644)
+}
 
 func scrub(dst Target) error {
 	zero := make([]byte, MiB)
