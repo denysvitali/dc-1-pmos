@@ -58,7 +58,11 @@ web, so an interactive preview of the exact screens is published from
 
 It runs the real onboarding code in the browser (with an in-browser stand-in
 for the backend), so you can click through Wi-Fi setup and account creation
-before flashing anything.
+before flashing anything. On a window larger than the panel it is
+letterboxed, aspect-true, into a panel-sized rectangle so the proportions
+are the device's; smaller windows (a phone) get the full-bleed layout. At
+the end of the flow, "Restart now" restarts the preview — the browser's
+stand-in for the reboot the real device performs.
 
 The preview lets your own keyboard do the typing and leaves the device's
 on-screen keyboard out — on a phone the browser raises its own keyboard over

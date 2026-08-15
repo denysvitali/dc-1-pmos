@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'panel_frame.dart';
 import 'theme.dart';
 
 /// Phase 1 -- "first light": the smallest thing that proves the Flutter GTK
@@ -11,10 +12,14 @@ class FirstLightApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       title: 'DC-1',
       debugShowCheckedModeBanner: false,
-      home: Scaffold(
+      // The same no-op-on-device frame as the onboarding preview, so the
+      // ?firstlight=1 browser view is panel-shaped too.
+      builder: (BuildContext context, Widget? child) =>
+          PanelFrame(child: child!),
+      home: const Scaffold(
         backgroundColor: kBackground,
         body: Center(child: Text('DC-1', style: kFirstLightStyle)),
       ),

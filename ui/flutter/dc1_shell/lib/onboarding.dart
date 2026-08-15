@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'backend.dart';
 import 'draft.dart';
 import 'keyboard.dart';
+import 'panel_frame.dart';
 import 'screens/confirm_screen.dart';
 import 'screens/hostname_screen.dart';
 import 'screens/password_screen.dart';
@@ -58,6 +59,10 @@ class _OnboardingAppState extends State<OnboardingApp> {
           title: 'DC-1 setup',
           debugShowCheckedModeBanner: false,
           theme: dc1Theme(),
+          // PanelFrame is a no-op on the device (kIsWeb), so the builder it
+          // adds costs the device build nothing.
+          builder: (BuildContext context, Widget? child) =>
+              PanelFrame(child: child!),
           home: OnboardingFlow(client: widget.client),
         ),
       ),
@@ -75,12 +80,23 @@ class OnboardingFlow extends StatefulWidget {
 }
 
 class _OnboardingFlowState extends State<OnboardingFlow> {
-  final OnboardingDraft _draft = OnboardingDraft();
+  OnboardingDraft _draft = OnboardingDraft();
   OnboardStep _step = OnboardStep.wifi;
 
   void _go(OnboardStep step) {
     setState(() {
       _step = step;
+    });
+  }
+
+  /// Web preview only: the mock backend's `finish()` stands in for the
+  /// reboot, so "Restart now" restarts the preview with a clean slate --
+  /// the browser equivalent of the fresh boot the real device goes through.
+  /// Never called on the device; see ProgressScreen._restart.
+  void _restartPreview() {
+    setState(() {
+      _draft = OnboardingDraft();
+      _step = OnboardStep.wifi;
     });
   }
 
@@ -181,6 +197,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       client: widget.client,
       draft: _draft,
       onRetry: () => _go(OnboardStep.confirm),
+      onRestarted: _restartPreview,
     );
   }
 }

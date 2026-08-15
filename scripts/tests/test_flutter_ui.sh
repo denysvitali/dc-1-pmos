@@ -37,6 +37,7 @@ for file in \
 	lib/theme.dart \
 	lib/widgets.dart \
 	lib/keyboard.dart \
+	lib/panel_frame.dart \
 	lib/screens/wifi_screen.dart \
 	lib/screens/psk_screen.dart \
 	lib/screens/username_screen.dart \
@@ -214,6 +215,12 @@ grep -qF 'KeyboardScope' "$app/lib/onboarding.dart" ||
 if grep "^import 'package:" "$kbd" | grep -qv "^import 'package:flutter/"; then
 	fail "keyboard.dart imports a package outside the Flutter SDK"
 fi
+
+# The Wi-Fi step is the one part of setup that depends on hardware nobody in
+# the room controls, so it has to say what actually happened rather than
+# "REQUESTING IP ADDRESS" followed by silence.
+grep -qF "WI-FI CONNECTED" "$app/lib/screens/progress_screen.dart" ||
+	fail "the progress checklist does not tick Wi-Fi on the join itself"
 
 # --- the build caption ---------------------------------------------------
 # The version reaches the panel through four hops in four files. Any one of

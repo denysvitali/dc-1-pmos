@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../backend.dart';
@@ -21,12 +22,19 @@ class ProgressScreen extends StatefulWidget {
     required this.client,
     required this.draft,
     required this.onRetry,
+    this.onRestarted,
     super.key,
   });
 
   final BackendClient client;
   final OnboardingDraft draft;
   final VoidCallback onRetry;
+
+  /// Called after `finish()` resolves in the web preview, where there is
+  /// nothing to reboot: restarting the flow is the closest honest
+  /// simulation of the fresh boot. Dead code on the device -- the real
+  /// reboot replaces the whole session, and `kIsWeb` is false there.
+  final VoidCallback? onRestarted;
 
   @override
   State<ProgressScreen> createState() => _ProgressScreenState();
@@ -72,6 +80,9 @@ class _ProgressScreenState extends State<ProgressScreen> {
       // Expected: the backend reboots moments after replying, so the socket
       // frequently dies mid-response. There is nothing useful to report and
       // nothing to retry -- the device is on its way down either way.
+    }
+    if (kIsWeb) {
+      widget.onRestarted?.call();
     }
   }
 
@@ -148,7 +159,11 @@ class _ProgressScreenState extends State<ProgressScreen> {
     if (!widget.draft.hasWifi) {
       return true; // Wi-Fi was skipped, so there is nothing to join.
     }
-    return state.contains('PROVISIONING') ||
+    // The join itself is the honest signal, and it now arrives with the
+    // address attached; the states below are the later steps, kept so a
+    // stream that skips straight past the join still ticks the box.
+    return state.contains('WI-FI CONNECTED') ||
+        state.contains('PROVISIONING') ||
         state.contains('HASHING') ||
         state.contains('APPLYING') ||
         state.contains('COMPLETE') ||
