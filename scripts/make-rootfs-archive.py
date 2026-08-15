@@ -28,10 +28,14 @@ PRIVATE_MARKERS = (
     b"BEGIN RSA PRIVATE KEY",
     b"BEGIN EC PRIVATE KEY",
 )
-# Packaged files whose name collides with a forbidden credential name but
-# whose content is fixed upstream policy, not configuration. Exact paths only.
+# Packaged files the tripwire below would otherwise flag, whose content is
+# fixed upstream policy rather than configuration. wpa_supplicant.conf is a
+# D-Bus policy file colliding with a forbidden name; gcr-crypto-types.xml is
+# a shared-mime-info magic definition that embeds PEM banners to *recognize*
+# key files. Exact paths only.
 ALLOWED_PACKAGED_PATHS = {
     "usr/share/dbus-1/system.d/wpa_supplicant.conf",
+    "usr/share/mime/packages/gcr-crypto-types.xml",
 }
 
 

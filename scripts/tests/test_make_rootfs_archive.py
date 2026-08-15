@@ -83,6 +83,12 @@ class RootfsArchiveTest(unittest.TestCase):
             (source / "usr/share/misc").mkdir(parents=True)
             (source / "usr/share/misc/magic.mgc").write_bytes(
                 b"\x1c\x04\x1e\xf1\x00\x00-----BEGIN RSA PRIVATE KEY-----")
+            # A shared-mime-info magic definition is TEXT (no NUL), and it
+            # embeds the PEM banners as <magic> patterns so the MIME system
+            # can recognize key files. gcr ships gcr-crypto-types.xml.
+            (source / "usr/share/mime/packages").mkdir(parents=True)
+            (source / "usr/share/mime/packages/gcr-crypto-types.xml").write_text(
+                '<match type="string" value="-----BEGIN PRIVATE KEY-----" offset="0"/>\n')
             destination.mkdir()
             self.assertEqual(self.run_builder(source, destination).returncode, 0)
 
