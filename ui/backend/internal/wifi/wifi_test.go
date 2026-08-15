@@ -12,6 +12,18 @@ import (
 	"github.com/denysvitali/dc-1-pmos/ui/backend/internal/secret"
 )
 
+// recorder captures what Connect told the user, so the tests can assert on the
+// words that reach the panel rather than on the nmcli calls behind them.
+type recorder struct {
+	events []struct{ state, detail string }
+}
+
+func (r *recorder) Publish(state, detail string) {
+	r.events = append(r.events, struct{ state, detail string }{state, detail})
+}
+
+const testUUID = "11111111-2222-4333-8444-555555555555"
+
 func TestParseScan(t *testing.T) {
 	// nmcli -t escapes ':' and '\' inside a value.
 	out := []byte(strings.Join([]string{
@@ -191,5 +203,93 @@ func TestNewUUIDShape(t *testing.T) {
 	u := NewUUID()
 	if len(u) != 36 || strings.Count(u, "-") != 4 {
 		t.Fatalf("NewUUID = %q", u)
+	}
+}
+
+// Field shapes taken from a real device: NetworkManager indexes a field only
+// when it has more than one value, so ADDRESS and DNS arrive as
+// "IP4.ADDRESS[1]" while a lone GATEWAY does not. Values here are generic --
+// this is a public repo and a real device's LAN is not test data.
+const nmcliIP4 = `IP4.ADDRESS[1]:192.168.1.42/24
+IP4.GATEWAY:192.168.1.1
+IP4.DNS[1]:192.168.1.1
+IP4.DNS[2]:9.9.9.9
+`
+
+func TestParseIP4(t *testing.T) {
+	got := ParseIP4([]byte(nmcliIP4))
+	if len(got.Addresses) != 1 || got.Addresses[0] != "192.168.1.42/24" {
+		t.Fatalf("addresses = %q", got.Addresses)
+	}
+	if got.Gateway != "192.168.1.1" {
+		t.Fatalf("gateway = %q", got.Gateway)
+	}
+	if len(got.DNS) != 2 || got.DNS[1] != "9.9.9.9" {
+		t.Fatalf("dns = %q", got.DNS)
+	}
+	want := "IP 192.168.1.42/24 · gateway 192.168.1.1 · DNS 192.168.1.1, 9.9.9.9"
+	if got.Summary() != want {
+		t.Fatalf("summary = %q, want %q", got.Summary(), want)
+	}
+}
+
+// Every IPv6 address contains the separator nmcli splits records on, so a
+// naive SplitN(line, ":", 2) on the value side truncates it.
+func TestParseIP4KeepsColonsInValues(t *testing.T) {
+	got := ParseIP4([]byte("IP4.DNS[1]:2606:4700:4700::1111\n"))
+	if len(got.DNS) != 1 || got.DNS[0] != "2606:4700:4700::1111" {
+		t.Fatalf("dns = %q", got.DNS)
+	}
+}
+
+// NetworkManager prints "--" for a field it has no value for; rendering that
+// on the panel as an address would be worse than saying nothing.
+func TestParseIP4IgnoresPlaceholders(t *testing.T) {
+	got := ParseIP4([]byte("IP4.ADDRESS[1]:--\nIP4.GATEWAY:\n"))
+	if len(got.Addresses) != 0 || got.Gateway != "" {
+		t.Fatalf("got %+v", got)
+	}
+	if got.Summary() != "" {
+		t.Fatalf("summary = %q, want empty", got.Summary())
+	}
+}
+
+// Joining and getting no address must not be reported as a bare success.
+func TestConnectReportsWhenThereIsNoAddress(t *testing.T) {
+	root := t.TempDir()
+	bus := &recorder{}
+	m := &Manager{Root: root, Bus: bus, NewUUID: func() string { return testUUID },
+		Runner: &cmdrunner.Fake{Func: func(name string, args []string, _ []byte) ([]byte, error) {
+			if len(args) > 0 && args[0] == "-t" {
+				return []byte("IP4.ADDRESS[1]:--\n"), nil
+			}
+			return nil, nil
+		}}}
+	if err := m.Connect(context.Background(), "net", secret.Secret("passphrase")); err != nil {
+		t.Fatal(err)
+	}
+	last := bus.events[len(bus.events)-1]
+	if !strings.Contains(last.detail, "no IP address yet") {
+		t.Fatalf("last event = %+v", last)
+	}
+}
+
+func TestConnectReportsTheAddressItGot(t *testing.T) {
+	root := t.TempDir()
+	bus := &recorder{}
+	m := &Manager{Root: root, Bus: bus, NewUUID: func() string { return testUUID },
+		Runner: &cmdrunner.Fake{Func: func(name string, args []string, _ []byte) ([]byte, error) {
+			if len(args) > 0 && args[0] == "-t" {
+				return []byte(nmcliIP4), nil
+			}
+			return nil, nil
+		}}}
+	if err := m.Connect(context.Background(), "net", secret.Secret("passphrase")); err != nil {
+		t.Fatal(err)
+	}
+	last := bus.events[len(bus.events)-1]
+	if !strings.Contains(last.detail, "192.168.1.42/24") ||
+		!strings.Contains(last.detail, "gateway 192.168.1.1") {
+		t.Fatalf("last event = %+v", last)
 	}
 }

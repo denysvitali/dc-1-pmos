@@ -161,7 +161,36 @@ func (m *Manager) Connect(ctx context.Context, ssid string, psk secret.Secret) e
 	if _, err := m.Runner.Run(ctx, "nmcli", []string{"connection", "up", "uuid", uuid}, nil); err != nil {
 		return err
 	}
+	m.reportIP4(ctx, ssid, uuid)
 	return nil
+}
+
+// reportIP4 publishes what the network actually handed back.
+//
+// Best effort by design: the connection is already up by the time this runs,
+// so a failure to describe it is not a failure to join, and must not turn a
+// working network into a failed setup. Worst case the user gets the join
+// without the detail, which is what they got before this existed.
+func (m *Manager) reportIP4(ctx context.Context, ssid, uuid string) {
+	if m.Bus == nil {
+		return
+	}
+	out, err := m.Runner.Run(ctx, "nmcli", []string{
+		"-t", "-f", "IP4.ADDRESS,IP4.GATEWAY,IP4.DNS",
+		"connection", "show", "uuid", uuid,
+	}, nil)
+	if err != nil {
+		m.Bus.Publish("WI-FI CONNECTED", ssid)
+		return
+	}
+	if summary := ParseIP4(out).Summary(); summary != "" {
+		m.Bus.Publish("WI-FI CONNECTED", ssid+" · "+summary)
+		return
+	}
+	// Joined, but NetworkManager reported no address: say so rather than
+	// implying an address we do not have. A network that associates and then
+	// hands out nothing looks identical to success from the panel otherwise.
+	m.Bus.Publish("WI-FI CONNECTED", ssid+" · no IP address yet")
 }
 
 // WriteKeyfile writes the NetworkManager keyfile byte-for-byte as
@@ -243,4 +272,72 @@ func NewUUID() string {
 	b[6] = (b[6] & 0x0f) | 0x40 // version 4
 	b[8] = (b[8] & 0x3f) | 0x80 // variant 1
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// IP4 is what the device got from the network, as reported by NetworkManager
+// once the profile is up.
+//
+// It exists so onboarding can say something concrete. "REQUESTING IP ADDRESS"
+// followed by silence is indistinguishable, to somebody holding the tablet,
+// from a device that has quietly failed to join -- and this is the one step
+// of setup that depends on hardware nobody in the room controls.
+type IP4 struct {
+	Addresses []string // "192.168.1.42/24"
+	Gateway   string
+	DNS       []string
+}
+
+// ParseIP4 reads `nmcli -t -f IP4.ADDRESS,IP4.GATEWAY,IP4.DNS ...` output.
+//
+// Field names are indexed when NetworkManager has more than one value
+// (IP4.ADDRESS[1], IP4.DNS[2]), and not indexed when it has one (IP4.GATEWAY),
+// so the index is stripped rather than matched. Values can contain a ':' --
+// every IPv6 address does -- so records are split with splitTerse and the
+// value is everything after the first field, rejoined.
+func ParseIP4(out []byte) IP4 {
+	var info IP4
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := splitTerse(line)
+		if len(fields) < 2 {
+			continue
+		}
+		key := fields[0]
+		if i := strings.IndexByte(key, '['); i >= 0 {
+			key = key[:i]
+		}
+		value := strings.Join(fields[1:], ":")
+		if value == "" || value == "--" {
+			continue
+		}
+		switch strings.ToUpper(key) {
+		case "IP4.ADDRESS":
+			info.Addresses = append(info.Addresses, value)
+		case "IP4.GATEWAY":
+			info.Gateway = value
+		case "IP4.DNS":
+			info.DNS = append(info.DNS, value)
+		}
+	}
+	return info
+}
+
+// Summary is the one line onboarding shows under "WI-FI CONNECTED". Empty
+// when NetworkManager reported no address at all, so the caller can say
+// something truthful instead of printing an empty label.
+func (i IP4) Summary() string {
+	if len(i.Addresses) == 0 {
+		return ""
+	}
+	parts := []string{"IP " + strings.Join(i.Addresses, ", ")}
+	if i.Gateway != "" {
+		parts = append(parts, "gateway "+i.Gateway)
+	}
+	if len(i.DNS) > 0 {
+		parts = append(parts, "DNS "+strings.Join(i.DNS, ", "))
+	}
+	return strings.Join(parts, " · ")
 }
