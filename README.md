@@ -31,17 +31,19 @@ sha256sum --ignore-missing -c SHA256SUMS
 fastboot flash boot_a installer-boot.img && fastboot reboot
 ```
 
-That is all the computer does. The device's own display and touchscreen
-take it from there: pick your Wi-Fi network on the touch keyboard, enter
-username / password / hostname / timezone, and the installer downloads the
-rootfs from the rolling release, verifies every byte against `SHA256SUMS`
-before anything becomes mountable, provisions it (the password is hashed
-on-device), writes the verified real boot image to `boot_a`, and reboots
-into postmarketOS.
+The device comes up in installation mode, showing progress on its panel,
+with USB networking and a serial console. Leave the cable plugged in and run
+the host script (`installer/host/dc1-install.sh`), which asks for username /
+password / hostname / timezone / optional Wi-Fi, streams the rootfs over USB
+networking, and flashes the verified real boot image to `boot_a`. Every byte
+is checked against `SHA256SUMS` before anything becomes mountable, and the
+password is hashed on your machine.
 
-No Wi-Fi? The USB fallback (`installer/host/dc1-install.sh`) streams the
-rootfs from a Linux host over USB networking with the same fail-closed
-verification. The full, explained procedure is in
+A fully on-device installer (answer everything on the panel's own touch
+keyboard, no computer after the two fastboot commands) is shipped but
+**disabled**: its paint path does not reach this panel's glass and its touch
+mapping is very likely mirrored, which together would make an invisible
+screen that still takes taps. The full, explained procedure is in
 [docs/installation.md](docs/installation.md); current hardware support is
 in [docs/status.md](docs/status.md).
 

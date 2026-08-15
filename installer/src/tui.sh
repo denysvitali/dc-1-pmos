@@ -105,6 +105,32 @@ fi
 # (missing fb/touch) and the caller must fall back.
 
 ask() {
+	# OFF by default, and deliberately so. Two independent reasons, neither
+	# of which can be settled while the device is unreachable:
+	#
+	#  * dc1-ask paints through /dev/fb0 or the LK scanout buffer. init.c
+	#    records, photographically, that neither reaches this panel's glass
+	#    -- only a DRM atomic commit does. So the screen below is drawn into
+	#    a buffer nobody scans out.
+	#  * it would still take taps. dc1-sway.conf carries a
+	#    hardware-confirmed `transform 180` PLUS `calibration_matrix -1 0 1
+	#    0 -1 1`, i.e. raw evdev is inverted on both axes relative to the
+	#    untransformed scanout dc1-ask draws into. Every tap lands mirrored
+	#    through screen centre, so the menu entries swap.
+	#
+	# Together that is an invisible, live installer whose top menu offers
+	# "Install now (ERASES the Linux data partition)" -- and touching
+	# /tmp/ui-active below tells PID 1 to stop painting the one status
+	# screen that IS proven to reach the glass, so the panel would go black
+	# for the whole session rather than falling back visibly.
+	#
+	# Returning 2 here is the "UI unusable" code the callers already handle:
+	# the menu logs "dc1-ask unavailable; USB flow only" and the
+	# hardware-proven USB flow carries on, with PID 1 still painting status.
+	# Set DC1_TOUCH_UI=1 to exercise it on a panel; the corner test that
+	# would settle the axis question is written down at touch.go's tap().
+	[ "${DC1_TOUCH_UI:-0}" = 1 ] || return 2
+
 	touch /tmp/ui-active
 	/bin/dc1-ask "$@"
 	ask_rc=$?

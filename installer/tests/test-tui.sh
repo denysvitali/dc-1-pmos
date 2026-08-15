@@ -69,6 +69,27 @@ else
 	echo "  skip: no cryptpw on this host (device busybox provides it; build.sh enforces the applet)"
 fi
 
+echo "== touch UI gate =="
+
+# ask() is defined after tui.sh's library-mode return, so it is extracted
+# rather than sourced. The discriminator is exact: the gate returns 2 ("UI
+# unusable", which the menu falls back on), while a tui.sh with the gate
+# removed would reach /bin/dc1-ask -- absent on this host -- and return 127.
+sed -n '/^ask() {/,/^}/p' "$HERE/../src/tui.sh" > "$TMP/ask.sh"
+[ -s "$TMP/ask.sh" ] || bad "could not extract ask() from tui.sh"
+. "$TMP/ask.sh"
+
+rc=0
+ask menu "T" "a" >/dev/null 2>&1 || rc=$?
+case "$rc" in
+	2) ok "touch UI is off by default (unproven paint path + mirrored taps)" ;;
+	127) bad "ask() ran /bin/dc1-ask with DC1_TOUCH_UI unset: the gate is gone" ;;
+	*) bad "ask() returned $rc with DC1_TOUCH_UI unset, expected 2" ;;
+esac
+
+[ ! -e /tmp/ui-active ] ||
+	bad "ask() left /tmp/ui-active behind, which gates PID 1's painting off"
+
 echo
 echo "test-tui: $pass ok, $failn failed"
 [ "$failn" -eq 0 ]
