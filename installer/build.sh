@@ -407,7 +407,12 @@ install -m 0755 "$OUT/system-init" "$s/init"
 install -m 0755 "$BUSYBOX" "$s/bin/busybox"
 install -m 0755 "$SRC/system/boot.sh" "$s/etc/boot.sh"
 install -m 0644 "$SRC/partlib.sh" "$s/etc/partlib.sh"
-install -m 0755 "$OUT/dc1-reboot-fastboot" "$s/bin/dc1-reboot-fastboot"
+# The rescue path back to fastboot. dc1tools costs this small image ~2.5 MB
+# for one applet, but the alternative is keeping a second implementation of
+# the boot-mode nibble alive, and a bootloader we cannot debug is the worst
+# place to run two versions of anything.
+install -m 0755 "$OUT/dc1tools" "$s/bin/dc1tools"
+ln -sf dc1tools "$s/bin/dc1-reboot-fastboot"
 for a in sh ash cat ls ln mount mountpoint umount echo sleep mkdir rm cp \
          chmod tr head tail wc grep sed cut od dd find blkid seq date sync \
          reboot basename dirname readlink printf stat switch_root dmesg setsid; do
