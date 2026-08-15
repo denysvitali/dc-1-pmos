@@ -78,7 +78,7 @@ jobs:
       # define __user empty exactly as build.sh does.
       - name: Installer C smoke build
         run: |
-          for src in installer/src/init.c installer/src/bootctl.c \
+          for src in installer/src/init.c \
                      installer/src/ask.c installer/src/system/init.c \
                      pmaports/device/testing/device-daylight-jagar/dc1-reboot-fastboot.c; do
             out=$(mktemp)
@@ -95,6 +95,7 @@ jobs:
           cache-dependency-path: |
             boot/mkboot/go.mod
             ui/backend/go.mod
+            installer/gotools/go.mod
 
       - name: mkboot build, vet, test
         working-directory: boot/mkboot
@@ -120,8 +121,8 @@ jobs:
       # (exact splitting from a dribbling reader, superblock held back until
       # the transfer verifies, read-back catching a device that drops writes)
       # are the regression net for the corruption that shipped.
-      - name: dc1-installd build, vet, test
-        working-directory: installer/installd
+      - name: dc1tools build, vet, test
+        working-directory: installer/gotools
         env:
           CGO_ENABLED: "0"
         run: |
@@ -130,8 +131,8 @@ jobs:
           go test ./...
           # It ships into an aarch64 initramfs; prove it cross-compiles here
           # rather than an hour into the device build.
-          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o /tmp/dc1-installd .
-          ls -l /tmp/dc1-installd
+          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o /tmp/dc1tools .
+          ls -l /tmp/dc1tools
 
       - name: Boot tooling helper syntax
         run: python3 -m py_compile boot/mkboot/vendorboot_v4_verify.py

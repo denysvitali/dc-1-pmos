@@ -22,7 +22,7 @@
 // Everything after the bytes land -- mount, grow, provision -- is delegated to
 // the existing, proven shell (finalize.sh); it is not byte-critical and
 // rewriting it would risk a working path for no gain.
-package main
+package installd
 
 import (
 	"bufio"
@@ -34,9 +34,9 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/denysvitali/dc-1-pmos/installer/installd/internal/imagewrite"
-	"github.com/denysvitali/dc-1-pmos/installer/installd/internal/partition"
-	"github.com/denysvitali/dc-1-pmos/installer/installd/internal/wire"
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/imagewrite"
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/partition"
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/wire"
 )
 
 const (
@@ -45,15 +45,20 @@ const (
 	lockDir      = "/tmp/install.lock"
 )
 
-func main() {
-	addr := flag.String("listen", "172.16.42.1:5555", "address to serve DC1-INSTALL-V1 on")
-	finalize := flag.String("finalize", finalizePath, "script that mounts, grows and provisions")
-	once := flag.Bool("once", false, "serve a single session and exit (tests)")
-	flag.Parse()
+// Main is the `dc1-installd` applet entry point.
+func Main(args []string) int {
+	fs := flag.NewFlagSet("dc1-installd", flag.ContinueOnError)
+	addr := fs.String("listen", "172.16.42.1:5555", "address to serve DC1-INSTALL-V1 on")
+	finalize := fs.String("finalize", finalizePath, "script that mounts, grows and provisions")
+	once := fs.Bool("once", false, "serve a single session and exit (tests)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
-		log.Fatalf("listen %s: %v", *addr, err)
+		log.Printf("listen %s: %v", *addr, err)
+		return 1
 	}
 	log.Printf("installer daemon listening on %s", *addr)
 
@@ -66,7 +71,7 @@ func main() {
 		serve(conn, *finalize)
 		conn.Close()
 		if *once {
-			return
+			return 0
 		}
 	}
 }

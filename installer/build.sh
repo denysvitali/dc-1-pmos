@@ -227,23 +227,20 @@ mkdir -p "$OUT" "$ROOT"
 	-o "$OUT/installer-init" "$SRC/init.c"
 "$STRIP" "$OUT/installer-init"
 
-# dc1-reboot-fastboot: busybox `reboot` only does RB_AUTOBOOT, which LK treats
-# as an ordinary reboot and answers by booting the same slot again. Ending the
-# install in LK fastboot (so the host can flash the real boot image over the
-# installer) needs the boot mode nibble in WDT_NONRST_REG2; see the source.
+# dc1tools: the multi-call Go userland. Currently dc1-reboot-fastboot (the
+# boot-mode nibble LK reads on the way up -- busybox `reboot` only does
+# RB_AUTOBOOT, which LK answers by booting the same slot again) and bootctl
+# (read-only A/B bootloader_control dump; all mutations refused by design).
 #
-# ONE source, compiled twice: the same file ships in the device package as
-# /usr/sbin/dc1-reboot-fastboot on the installed system. A second copy here
-# would be a second thing to get wrong about a bootloader we cannot debug.
-RFSRC="$HERE/../pmaports/device/testing/device-daylight-jagar/dc1-reboot-fastboot.c"
-[ -f "$RFSRC" ] || fatal "missing $RFSRC"
-"$CC" -static -Os -Wall -Wextra -o "$OUT/dc1-reboot-fastboot" "$RFSRC"
-"$STRIP" "$OUT/dc1-reboot-fastboot"
-
-# bootctl: read-only A/B bootloader_control dump, for diagnostics over the
-# debug shell. All mutations are refused by design.
-"$CC" -static -Os -Wall -Wextra -o "$OUT/bootctl" "$SRC/bootctl.c"
-"$STRIP" "$OUT/bootctl"
+# One binary with argv[0] dispatch, because the Go runtime is ~1.2 MB and this
+# initramfs is loaded into RAM: five separate binaries would pay for it five
+# times. CGO_ENABLED=0 means no libc at all, a stronger guarantee than -static
+# against musl, and it cross-compiles without a toolchain.
+GOTOOLS_SRC="$HERE/gotools"
+[ -f "$GOTOOLS_SRC/go.mod" ] || fatal "missing $GOTOOLS_SRC/go.mod"
+( cd "$GOTOOLS_SRC" && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+	go build -trimpath -ldflags='-s -w' -o "$OUT/dc1tools" . ) \
+	|| fatal "dc1tools build failed"
 
 # system-init: PID 1 of the SYSTEM boot initramfs (jagar-boot.img). Owns the
 # watchdog across switch_root; see src/system/init.c.
@@ -254,21 +251,6 @@ RFSRC="$HERE/../pmaports/device/testing/device-daylight-jagar/dc1-reboot-fastboo
 "$CC" -static -Os -Wall -Wextra -o "$OUT/dc1-ask" "$SRC/ask.c"
 "$STRIP" "$OUT/dc1-ask"
 
-# dc1-installd: the USB installer daemon (Go). It owns the byte-critical path
-# -- receive, write, and prove the bytes on the device are the bytes that were
-# sent -- because the busybox pipeline it replaces silently corrupted every
-# install: `head -c` discards what it over-reads past its count (1023 bytes,
-# measured on hardware), so the body landed shifted and nothing noticed. The
-# shell's SHA-256 hashed what ARRIVED, not what was written.
-#
-# CGO_ENABLED=0: a genuinely static binary with no libc at all, which is a
-# stronger guarantee than -static against musl, and it cross-compiles without
-# a toolchain.
-INSTALLD_SRC="$HERE/installd"
-[ -f "$INSTALLD_SRC/go.mod" ] || fatal "missing $INSTALLD_SRC/go.mod"
-( cd "$INSTALLD_SRC" && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-	go build -trimpath -ldflags='-s -w' -o "$OUT/dc1-installd" . ) \
-	|| fatal "dc1-installd build failed"
 
 # ---------------------------------------------------------------- 2. skeleton
 d="$ROOT/installer"
@@ -288,12 +270,16 @@ mknod -m 660 "$d/dev/ttyS0"   c 4 64
 mknod -m 666 "$d/dev/tty"     c 5 0
 
 install -m 0755 "$OUT/installer-init" "$d/init"
-install -m 0755 "$OUT/dc1-reboot-fastboot" "$d/bin/dc1-reboot-fastboot"
-install -m 0755 "$OUT/bootctl"  "$d/bin/bootctl"
+install -m 0755 "$OUT/dc1tools" "$d/bin/dc1tools"
+# argv[0] dispatch: these are the names the rest of the image (and the
+# recovery notes) already call, so they stay callable without knowing that one
+# binary now serves them all.
+ln -sf dc1tools "$d/bin/dc1-reboot-fastboot"
+ln -sf dc1tools "$d/bin/bootctl"
+ln -sf dc1tools "$d/bin/dc1-installd"
 install -m 0755 "$OUT/dc1-ask"  "$d/bin/dc1-ask"
 install -m 0755 "$BUSYBOX" "$d/bin/busybox"
 install -m 0755 "$SRC/rc.sh" "$d/etc/rc.sh"
-install -m 0755 "$OUT/dc1-installd" "$d/bin/dc1-installd"
 install -m 0755 "$SRC/receive.sh" "$d/etc/installer/receive.sh"
 install -m 0755 "$SRC/finalize.sh" "$d/etc/installer/finalize.sh"
 install -m 0755 "$SRC/provision.sh" "$d/etc/installer/provision.sh"
