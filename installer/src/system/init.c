@@ -39,10 +39,25 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <time.h>
 
 static int g_kmsg = -1;
+
+/* Watchdog handoff to systemd. The mtk_wdt driver is built with nowayout=0
+ * (CONFIG_WATCHDOG_NOWAYOUT is not set in jagar_defconfig) and advertises
+ * WDIOF_MAGICCLOSE, so writing 'V' and closing stops the watchdog cleanly --
+ * systemd's RuntimeWatchdogSec then re-opens it and pings only while healthy.
+ * This closes the hole where a live-but-wedged system kept being petted
+ * forever: once systemd owns the watchdog, a hung systemd (or a hung critical
+ * service with WatchdogSec) stops the ping and the board resets in
+ * RuntimeWatchdogSec instead of sitting dark. The handoff is gated on the new
+ * root actually running systemd; a non-systemd root keeps the pet-forever
+ * petter. */
+static pid_t g_petter_pid = -1;
+static volatile sig_atomic_t g_petter_handoff = 0;
+static void on_watchdog_handoff(int sig) { (void)sig; g_petter_handoff = 1; }
 
 static size_t slen(const char *s) { size_t n = 0; while (s[n]) n++; return n; }
 
@@ -171,15 +186,19 @@ static void arm_fastboot_nibble(void)
 	munmap((void *)p, 0x1000);
 }
 
-/* Fork the sole watchdog owner. It holds the fd open forever -- including
- * across switch_root, where its root points at the (deleted) initramfs but
- * the open fd keeps working. Pet interval 10s against LK's ~31s timer. */
+/* Fork the sole watchdog owner. It holds the fd open -- including across
+ * switch_root, where its root points at the (deleted) initramfs but the open
+ * fd keeps working -- and pets every 10s against LK's ~31s timer. On SIGUSR1
+ * (sent by main just before switch_root, only when the new root is systemd)
+ * it magic-closes and exits, leaving the watchdog for systemd to re-open. */
 static void start_watchdog_petter(void)
 {
 	pid_t pid = fork();
 	if (pid != 0) {
 		if (pid < 0)
 			say("watchdog: fork FAILED -- board may reset in ~31s");
+		else
+			g_petter_pid = pid;
 		return;
 	}
 	int fd = -1;
@@ -191,8 +210,15 @@ static void start_watchdog_petter(void)
 		say("watchdog: no /dev/watchdog -- if LK armed its timer, the board resets");
 		_exit(0);
 	}
+	signal(SIGUSR1, on_watchdog_handoff);
 	say("watchdog: petter running (sole owner, survives switch_root)");
 	for (;;) {
+		if (g_petter_handoff) {
+			say("watchdog: handing off to systemd (magic close)");
+			(void)write(fd, "V", 1);
+			close(fd);
+			_exit(0);
+		}
 		if (access(WD_DEADMAN, F_OK) == 0 && !lease_is_fresh()) {
 			say("watchdog: deadman lease expired -- arming fastboot"
 			    " and ceasing to pet; the reset will land in LK fastboot");
@@ -433,6 +459,21 @@ int main(void)
 		rescue("/mnt/root is not a separate filesystem");
 	if (access("/mnt/root/sbin/init", X_OK) < 0)
 		rescue("no executable /sbin/init in the new root");
+
+	/* Hand the watchdog to systemd before switch_root. Gate on the new root
+	 * actually running systemd, so a non-systemd root keeps the pet-forever
+	 * petter unchanged. The petter magic-closes on SIGUSR1; wait for it to
+	 * exit so systemd's immediately-following open does not hit EBUSY. Bounded:
+	 * the handler exits in microseconds, 5s is a pathological upper bound. */
+	if (access("/mnt/root/usr/lib/systemd/systemd", X_OK) == 0 && g_petter_pid > 0) {
+		say("watchdog: systemd root -- handing the watchdog over");
+		kill(g_petter_pid, SIGUSR1);
+		for (int i = 0; i < 50; i++) {
+			if (waitpid(g_petter_pid, NULL, WNOHANG) == g_petter_pid)
+				break;
+			usleep(100000);
+		}
+	}
 
 	say2("init: switching root from verified device ", dev);
 	{
