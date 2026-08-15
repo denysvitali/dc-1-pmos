@@ -45,6 +45,19 @@ verification. The full, explained procedure is in
 [docs/installation.md](docs/installation.md); current hardware support is
 in [docs/status.md](docs/status.md).
 
+## Try the setup in your browser
+
+The first-boot onboarding — Wi-Fi, username, password, hostname, timezone —
+is a Flutter app that runs on the device. The same source compiles to the
+web, so an interactive preview of the exact screens is published from
+`main`:
+
+<https://denysvitali.github.io/dc-1-pmos/>
+
+It runs the real onboarding code in the browser (with an in-browser stand-in
+for the backend), so you can click through Wi-Fi setup and account creation
+before flashing anything.
+
 ## What CI builds
 
 Every push to `main` builds from source and publishes the artifacts to a

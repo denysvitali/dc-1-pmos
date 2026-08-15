@@ -176,6 +176,11 @@ runs first-boot onboarding on the touchscreen. The control plane binds a Unix
 socket only — it never listens on a network address, so neither the USB host
 nor any Wi-Fi peer can reach onboarding.
 
+The onboarding flow (Wi-Fi, username, password, hostname, timezone) can be
+tried in a browser before flashing: the same Flutter source compiles to the
+web and is published at
+<https://denysvitali.github.io/dc-1-pmos/>.
+
 ## Watching progress and debugging
 
 - The device paints install progress on its panel.
