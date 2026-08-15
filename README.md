@@ -58,6 +58,14 @@ It runs the real onboarding code in the browser (with an in-browser stand-in
 for the backend), so you can click through Wi-Fi setup and account creation
 before flashing anything.
 
+The preview lets your own keyboard do the typing and leaves the device's
+on-screen keyboard out — on a phone the browser raises its own keyboard over
+the page, and two of them at once hide the field. To try the on-device
+keyboard itself, open the preview with
+[`?keyboard=1`](https://denysvitali.github.io/dc-1-pmos/?keyboard=1): the
+fields go read-only, so nothing else pops up and the only way to type is the
+keyboard the DC-1 actually draws.
+
 ## What CI builds
 
 Every push to `main` builds from source and publishes the artifacts to a

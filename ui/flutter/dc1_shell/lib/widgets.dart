@@ -251,9 +251,18 @@ class _Dc1TextFieldState extends State<Dc1TextField> {
 
   @override
   Widget build(BuildContext context) {
+    // In the browser preview's keyboard demo the field is read-only: a
+    // read-only field still focuses and still shows a cursor, but Flutter
+    // opens no text input connection for it, so the phone's own keyboard
+    // stays down and the only way to type is the keyboard being demonstrated.
+    // On the device the field stays editable -- a USB keyboard has to keep
+    // working there.
+    final bool touchOnly = _keyboard?.suppressesHostInput ?? false;
     return TextField(
       controller: widget.controller,
       focusNode: _focusNode,
+      readOnly: touchOnly,
+      showCursor: touchOnly ? true : null,
       obscureText: widget.obscureText,
       autofocus: widget.autofocus,
       autocorrect: false,

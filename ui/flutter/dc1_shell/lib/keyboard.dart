@@ -1,8 +1,38 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'theme.dart';
+
+/// What the touch keyboard does on this build target.
+enum TouchKeyboardMode {
+  /// Docked whenever a field is focused, and the fields stay ordinary
+  /// editable [TextField]s so a USB keyboard still types. The device.
+  docked,
+
+  /// Never drawn. The browser preview runs on machines that already have a
+  /// keyboard -- a physical one on a desktop, the OS one on a phone -- and a
+  /// phone's keyboard slides in *over* the page, so drawing ours as well puts
+  /// two keyboards on screen and hides the field they both serve.
+  off,
+
+  /// Docked, and the fields refuse host input so the OS keyboard never comes
+  /// up over it. This is how you look at and use this keyboard from a phone.
+  demo,
+}
+
+/// The mode for this build: [TouchKeyboardMode.docked] on the device, off in
+/// the browser preview, [TouchKeyboardMode.demo] when the preview is opened
+/// with `?keyboard=1` (the same URL-flag convention as `?firstlight=1`).
+TouchKeyboardMode touchKeyboardMode() {
+  if (!kIsWeb) {
+    return TouchKeyboardMode.docked;
+  }
+  return Uri.base.queryParameters['keyboard'] == '1'
+      ? TouchKeyboardMode.demo
+      : TouchKeyboardMode.off;
+}
 
 /// An in-app touch keyboard.
 ///
@@ -23,14 +53,26 @@ import 'theme.dart';
 ///    the Panfrost path that first light already proved.
 ///
 /// Physical keyboards keep working: the fields stay ordinary editable
-/// [TextField]s, so a USB keyboard plugged in for debugging still types.
+/// [TextField]s, so a USB keyboard plugged in for debugging still types. The
+/// one exception is [TouchKeyboardMode.demo], where the point is to prove
+/// *this* keyboard and no other.
 class Dc1KeyboardController extends ChangeNotifier {
+  Dc1KeyboardController({this.mode = TouchKeyboardMode.docked});
+
+  /// Fixed for the life of the app: it is a property of where the shell is
+  /// running, not of the screen being drawn.
+  final TouchKeyboardMode mode;
+
   TextEditingController? _target;
   ValueChanged<String>? _onChanged;
   VoidCallback? _onSubmitted;
 
   /// Whether a field is focused and the keyboard should be on screen.
   bool get attached => _target != null;
+
+  /// Whether text fields must refuse input from the host, so that focusing
+  /// one does not raise a second, real keyboard over this one.
+  bool get suppressesHostInput => mode == TouchKeyboardMode.demo;
 
   /// Called by [Dc1TextField] when it takes focus.
   ///
@@ -45,7 +87,7 @@ class Dc1KeyboardController extends ChangeNotifier {
     ValueChanged<String>? onChanged,
     VoidCallback? onSubmitted,
   }) {
-    if (identical(_target, target)) {
+    if (mode == TouchKeyboardMode.off || identical(_target, target)) {
       return;
     }
     _target = target;

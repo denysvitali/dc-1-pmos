@@ -37,7 +37,9 @@ class OnboardingApp extends StatefulWidget {
 class _OnboardingAppState extends State<OnboardingApp> {
   /// One keyboard for the whole flow: it outlives the individual screens, so
   /// moving from username to password does not tear it down and rebuild it.
-  final Dc1KeyboardController _keyboard = Dc1KeyboardController();
+  final Dc1KeyboardController _keyboard = Dc1KeyboardController(
+    mode: touchKeyboardMode(),
+  );
 
   @override
   void dispose() {
