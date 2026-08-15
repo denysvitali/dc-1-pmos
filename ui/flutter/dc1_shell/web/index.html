@@ -12,6 +12,10 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="DC-1 first-boot setup, interactive preview.">
   <meta name="theme-color" content="#101418">
+  <!-- Without this a mobile browser lays out at a ~980px desktop viewport and
+       scales the whole preview down to fit the phone, so the PanelFrame's
+       "full-bleed on a phone" branch never engages and everything is tiny. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- The shell's own background, so the page is already dark while the
        Flutter bundle loads and never flashes white around the framed
