@@ -4,9 +4,9 @@
 # running in parallel the whole time, so a host can always take over.
 #
 # All screens are drawn by /bin/dc1-ask (static, evdev touch + framebuffer;
-# see src/ask.c). While a dc1-ask screen is up, /tmp/ui-active suppresses
-# PID 1's status painting; removing it hands the panel back to the status
-# screen (used during the long-running download/write phases).
+# see gotools/internal/ask). While a dc1-ask screen is up, /tmp/ui-active
+# suppresses PID 1's status painting; removing it hands the panel back to the
+# status screen (used during the long-running download/write phases).
 #
 # If dc1-ask cannot run (no framebuffer, no touchscreen), this script exits
 # and the classic status screen + USB flow remain -- the touch UI is an

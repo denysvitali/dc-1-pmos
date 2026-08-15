@@ -19,9 +19,9 @@ fastboot flash boot_a installer-boot.img && fastboot reboot   # installation mod
 ```
 
 Everything else happens on the device's own display and touchscreen
-(`src/tui.sh` driving `src/ask.c` screens): pick a Wi-Fi network from the
-scan, enter the passphrase / username / password / hostname / timezone on
-the touch keyboard, and `src/netinstall.sh` downloads
+(`src/tui.sh` driving `gotools/internal/ask` screens): pick a Wi-Fi
+network from the scan, enter the passphrase / username / password /
+hostname / timezone on the touch keyboard, and `src/netinstall.sh` downloads
 `jagar-rootfs.ext4.zst` + `SHA256SUMS` + `jagar-boot.img` from the rolling
 release over verified TLS, feeds the shared write core, provisions, writes
 the verified boot image to `boot_a` and reboots into the installed system.
@@ -88,7 +88,7 @@ Progress is painted on the panel by `src/init.c` (from
 screen as up) and streamed to the host on `/dev/ttyACM0`; a debug shell
 listens on TCP 4444 and on the second ACM port.
 
-## Why the touch UI is hand-rolled (`src/ask.c`)
+## Why the touch UI is hand-rolled (`gotools/internal/ask`)
 
 The obvious candidates cannot run against this device's pinned kernel:
 postmarketOS **buffyboard** injects keys through `/dev/uinput`, and the

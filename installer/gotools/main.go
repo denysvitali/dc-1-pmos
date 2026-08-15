@@ -19,9 +19,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/ask"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/bootctl"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/installd"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/rebootfastboot"
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/systeminit"
 )
 
 func applets() map[string]func([]string) int {
@@ -32,7 +34,16 @@ func applets() map[string]func([]string) int {
 		"dc1-reboot-fastboot": func(a []string) int {
 			return rebootfastboot.Main(a, os.Stdout, os.Stderr)
 		},
+		"dc1-ask": func(a []string) int {
+			return ask.Main(a, os.Stdout, os.Stderr)
+		},
 		"dc1-installd": installd.Main,
+		// Not yet the image's /init -- build.sh still stages the C one. The
+		// applet exists so the port can be exercised; it refuses to do
+		// anything unless it is genuinely PID 1.
+		"system-init": func(a []string) int {
+			return systeminit.Main(a, os.Stdout, os.Stderr)
+		},
 	}
 }
 

@@ -230,7 +230,9 @@ mkdir -p "$OUT" "$ROOT"
 # dc1tools: the multi-call Go userland. Currently dc1-reboot-fastboot (the
 # boot-mode nibble LK reads on the way up -- busybox `reboot` only does
 # RB_AUTOBOOT, which LK answers by booting the same slot again) and bootctl
-# (read-only A/B bootloader_control dump; all mutations refused by design).
+# (read-only A/B bootloader_control dump; all mutations refused by design),
+# plus dc1-installd (the USB byte path) and dc1-ask (the touch prompt screens
+# tui.sh drives -- framebuffer + evdev, no dependencies).
 #
 # One binary with argv[0] dispatch, because the Go runtime is ~1.2 MB and this
 # initramfs is loaded into RAM: five separate binaries would pay for it five
@@ -246,10 +248,6 @@ GOTOOLS_SRC="$HERE/gotools"
 # watchdog across switch_root; see src/system/init.c.
 "$CC" -static -Os -Wall -Wextra -o "$OUT/system-init" "$SRC/system/init.c"
 "$STRIP" "$OUT/system-init"
-
-# dc1-ask: the touch prompt screen (framebuffer + evdev, no dependencies).
-"$CC" -static -Os -Wall -Wextra -o "$OUT/dc1-ask" "$SRC/ask.c"
-"$STRIP" "$OUT/dc1-ask"
 
 
 # ---------------------------------------------------------------- 2. skeleton
@@ -277,7 +275,7 @@ install -m 0755 "$OUT/dc1tools" "$d/bin/dc1tools"
 ln -sf dc1tools "$d/bin/dc1-reboot-fastboot"
 ln -sf dc1tools "$d/bin/bootctl"
 ln -sf dc1tools "$d/bin/dc1-installd"
-install -m 0755 "$OUT/dc1-ask"  "$d/bin/dc1-ask"
+ln -sf dc1tools "$d/bin/dc1-ask"
 install -m 0755 "$BUSYBOX" "$d/bin/busybox"
 install -m 0755 "$SRC/rc.sh" "$d/etc/rc.sh"
 install -m 0755 "$SRC/receive.sh" "$d/etc/installer/receive.sh"
