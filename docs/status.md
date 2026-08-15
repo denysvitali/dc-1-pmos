@@ -10,9 +10,9 @@ mean the artifacts built by any given CI run were booted — releases carry
 | Display | Works | DSI panel; Wayland sessions (Sway, GNOME) run. |
 | GPU | Works | Mali-G57 MC2 via Panfrost. |
 | Touchscreen | Works | ILI2910, 10-point multitouch. |
-| On-device UI | Partial | Flutter shell + Go backend render on the panel, hardware-accelerated via Panfrost — confirmed on device. First-boot **onboarding** (Wi-Fi, account, hostname, timezone) is built and CI-green but has **not yet run on hardware**; try it in a browser at <https://denysvitali.github.io/dc-1-pmos/>. |
+| On-device UI | Partial | Flutter shell + Go backend render on the panel, hardware-accelerated via Panfrost — confirmed on device. First-boot **onboarding** now runs on hardware: the Wi-Fi step was captured on the panel listing real networks with signal strengths (2026-08-15, via `GET /screenshot`). The later steps (account, hostname, timezone, confirm) are **still unexercised on hardware** — the kernel has no `CONFIG_INPUT_UINPUT` and the seat exposes touch only, so there is no way to synthesise a tap yet. Try the whole flow in a browser at <https://denysvitali.github.io/dc-1-pmos/>. |
 | Frontlight | Works | Dual RT4539 backlight drivers. |
-| Wi-Fi | Works | MT7902 via mainline mt76; firmware from upstream linux-firmware. |
+| Wi-Fi | Works | MT7902 via mainline mt7921s. Confirmed on device 2026-08-15: firmware loads, `wlan0` appears, and a scan returns a dozen networks. Needs `CONFIG_FW_LOADER_COMPRESS_ZSTD` — linux-firmware ships the three MT7902 blobs `.zst`-compressed, and without it the loader reports `-2` for a file that is present, `hardware init failed`, and no `wlan0`. Carried by the pinned kernel since `ea54394`. |
 | Bluetooth | Works | MT7902, same upstream firmware. |
 | USB gadget | Works | Serial console, USB ethernet, SSH over USB. |
 | Internal storage | Works | UFS. |
