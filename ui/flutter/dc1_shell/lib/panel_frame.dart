@@ -14,8 +14,11 @@ import 'theme.dart';
 /// text fields designed for an arm's length end up a metre wide, and nothing
 /// about the preview says "this is what the tablet shows". So:
 ///
-///  * window no bigger than the cap (a phone, a small window): full-bleed,
-///    pixel for pixel what the device draws;
+///  * a phone -- portrait or landscape, however tall -- always full-bleed,
+///    pixel for pixel what the device draws. The window's `shortestSide` is
+///    what tells a phone from a desktop: a tall portrait phone exceeds the
+///    height cap but is still a phone, and framing it would shrink the panel
+///    to a postage stamp;
 ///  * anything larger: the UI is fitted, aspect-true, into a rectangle no
 ///    taller than [_maxPanelHeight], centered on a darker surround with a
 ///    thin bezel, and captioned as a preview.
@@ -36,11 +39,20 @@ class PanelFrame extends StatelessWidget {
   /// make them palm-sized on a big monitor and shrink nothing else.
   static const double _maxPanelHeight = 880;
 
-  /// Whether the window is big enough to be worth framing: taller than the
-  /// cap, or wider than a capped panel is.
+  /// The shortest side below which the window is treated as a phone. This is
+  /// the Flutter convention for the compact-vs-medium breakpoint; a phone's
+  /// narrow dimension stays under it in both orientations, a desktop window's
+  /// does not.
+  static const double _phoneShortestSide = 600;
+
+  /// Whether the window is worth framing: not a phone, and bigger than the
+  /// cap in some dimension. The phone check must come first -- a tall portrait
+  /// phone (CSS height > [_maxPanelHeight]) satisfies the size clauses alone
+  /// and would otherwise be framed into an unreadably small panel.
   static bool _frames(Size window) =>
-      window.height > _maxPanelHeight ||
-      window.width > _maxPanelHeight * _panelAspectRatio;
+      window.shortestSide >= _phoneShortestSide &&
+      (window.height > _maxPanelHeight ||
+          window.width > _maxPanelHeight * _panelAspectRatio);
 
   /// The largest aspect-true panel that fits [avail]. This is the one place
   /// the rectangle is decided; the [SizedBox] that draws it and the
