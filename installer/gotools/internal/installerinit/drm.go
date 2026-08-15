@@ -23,15 +23,56 @@ import (
 // installer kernel, 2026-08-14). If a future config regresses, CREATE_DUMB
 // fails and the caller falls back to serial-only status.
 
+// The ioctl numbers are COMPUTED from the struct sizes, never written down.
+//
+// An ioctl encoding carries sizeof(arg) in bits 16..29, so a hardcoded number
+// and a struct that disagree is a silent ABI break: the kernel rejects the
+// call with EINVAL and, here, the panel simply never lights. That is not
+// hypothetical -- the first draft of this file hardcoded ADDFB2 as
+// 0xc06464b8, encoding 100 bytes, while drm_mode_fb_cmd2 is 104 (the
+// [4]uint64 modifier forces 8-byte alignment padding after the three uint32
+// arrays). Deriving them from unsafe.Sizeof makes that class of mistake
+// impossible, and drm_abi_test.go pins the results against the values the
+// kernel's own headers produce.
 const (
-	drmIoctlSetMaster      = 0x641e
-	drmIoctlModeGetRes     = 0xc04064a0
-	drmIoctlModeGetConn    = 0xc05064a7
-	drmIoctlModeCreateDumb = 0xc02064b2
-	drmIoctlModeAddFB2     = 0xc06464b8
-	drmIoctlModeMapDumb    = 0xc01064b3
-	drmIoctlModeSetCRTC    = 0xc06864a2
+	iocNRBits   = 8
+	iocTypeBits = 8
+	iocSizeBits = 14
 
+	iocNRShift   = 0
+	iocTypeShift = iocNRShift + iocNRBits
+	iocSizeShift = iocTypeShift + iocTypeBits
+	iocDirShift  = iocSizeShift + iocSizeBits
+
+	iocWrite = 1
+	iocRead  = 2
+
+	drmIoctlBase = 'd'
+)
+
+func ioc(dir, typ, nr, size uintptr) uintptr {
+	return dir<<iocDirShift | size<<iocSizeShift | typ<<iocTypeShift | nr<<iocNRShift
+}
+
+// iowr is _IOWR: the direction every DRM mode ioctl here uses.
+func iowr(nr, size uintptr) uintptr {
+	return ioc(iocRead|iocWrite, drmIoctlBase, nr, size)
+}
+
+// ioNone is _IO: no argument payload (SET_MASTER).
+func ioNone(nr uintptr) uintptr { return ioc(0, drmIoctlBase, nr, 0) }
+
+var (
+	drmIoctlSetMaster      = ioNone(0x1e)
+	drmIoctlModeGetRes     = iowr(0xa0, unsafe.Sizeof(drmModeCardRes{}))
+	drmIoctlModeGetConn    = iowr(0xa7, unsafe.Sizeof(drmModeGetConnector{}))
+	drmIoctlModeCreateDumb = iowr(0xb2, unsafe.Sizeof(drmModeCreateDumb{}))
+	drmIoctlModeAddFB2     = iowr(0xb8, unsafe.Sizeof(drmModeFBCmd2{}))
+	drmIoctlModeMapDumb    = iowr(0xb3, unsafe.Sizeof(drmModeMapDumb{}))
+	drmIoctlModeSetCRTC    = iowr(0xa2, unsafe.Sizeof(drmModeCRTC{}))
+)
+
+const (
 	drmFormatXRGB8888 = 0x34325258 // 'XR24'
 	drmModeConnected  = 1
 )
