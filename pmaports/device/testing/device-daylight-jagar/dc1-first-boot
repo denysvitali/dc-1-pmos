@@ -16,8 +16,16 @@ APPS="chromium ghostty gnome-console gnome-calculator gnome-text-editor nautilus
 [ -e "$MARK" ] && exit 0
 
 mkdir -p /var/lib/dc1
-if apk update >/dev/null && apk add $APPS; then
-	touch "$MARK"
-	exit 0
-fi
+# network-online.target means an address is assigned, NOT that DNS resolves
+# (the first install died here on "DNS: transient error" the instant the
+# service ran). apk add is idempotent, so retry the whole thing with a backoff
+# and let the marker (written only on success) catch a still-cold network on
+# the next boot.
+for attempt in 1 2 3 4 5 6 7 8; do
+	if apk update >/dev/null 2>&1 && apk add $APPS; then
+		touch "$MARK"
+		exit 0
+	fi
+	sleep 15
+done
 exit 1

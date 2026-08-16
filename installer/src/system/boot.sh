@@ -59,6 +59,24 @@ else
 	log "e2fsck not in initramfs; skipping fsck (ext4 journal + install-time hash verification)"
 fi
 
+# Grow the filesystem to fill userdata, OFFLINE, before it is mounted. This is
+# the safe resize: the ONLINE path (EXT4_IOC_RESIZE_FS on a mounted fs)
+# corrupts the extent tree on this kernel (7.2.0-rc5 mtk-ufs). It self-heals
+# any install whose installer-time resize did not happen (the installer's
+# wr_finalize has the same step; this is the backstop). Idempotent: on an
+# already-grown fs resize2fs reports "nothing to do". Best-effort -- a failure
+# leaves a valid smaller root, and the next boot retries.
+if command -v resize2fs >/dev/null 2>&1; then
+	if resize2fs "$dev" 2>/tmp/resize.err; then
+		log "resized root filesystem to fill userdata"
+	else
+		log "resize2fs failed: $(head -c 200 /tmp/resize.err 2>/dev/null)"
+	fi
+	rm -f /tmp/resize.err
+else
+	log "resize2fs not in initramfs; root left at image size"
+fi
+
 mkdir -p /mnt/root
 mount -t ext4 "$dev" /mnt/root || fail "mount of $dev failed"
 if [ ! -x /mnt/root/sbin/init ]; then

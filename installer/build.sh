@@ -430,6 +430,37 @@ install -m 0644 "$SRC/partlib.sh" "$s/etc/partlib.sh"
 # place to run two versions of anything.
 install -m 0755 "$OUT/dc1tools" "$s/bin/dc1tools"
 ln -sf dc1tools "$s/bin/dc1-reboot-fastboot"
+
+# Offline rootfs grow (boot.sh) + optional fsck: resize2fs and e2fsck plus
+# their musl libs, the same pinned set the installer stages. The apk ships each
+# lib as a real file (libX.so.1.2.3) plus a symlink (libX.so.1); copy both.
+mkdir -p "$s/sbin" "$s/usr/sbin" "$s/usr/lib" "$s/lib"
+install -m 0755 "$AR/sbin/e2fsck" "$s/sbin/e2fsck"
+install -m 0755 "$AR/usr/sbin/resize2fs" "$s/usr/sbin/resize2fs"
+for base in libe2p libext2fs libcom_err libblkid libuuid libeconf; do
+	for f in "$AR/usr/lib/$base".so*; do
+		[ -e "$f" ] || continue
+		cp -a "$f" "$s/usr/lib/"
+	done
+done
+for f in "$AR/lib/ld-musl-aarch64.so.1" "$AR/lib/libc.musl-aarch64.so.1"; do
+	[ -e "$f" ] || fatal "apk did not provide $f"
+	cp -a "$f" "$s/lib/"
+done
+# The same fail-closed closure check the installer gets: every NEEDED of the
+# staged e2fs binaries must resolve inside the image, or a missing lib fails
+# the build rather than silently stranding a boot that cannot resize its root.
+if command -v readelf >/dev/null 2>&1; then
+	for bin in "$s/sbin/e2fsck" "$s/usr/sbin/resize2fs"; do
+		readelf -d "$bin" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p' \
+		| while read -r need; do
+			[ -e "$s/usr/lib/$need" ] || [ -e "$s/lib/$need" ] || \
+				fatal "$(basename "$bin") needs $need, not staged in the system initramfs"
+		done || exit 1
+	done
+	echo "  system initramfs shared-library closure: OK"
+fi
+
 for a in sh ash cat ls ln mount mountpoint umount echo sleep mkdir rm cp \
          chmod tr head tail wc grep sed cut od dd find blkid seq date sync \
          reboot basename dirname readlink printf stat switch_root dmesg setsid; do
