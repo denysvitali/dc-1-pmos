@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=29
+pkgrel=30
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -35,6 +35,7 @@ source="
 	dc1-frontlight.initd
 	dc1-screen-backlight.initd
 	dc1-gpu.initd
+	dc1-audio.initd
 	dc1-rtcsync.initd
 	dc1-debug-shell.initd
 	dc1-usb-gadget.initd
@@ -57,6 +58,8 @@ source="
 	dc1-display-gate.service
 	dc1-gpu
 	dc1-gpu.service
+	dc1-audio
+	dc1-audio.service
 	dc1-frontlight
 	dc1-frontlight.service
 	dc1-screen-backlight
@@ -110,6 +113,8 @@ package() {
 		"$pkgdir"/etc/init.d/dc1-screen-backlight
 	install -Dm755 "$srcdir"/dc1-gpu.initd \
 		"$pkgdir"/etc/init.d/dc1-gpu
+	install -Dm755 "$srcdir"/dc1-audio.initd \
+		"$pkgdir"/etc/init.d/dc1-audio
 	install -Dm755 "$srcdir"/dc1-rtcsync.initd \
 		"$pkgdir"/etc/init.d/dc1-rtcsync
 
@@ -135,6 +140,7 @@ package() {
 	install -Dm755 "$srcdir"/dc1-debug-shell "$pkgdir"/usr/libexec/dc1-debug-shell
 	install -Dm755 "$srcdir"/dc1-display-gate "$pkgdir"/usr/libexec/dc1-display-gate
 	install -Dm755 "$srcdir"/dc1-gpu "$pkgdir"/usr/libexec/dc1-gpu
+	install -Dm755 "$srcdir"/dc1-audio "$pkgdir"/usr/libexec/dc1-audio
 	install -Dm755 "$srcdir"/dc1-frontlight "$pkgdir"/usr/libexec/dc1-frontlight
 	install -Dm755 "$srcdir"/dc1-screen-backlight \
 		"$pkgdir"/usr/libexec/dc1-screen-backlight
@@ -146,6 +152,8 @@ package() {
 		"$pkgdir"/usr/lib/systemd/system/dc1-display-gate.service
 	install -Dm644 "$srcdir"/dc1-gpu.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-gpu.service
+	install -Dm644 "$srcdir"/dc1-audio.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-audio.service
 	install -Dm644 "$srcdir"/dc1-frontlight.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-frontlight.service
 	install -Dm644 "$srcdir"/dc1-screen-backlight.service \
@@ -268,6 +276,7 @@ sha512sums="
 a74965c50efc38879c4ce684ae1322b172d66be0b27ef2c74bff86eca12aaf8a948fc56edd37ef3249e57b1f993bda51672777137eb267bc3b26b753d1144ea2  dc1-frontlight.initd
 217b426571dd3fb8516541edf01dc79ea4433a8d8e31d6fd596a97e6f7178508a999c19793e60b621d897babbd5213a2484573d7a6e3e58b43fe1d3a411ee708  dc1-screen-backlight.initd
 06b6dd6ae65bbe27927d87e761a18b0cc9aec01272b5972be81143d41b8ac09ce58abba8f786949218e1bfd7d720f02277ea2ca13e59ab8825af94afc187ef34  dc1-gpu.initd
+9d1f78553dc120a5a121fc2371c53eec849328ef90c8b45e58802b54c0f5d34fc38358b44d1a984fe41ef91d851f48454c7b2da3d86c317e46abdeb810eb2fbc  dc1-audio.initd
 3b454548f91e949ebb428e7f1a256de879ed42a2be541ae3bbaf8b8dc8cd240c62cb2c89306c9332170d0747c6c99ff7a856aa34ef98633e15a517bfa39fafc1  dc1-rtcsync.initd
 6ded04475b6982d02d72ed5d42d1ed257df7a8a6cd71451b71d7bb040c4202fe574371792d00eaa2ff7dfccd49d766fc10aa32fdf09a5fb6491eac0418e2ab42  dc1-debug-shell.initd
 8c02215a06e7786fe665224a3ea91cde1ae61f7f8b3708b00cb8987edec8075b8e02386376a78edc464126bcaa5d9a677c2010b4928ace3e953dcd14ffa5397b  dc1-usb-gadget.initd
@@ -290,13 +299,15 @@ ef0b3a6abeb2f201071f8cf136aa147e818e672d2c1ef313252269aca6670e55897912cb965c5f9c
 d435afb2025114983e8e0b545f859a0bc7fbcb86d7ddf07acdd89070e1ae7384841c8d42d3cab238445316782cb1bc5b655b07837eb372d60d526d8f4886c3d7  dc1-display-gate.service
 2ab16e51fc8043aec332113621976319bbe8c12d48776673614fabbc2e6918b81979e14e74c95968d20d4a4ebc0230f26b2c2626a695bf3b42b725ab48189dd4  dc1-gpu
 e9f0a80372e63be8a04a027326af59e565760c8f97640e2a6627cdf6386fedae2be4e25f4c8888908cbf3ad246ccf5f0748d2f42038ee5ba5735f8ae344963ef  dc1-gpu.service
+4644abd6b759284f090d96c7ebb67e06ad6fde4b3d32ecb584fdf20fc3f27e0458ec1c3c916ea245d85ea618b82aca794061da7190d4a4ee41a1021c06b0db3d  dc1-audio
+a2cce1d92c32b59c120ee298b5c0f037888edc573dab7cdadabe6ea927cd8ebabbc35095d857dfd124f131103550db7d59f37b8ad58c2055da17a5d76d91f10b  dc1-audio.service
 f29500ad474be305cd8934aa059a50921a403b0922451a8a36fce295186cbd01bde2972616857bc32d4970161be136c9b09549010c6284f69da6f9c027285b24  dc1-frontlight
 a611b818be1a7af166b59f9b8498c28275725d1de95c3cffe6b2c38900e3a31065fc4e5d2bda023a1bd95549246a0e5ba72126450b53a733f1a5dbf3bd654af7  dc1-frontlight.service
 bcbea953414f25402e10e3596f0968ab0f4308f170247f07590ea2ddd289297b41d727eba7c832f3ae843fc20582a1da33d59dcbadf640e5ddd3893ebc637169  dc1-screen-backlight
 51c547dff77fe30aa8459ff2fbc64856ad2ad05fad2d050901fed169d72960deeb22b21e212e5e529a78044b2a62e661efb9c9de44cb3f152c37a5876889a0a7  dc1-screen-backlight.service
 7d241e69a4aaf124d949a6dc04c1ce16fc38532759f7643952b3df8645c3483bf74318c09c2eaf05742b071acbf8a5cbb4f475c96390272975efd614d2052f21  dc1-rtcsync.service
 e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99cfa9065ee15298c54054f83f997c95a99a03346d73f92d5b7  dc1-rtcsync.timer
-a3f682593b6d97361fbc25331d387a162eab14093c4e1c91744cacb9855c03f3c22d95b34f8ccf0b5183e1eaaf0535a3a076daf70814c0afaa6923f8ffc66247  80-device-daylight-jagar.preset
+d32cdb5a9a511eaa30ff3a7c79a1807cf1e0cff248dc92edf008b920c67ba88db72f9865776edbb974310b42165fe7fbaf42214d7d1d5c2e6de5a83eba4e0822  80-device-daylight-jagar.preset
 bd385f9e00a6b72922567c567698ee9ab8aea5de2d21c1fe2d373b0c361376570202c79c1ed3a7f021c5b5684ffcea7d99d1afb21c70924f19fc0eeef1fa7119  90-device-daylight-jagar.rules
 4a4422c7156a260131069161dda42efc778233f7f09e6d085c3c4fb176ddaf8395e76fcdbba2abdb270d668bd450efd7e4faa0e7919585401b81570cfb0b78b4  10-dc1-watchdog.conf
 92ddf71d7ef12a1b57676797813a696a7260fe72e5658e7c264079dfdd0be5fb1f0706e80e59245cc2e3094234836b0b2b48921ad3250b99a5aebda66ffb33da  10-dc1-gnome.gschema.override

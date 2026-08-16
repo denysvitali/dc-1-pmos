@@ -1,0 +1,47 @@
+#!/sbin/openrc-run
+# dc1-audio -- give the device an ALSA card.
+#
+# The shipped LK device tree points the MT6789 AFE at the flat legacy SCPSYS
+# node for its AUDIO power domain, and nothing provides that domain: the
+# bootloader-handoff provider in the kernel publishes DISP alone, because AUDIO
+# is genuinely off at handoff (SPM PWR_STATUS bit 22 reads 0) and has to be
+# sequenced rather than inherited. So the AFE waits, times out at -110, and the
+# machine card never gets its platform component -- no card, no PCM, no mixer.
+#
+# The sequence:
+#
+#   1. modprobe mt6789-live-audio-overlay -> applies
+#      mediatek/mt8781-daylight-jagar-live-audio-probe.dtbo, which adds a
+#      nested power controller carrying only MT6789_POWER_DOMAIN_AUDIO and
+#      retargets the AFE at it. The domain is registered OFF; the AFE's runtime
+#      PM powers it up.
+#   2. echo 11210000.mt6789-afe-pcm > .../drivers_probe -> deferred re-probe,
+#      the same poke dc1-gpu needs for the Mali node.
+#
+# Must run after localmount so /lib/firmware holds the overlay blob.
+
+description="Bring up the MT6789 AFE and the MT6366 sound card"
+
+depend() {
+	need localmount
+}
+
+start() {
+	ebegin "Bringing up audio"
+
+	modprobe mt6789-live-audio-overlay 2>/dev/null \
+		|| { eend 1 "could not load the audio overlay module"; return 1; }
+
+	printf '11210000.mt6789-afe-pcm\n' > /sys/bus/platform/drivers_probe 2>/dev/null \
+		|| { eend 1 "drivers_probe write failed"; return 1; }
+
+	# The machine card binds only once the AFE component registers, so wait
+	# for the card itself: that is what userspace needs.
+	n=0
+	while [ ! -e /proc/asound/card0 ] && [ "$n" -lt 10 ]; do
+		n=$((n + 1)); sleep 1
+	done
+	[ -e /proc/asound/card0 ] || { eend 1 "no ALSA card appeared"; return 1; }
+
+	eend 0
+}
