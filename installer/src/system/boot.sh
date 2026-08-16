@@ -67,7 +67,12 @@ fi
 # already-grown fs resize2fs reports "nothing to do". Best-effort -- a failure
 # leaves a valid smaller root, and the next boot retries.
 if command -v resize2fs >/dev/null 2>&1; then
-	if resize2fs "$dev" 2>/tmp/resize.err; then
+	# -f: the fs ships at image size and resize2fs refuses to grow it until
+	# the EXT2_VALID_FS "cleanly unmounted" flag is set, which e2fsck -p
+	# (preen) does NOT set and a full `e2fsck -f` does -- slowly, every boot.
+	# The fs is hash-verified at install and preened above, so forcing is safe;
+	# once grown, resize2fs is a no-op on subsequent boots.
+	if resize2fs -f "$dev" 2>/tmp/resize.err; then
 		log "resized root filesystem to fill userdata"
 	else
 		log "resize2fs failed: $(head -c 200 /tmp/resize.err 2>/dev/null)"

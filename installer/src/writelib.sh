@@ -203,7 +203,9 @@ wr_finalize() {
 	# the corrupting online ioctl. Idempotent and best-effort: a failure leaves
 	# a valid (smaller) root, which the boot initramfs can still grow later.
 	if command -v resize2fs >/dev/null 2>&1; then
-		wr_resize_err=$(resize2fs "$WR_DEV" 2>&1)
+		# -f: see boot.sh -- the freshly-written fs has EXT2_VALID_FS unset and
+		# resize2fs otherwise refuses to grow it until a full e2fsck -f.
+		wr_resize_err=$(resize2fs -f "$WR_DEV" 2>&1)
 		if [ $? -eq 0 ]; then
 			WR_RESIZE_NOTE="RESIZED"
 			say "RESIZED ROOT FILESYSTEM"
