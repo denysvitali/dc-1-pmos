@@ -1,17 +1,15 @@
 // Package drm acquires the DC-1 panel over DRM (a dumb buffer committed with
 // the legacy SETCRTC ioctl) and holds DRM master for as long as the surface is
-// alive. It is shared by two processes that never touch the panel at once:
+// alive. It is used by exactly one process: PID 1 (internal/installerinit),
+// which owns the panel for the life of the boot and paints the status screen.
 //
-//   - PID 1 (internal/installerinit), which owns the panel for the life of the
-//     boot and paints the status screen, and
-//   - dc1-ask (internal/ask), which takes the panel over while a prompt is on
-//     screen and releases it when it exits.
-//
-// The handover is the one the C init never did: DRM allows one master per
-// device (drm_auth.c: drm_setmaster_ioctl returns -EBUSY when dev->master is
-// already set, -EINVAL when this file_priv already is master), and SETCRTC is
-// a DRM_MASTER ioctl. So PID 1 drops master (DropMaster) while dc1-ask owns the
-// panel, and re-acquires plus re-commits its buffer (Reacquire) afterwards.
+// The touch UI runs IN-PROCESS, inside PID 1, drawing into this surface via
+// internal/ask.Screen. There is no second process and no master handover: DRM
+// allows one master per device (drm_auth.c: drm_setmaster_ioctl returns -EBUSY
+// when dev->master is already set), and a second SETCRTC does not reach the
+// glass on this panel -- the mediatek-drm driver lights it only via PID 1's
+// one-time boot handoff. So the dialogs blit into PID 1's already-committed
+// buffer (a memcpy, no ioctl) rather than modeset one of their own.
 //
 // Only 32bpp XRGB8888 is handled; anything else and Acquire fails cleanly so
 // the caller runs status-on-serial rather than paint garbage on a panel nobody
@@ -25,7 +23,6 @@ import (
 	"fmt"
 	"os"
 	"syscall"
-	"time"
 	"unsafe"
 )
 
@@ -69,18 +66,17 @@ func iowr(nr, size uintptr) uintptr {
 	return ioc(iocRead|iocWrite, drmIoctlBase, nr, size)
 }
 
-// ioNone is _IO: no argument payload (SET_MASTER, DROP_MASTER).
+// ioNone is _IO: no argument payload (SET_MASTER).
 func ioNone(nr uintptr) uintptr { return ioc(0, drmIoctlBase, nr, 0) }
 
 var (
-	drmIoctlSetMaster    = ioNone(0x1e)
-	drmIoctlDropMaster   = ioNone(0x1f)
-	drmIoctlModeGetRes   = iowr(0xa0, unsafe.Sizeof(drmModeCardRes{}))
-	drmIoctlModeGetConn  = iowr(0xa7, unsafe.Sizeof(drmModeGetConnector{}))
+	drmIoctlSetMaster      = ioNone(0x1e)
+	drmIoctlModeGetRes     = iowr(0xa0, unsafe.Sizeof(drmModeCardRes{}))
+	drmIoctlModeGetConn    = iowr(0xa7, unsafe.Sizeof(drmModeGetConnector{}))
 	drmIoctlModeCreateDumb = iowr(0xb2, unsafe.Sizeof(drmModeCreateDumb{}))
-	drmIoctlModeAddFB2   = iowr(0xb8, unsafe.Sizeof(drmModeFBCmd2{}))
-	drmIoctlModeMapDumb  = iowr(0xb3, unsafe.Sizeof(drmModeMapDumb{}))
-	drmIoctlModeSetCRTC  = iowr(0xa2, unsafe.Sizeof(drmModeCRTC{}))
+	drmIoctlModeAddFB2     = iowr(0xb8, unsafe.Sizeof(drmModeFBCmd2{}))
+	drmIoctlModeMapDumb    = iowr(0xb3, unsafe.Sizeof(drmModeMapDumb{}))
+	drmIoctlModeSetCRTC    = iowr(0xa2, unsafe.Sizeof(drmModeCRTC{}))
 )
 
 const (
@@ -159,8 +155,8 @@ type Surface struct {
 	w, h   int
 	stride int
 
-	// Remembered modeset parameters, so Reacquire can re-commit this buffer
-	// after dc1-ask has pointed the scanout at its own.
+	// The resolved modeset parameters, kept so modeset can commit this buffer
+	// and DebugLine can report what the panel resolved to.
 	crtcID, connID, fbID uint32
 	mode                 drmModeInfo
 }
@@ -215,25 +211,6 @@ func (s *Surface) Blit() error {
 		}
 	}
 	return nil
-}
-
-// DropMaster releases DRM master so another process (dc1-ask) can modeset.
-// It returns nil when already not master, since that is the state it was
-// called to reach.
-func (s *Surface) DropMaster() error {
-	if err := ioctl(s.f.Fd(), drmIoctlDropMaster, unsafe.Pointer(nil)); err != nil && err != syscall.EINVAL {
-		return err
-	}
-	return nil
-}
-
-// Reacquire takes DRM master back and re-commits this buffer to the scanout.
-// Called after dc1-ask has released the panel.
-func (s *Surface) Reacquire() error {
-	if err := setMaster(s.f); err != nil {
-		return err
-	}
-	return s.modeset()
 }
 
 func (s *Surface) modeset() error {
@@ -383,24 +360,13 @@ func Acquire() (*Surface, error) {
 	return s, nil
 }
 
-// setMaster takes DRM master, retrying briefly on EBUSY so dc1-ask can call it
-// the moment PID 1's loop drops master (PID 1 polls /tmp/ui-active on a 1s
-// tick, so a fresh dc1-ask can observe a short EBUSY window). EINVAL means
-// this fd already is master; that is success, not an error.
+// setMaster takes DRM master on the card. Acquire calls it once, immediately
+// after open and before any other process could have taken master, so a single
+// attempt suffices. EINVAL means this fd already is master; that is success.
 func setMaster(f *os.File) error {
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		err := ioctl(f.Fd(), drmIoctlSetMaster, unsafe.Pointer(nil))
-		switch err {
-		case nil, syscall.EINVAL:
-			return nil
-		case syscall.EBUSY:
-			if time.Now().After(deadline) {
-				return err
-			}
-			time.Sleep(100 * time.Millisecond)
-		default:
-			return err
-		}
+	err := ioctl(f.Fd(), drmIoctlSetMaster, unsafe.Pointer(nil))
+	if err == syscall.EINVAL {
+		return nil
 	}
+	return err
 }

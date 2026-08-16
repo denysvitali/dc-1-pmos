@@ -50,17 +50,19 @@ type Ops interface {
 }
 
 // Surface is an acquired panel: a shadow buffer plus the blit that puts it on
-// the glass, and the master handover that lets dc1-ask take the panel over.
+// the glass. It also satisfies ask.Surface (Size/Stride/Shadow/Blit), so PID 1
+// can host the touch UI in-process: the dialogs draw into THIS buffer and
+// blit, never modeset one of their own (a second modeset blackens this panel).
 type Surface interface {
 	Size() (w, h int)
+	Stride() int
+	// Shadow is the buffer the dialog engine draws into; Paint wraps the
+	// status painter's use of the same buffer.
+	Shadow() []byte
 	// Paint hands the caller the shadow buffer to draw into.
 	Paint(func(pix []byte, stride int))
 	Blit() error
 	How() string
-	// DropMaster releases DRM master while the touch UI owns the panel.
-	DropMaster() error
-	// Reacquire takes DRM master back and re-commits the status screen.
-	Reacquire() error
 	// DebugLine is the black-panel root-cause probe (see drm.Surface).
 	DebugLine() string
 }

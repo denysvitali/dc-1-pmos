@@ -2,15 +2,12 @@ package ask
 
 import "github.com/denysvitali/dc-1-pmos/installer/gotools/internal/drm"
 
-// drmFB paints through the shared DRM surface. This is the path that actually
-// reaches the glass on this panel: /dev/fb0 and the LK scanout buffer are dead
-// instruments (see fb.go's header), and only a DRM atomic commit lights the
-// panel.
-//
-// dc1-ask and PID 1 hand the panel back and forth by DRM master: PID 1 drops
-// master when it sees /tmp/ui-active, and dc1-ask's Acquire retries SET_MASTER
-// on EBUSY until that happens, then modesets its own buffer. On close, the fd
-// is released and PID 1 re-acquires and re-commits the status screen.
+// drmFB paints through a DRM surface dc1-ask acquires itself. This path is now
+// used ONLY by the probe diagnostic, which needs a marker on screen and
+// therefore modesets its own buffer -- a second modeset that does not reach
+// this panel's glass (see internal/drm). The dialogs (menu/text/secret/info)
+// no longer take this path: they run inside PID 1, drawing into its surface
+// via screen.go/dialog.go.
 type drmFB struct {
 	s *drm.Surface
 	c *canvas

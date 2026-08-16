@@ -1,5 +1,7 @@
 package ask
 
+import "bytes"
+
 // Screen is the touch dialog engine bound to a panel surface the caller owns.
 //
 // This is the in-process entry point for the on-device setup flow: the DC-1's
@@ -77,4 +79,15 @@ func (s *Screen) Secret(title string) (string, bool, error) {
 // Info shows a message until OK is tapped.
 func (s *Screen) Info(title string, lines []string) error {
 	return s.u.info(title, lines)
+}
+
+// Run dispatches one dc1-ask CLI request against this Screen, returning the
+// exit code, stdout and stderr exactly as the dc1-ask applet would print them.
+// It is the in-process twin of ask.run: the same modes and the same exit-code
+// contract (0 answered, 1 cancelled, 2 unusable), so the dialog server serves
+// requests without a second copy of the dispatch.
+func (s *Screen) Run(args []string) (rc int, out, errOut string) {
+	var ob, eb bytes.Buffer
+	rc = run(s.u, args, &ob, &eb)
+	return rc, ob.String(), eb.String()
 }

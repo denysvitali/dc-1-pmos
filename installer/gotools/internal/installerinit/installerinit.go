@@ -42,8 +42,10 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/ask"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/pid1"
 )
 
@@ -179,7 +181,28 @@ func Run(ops Ops, log io.Writer) {
 		say("fb: acquired via %s", surface.How())
 	}
 
-	loop(ops, surface, out)
+	// paintMu serialises the two things that draw into the one surface: the
+	// status painter in loop() and a touch dialog served by the dialog server.
+	// A dialog holds it for its whole lifetime, so a TryLock failure in loop()
+	// means "a prompt is on screen, do not repaint over it".
+	var paintMu sync.Mutex
+
+	if surface != nil {
+		run := func(args []string) ask.DialogResponse {
+			scr, err := ask.NewScreen(surface)
+			if err != nil {
+				return ask.DialogResponse{RC: 2, Err: "dc1-ask: no touchscreen"}
+			}
+			defer scr.Close()
+			paintMu.Lock()
+			rc, outS, errS := scr.Run(args)
+			paintMu.Unlock()
+			return ask.DialogResponse{RC: rc, Out: outS, Err: errS}
+		}
+		go serveDialogs(ask.DialogSocket, run, out)
+	}
+
+	loop(ops, surface, &paintMu, out)
 }
 
 func mountAll(ops Ops) {
@@ -218,37 +241,26 @@ func acquireDisplay(ops Ops, log io.Writer) (Surface, error) {
 }
 
 // loop repaints, heartbeats and reaps forever.
-func loop(ops Ops, surface Surface, log io.Writer) {
-	uiActive := false
+func loop(ops Ops, surface Surface, paintMu *sync.Mutex, log io.Writer) {
 	for tick := uint64(0); ; tick++ {
 		status, err := ops.ReadFile(StatusFile)
 		if err != nil || strings.TrimSpace(status) == "" {
 			status = DefaultStatus
 		}
 
-		// The touch UI (dc1-ask) owns the panel while /tmp/ui-active exists.
-		// A modeset is a DRM_MASTER ioctl and DRM allows one master per
-		// device, so PID 1 must drop master to let dc1-ask paint, and
-		// re-acquire (which re-commits the status screen) once it is gone.
-		nowActive := ops.Exists("/tmp/ui-active")
-		if surface != nil && nowActive != uiActive {
-			if nowActive {
-				if err := surface.DropMaster(); err != nil {
-					fmt.Fprintf(log, "[dc1-installer] drop-master: %v\n", err)
-				}
-			} else if err := surface.Reacquire(); err != nil {
-				fmt.Fprintf(log, "[dc1-installer] re-acquire: %v\n", err)
-			}
-			uiActive = nowActive
-		}
-
-		if surface != nil && !nowActive {
+		// The touch UI (ask.Screen, run in-process by the dialog server) draws
+		// into this same surface. It holds paintMu for the whole time a dialog
+		// is up, so a TryLock failure means a prompt is on screen and the
+		// status screen must not repaint over it. No DRM master handover: the
+		// dialog blits into the buffer already committed, it never modesets.
+		if surface != nil && paintMu.TryLock() {
 			w, h := surface.Size()
 			lines := StatusLines(status)
 			surface.Paint(func(pix []byte, stride int) {
 				PaintStatus(pix, stride, w, h, lines, tick)
 			})
 			_ = surface.Blit()
+			paintMu.Unlock()
 			if tick == 0 {
 				fmt.Fprintf(log, "[dc1-installer] DIAG %s\n", surface.DebugLine())
 			}

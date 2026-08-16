@@ -21,11 +21,11 @@
 // and the built-in evdev touchscreen (CONFIG_TOUCHSCREEN_ILITEK=y,
 // CONFIG_INPUT_EVDEV=y).
 //
-// NEITHER of those two paths has been observed working on the device, and the
-// framebuffer one is inherited from a channel PID 1 has since abandoned --
-// read fb.go's header and touch.go's tap() before trusting this screen.
-// dc1-ask is an addition; the USB install flow is the proven path and the
-// fallback, and tui.sh takes it whenever this exits 2.
+// dc1-ask no longer opens the panel itself: a second DRM modeset blackens this
+// panel, so the dialogs run inside PID 1 (see dialog.go and screen.go) and
+// this binary forwards argv to them over a unix socket. The CLI contract above
+// is unchanged, and the USB install flow remains the proven fallback that
+// tui.sh takes whenever this exits 2.
 //
 // Secrets: the entered text goes to stdout only. Nothing is written to kmsg,
 // no temp files, no argv leakage.
@@ -215,25 +215,15 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	s, err := openSurface()
-	if err != nil {
-		fmt.Fprintln(stderr, "dc1-ask: no display")
-		return 2
+	// The dialogs render inside PID 1 (it owns the panel); this process is the
+	// client. When PID 1 is not serving -- no panel, or this binary run outside
+	// the installer image -- the answer is exit 2, which tui.sh already treats
+	// as "UI unusable, USB flow only".
+	if resp, ok := dialog(DialogSocket, args); ok {
+		_, _ = io.WriteString(stdout, resp.Out)
+		_, _ = io.WriteString(stderr, resp.Err)
+		return resp.RC
 	}
-	defer s.close()
-
-	t, err := openTouch()
-	if err != nil {
-		fmt.Fprintln(stderr, "dc1-ask: no touchscreen")
-		return 2
-	}
-	defer t.close()
-
-	c := s.canvas()
-	u := &ui{
-		canvas: c,
-		blit:   s.blit,
-		tap:    func() (int, int, error) { return t.tap(c.w, c.h) },
-	}
-	return run(u, args, stdout, stderr)
+	fmt.Fprintln(stderr, "dc1-ask: no display")
+	return 2
 }

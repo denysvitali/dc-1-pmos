@@ -25,7 +25,6 @@ func TestIoctlEncodingsMatchTheKernelHeaders(t *testing.T) {
 		want uintptr
 	}{
 		{"SET_MASTER", drmIoctlSetMaster, 0x641e},
-		{"DROP_MASTER", drmIoctlDropMaster, 0x641f},
 		{"MODE_GETRESOURCES", drmIoctlModeGetRes, 0xc04064a0},
 		{"MODE_GETCONNECTOR", drmIoctlModeGetConn, 0xc05064a7},
 		{"MODE_CREATE_DUMB", drmIoctlModeCreateDumb, 0xc02064b2},
@@ -98,10 +97,11 @@ func TestStructOffsetsMatchTheKernelABI(t *testing.T) {
 	}
 }
 
-// The modeset parameters must survive into the Surface so Reacquire can
-// re-commit the same buffer. A modeset with a zeroed crtc/fb/mode would be
-// accepted by the ioctl and simply point the scanout at nothing -- silent, so
-// assert the fields the re-commit path reads are the ones Acquire set.
+// The modeset parameters must be retained on the Surface: modeset() reads them
+// to commit the buffer, and DebugLine() reads them to report what the panel
+// resolved to. A modeset with a zeroed crtc/fb/mode would be accepted by the
+// ioctl and simply point the scanout at nothing -- silent -- so assert the
+// fields the commit path reads are the ones Acquire set.
 func TestSurfaceRemembersModesetParameters(t *testing.T) {
 	s := &Surface{
 		crtcID: 0x1234,
