@@ -17,8 +17,8 @@
 // packaged in Alpine, shows only a hardcoded password prompt, and drags in
 // libinput + xkbcommon + a running udevd -- none of which can be exercised
 // before first boot on hardware. This tool is one static binary with no
-// runtime dependencies: a cached shadow buffer blitted to the panel (fb.go)
-// and the built-in evdev touchscreen (CONFIG_TOUCHSCREEN_ILITEK=y,
+// runtime dependencies: a cached shadow buffer PID 1 draws the dialog into
+// (screen.go) and the built-in evdev touchscreen (CONFIG_TOUCHSCREEN_ILITEK=y,
 // CONFIG_INPUT_EVDEV=y).
 //
 // dc1-ask no longer opens the panel itself: a second DRM modeset blackens this
