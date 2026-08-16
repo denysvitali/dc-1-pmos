@@ -351,7 +351,7 @@ func TestPaintSurvivesEveryByte(t *testing.T) {
 	for b := 0; b < 256; b++ {
 		all = append(all, byte(b))
 	}
-	PaintStatus(pix, stride, w, h, []string{string(all)}, 12345)
+	PaintStatus(pix, stride, w, h, []string{string(all)}, 12345, -1)
 }
 
 // Painting must stay inside the buffer whatever the geometry says.
@@ -360,7 +360,7 @@ func TestPaintClipsToTheBuffer(t *testing.T) {
 	pix := make([]byte, stride*h)
 	guard := make([]byte, len(pix))
 	copy(guard, pix)
-	PaintStatus(pix, stride, w, h, []string{"A VERY LONG STATUS LINE INDEED"}, 1)
+	PaintStatus(pix, stride, w, h, []string{"A VERY LONG STATUS LINE INDEED"}, 1, -1)
 	if len(pix) != len(guard) {
 		t.Fatal("buffer was resized")
 	}

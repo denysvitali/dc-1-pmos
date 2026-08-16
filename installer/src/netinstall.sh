@@ -130,25 +130,43 @@ net_fetch() {
 	return 1
 }
 
-# net_progress FILE LABEL -- background size ticker painted on the panel.
+# net_content_length NAME -> the Content-Length of URL_BASE/NAME, or 0 if the
+# server does not say (unknown size). Best-effort: a HEAD probe, same as the
+# tmpfs headroom check below.
+net_content_length() {
+	ncl=$($CURL --retry 2 -I "$URL_BASE/$1" 2>/dev/null \
+		| tr -d '\r' | sed -n 's/^[Cc]ontent-[Ll]ength: //p' | tail -1)
+	case "$ncl" in *[!0-9]*|'') ncl=0 ;; esac
+	printf '%s\n' "$ncl"
+}
+
+# net_progress FILE LABEL TOTAL -- 1-second ticker painted on the panel: the
+# size of FILE as a fraction of TOTAL, with percentage and MiB/s speed.
 net_progress() {
+	np_file=$1 np_label=$2 np_total=$3
+	case "$np_total" in *[!0-9]*|'') np_total=0 ;; esac
+	np_t0=$(date +%s)
 	while :; do
-		sz=$(wc -c < "$1" 2>/dev/null | tr -d ' ')
-		[ -n "$sz" ] || sz=0
-		say "$2
-$((sz / MIB)) MIB DOWNLOADED"
-		sleep 5
+		np_sz=$(wc -c < "$np_file" 2>/dev/null | tr -d ' ')
+		[ -n "$np_sz" ] || np_sz=0
+		np_elapsed=$(( $(date +%s) - np_t0 ))
+		np_line=$(net_progress_line "$np_sz" "$np_total" "$np_elapsed")
+		printf '%s\n%s\n' "$np_label" "$np_line" > "$STATUS_FILE" 2>/dev/null
+		echo "[netinstall] $np_label $np_line" > /dev/kmsg 2>/dev/null
+		sleep 1
 	done
 }
 
-# net_get_verified NAME OUT -- download URL_BASE/NAME with resume+retry and
-# require its SHA-256 to match SHA256SUMS. One full re-download on mismatch
+# net_get_verified NAME OUT [TOTAL] -- download URL_BASE/NAME with resume+retry
+# and require its SHA-256 to match SHA256SUMS. One full re-download on mismatch
 # (a stale partial from an aborted run resumes into a wrong hash), then fail.
+# TOTAL is the Content-Length (0 if unknown) for the progress bar.
 net_get_verified() {
 	want=$(sums_digest "$NET_DIR/SHA256SUMS" "$1") \
 		|| fail "no usable SHA256SUMS entry for $1"
+	total=${3:-0}
 	for attempt in 1 2; do
-		net_progress "$2" "DOWNLOADING $1" &
+		net_progress "$2" "DOWNLOADING $1" "$total" &
 		prog_pid=$!
 		net_fetch "$URL_BASE/$1" "$2"
 		nf_rc=$?
@@ -180,10 +198,18 @@ net_write_boot_a() {
 	bsectors=$(cat "$SYSBLOCK/$(basename "$bdev")/size" 2>/dev/null || echo 0)
 	[ -n "${DC1_BOOT_DEV:-}" ] || [ "$img_bytes" -le $((bsectors * 512)) ] \
 		|| fail "$BOOTIMG_NAME ($img_bytes bytes) larger than boot_a"
+	wstat="$SYSBLOCK/$(basename "$bdev")/stat"
 	for attempt in 1 2; do
 		say "WRITING BOOT IMAGE TO $bdev"
-		dd if="$img" of="$bdev" bs=$MIB conv=fsync 2>/dev/null \
-			|| fail "boot image write failed"
+		wstart=$(awk '{ print $7 }' "$wstat" 2>/dev/null)
+		case "$wstart" in *[!0-9]*|'') wstart=0 ;; esac
+		dev_progress "$wstat" "$wstart" "$img_bytes" "WRITING BOOT IMAGE" &
+		wprog_pid=$!
+		dd if="$img" of="$bdev" bs=$MIB conv=fsync 2>/dev/null
+		dd_rc=$?
+		kill "$wprog_pid" 2>/dev/null
+		wait "$wprog_pid" 2>/dev/null
+		[ "$dd_rc" -eq 0 ] || fail "boot image write failed"
 		sync
 		back=$(head -c "$img_bytes" "$bdev" | sha256sum | cut -d' ' -f1)
 		[ "$back" = "$img_sha" ] && return 0
@@ -217,9 +243,7 @@ net_install() {
 		"$URL_BASE/SHA256SUMS" || fail "cannot fetch SHA256SUMS (no network?)"
 
 	# Enough tmpfs for the compressed rootfs? Fail early, not at 90%.
-	clen=$($CURL --retry 2 -I "$URL_BASE/$ROOTFS_NAME" 2>/dev/null \
-		| tr -d '\r' | sed -n 's/^[Cc]ontent-[Ll]ength: //p' | tail -1)
-	case "$clen" in *[!0-9]*|'') clen=0 ;; esac
+	clen=$(net_content_length "$ROOTFS_NAME")
 	if [ "$clen" -gt 0 ]; then
 		free_kib=$(df -k "$NET_DIR" 2>/dev/null | awk 'NR==2 { print $4 }')
 		case "$free_kib" in *[!0-9]*|'') free_kib=0 ;; esac
@@ -228,11 +252,12 @@ net_install() {
 		fi
 	fi
 
-	net_get_verified "$ROOTFS_NAME" "$NET_DIR/$ROOTFS_NAME"
+	net_get_verified "$ROOTFS_NAME" "$NET_DIR/$ROOTFS_NAME" "$clen"
 
 	# Fetch + verify the boot image BEFORE wiping anything: if the release
 	# is missing it, the device stays untouched and reinstallable.
-	net_get_verified "$BOOTIMG_NAME" "$NET_DIR/$BOOTIMG_NAME"
+	blen=$(net_content_length "$BOOTIMG_NAME")
+	net_get_verified "$BOOTIMG_NAME" "$NET_DIR/$BOOTIMG_NAME" "$blen"
 
 	wr_open_target
 	wr_scrub
@@ -245,8 +270,18 @@ net_install() {
 	( zstd -dc "$NET_DIR/$ROOTFS_NAME" > "$NET_DIR/raw.fifo" 2>/dev/null
 	  echo $? > "$NET_DIR/zstd.rc.tmp"
 	  mv "$NET_DIR/zstd.rc.tmp" "$NET_DIR/zstd.rc" ) &
-	wr_receive_stream < "$NET_DIR/raw.fifo" \
-		|| wr_reject "device write failed mid-stream"
+	# Progress: the decompressed size is not known up front, so the ticker
+	# shows "writing... N MiB" without a percentage (dev_progress total 0).
+	rstat="$SYSBLOCK/$(basename "$WR_DEV")/stat"
+	rstart=$(awk '{ print $7 }' "$rstat" 2>/dev/null)
+	case "$rstart" in *[!0-9]*|'') rstart=0 ;; esac
+	dev_progress "$rstat" "$rstart" 0 "WRITING ROOT FILESYSTEM" &
+	wprog_pid=$!
+	wr_receive_stream < "$NET_DIR/raw.fifo"
+	wrc=$?
+	kill "$wprog_pid" 2>/dev/null
+	wait "$wprog_pid" 2>/dev/null
+	[ "$wrc" -eq 0 ] || wr_reject "device write failed mid-stream"
 	# EOF on the fifo precedes the writer's rc file by an instant; wait.
 	n=0
 	while [ ! -f "$NET_DIR/zstd.rc" ] && [ "$n" -lt 10 ]; do

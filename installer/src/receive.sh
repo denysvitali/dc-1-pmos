@@ -112,7 +112,18 @@ install_session() {
 
 	wr_scrub
 	say "RECEIVING IMAGE"
-	wr_receive_stream "$hdr_size" || wr_reject "device write failed mid-stream"
+	# Progress against the bytes actually written during the stream (the first
+	# MiB is held back until wr_commit), so the bar tracks the body only.
+	rstat="$SYSBLOCK/$(basename "$WR_DEV")/stat"
+	rstart=$(awk '{ print $7 }' "$rstat" 2>/dev/null)
+	case "$rstart" in *[!0-9]*|'') rstart=0 ;; esac
+	dev_progress "$rstat" "$rstart" "$((hdr_size - MIB))" "RECEIVING IMAGE" &
+	wprog_pid=$!
+	wr_receive_stream "$hdr_size"
+	wrc=$?
+	kill "$wprog_pid" 2>/dev/null
+	wait "$wprog_pid" 2>/dev/null
+	[ "$wrc" -eq 0 ] || wr_reject "device write failed mid-stream"
 
 	[ "$WR_SHA256" = "$hdr_sha256" ] || \
 		wr_reject "sha256 mismatch: got $WR_SHA256 want $hdr_sha256 (short or corrupt transfer)"

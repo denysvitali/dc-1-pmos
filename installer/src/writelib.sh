@@ -25,10 +25,68 @@
 # file in tests) and DC1_PART_BYTES overrides the partition size.
 
 MIB=1048576
+STATUS_FILE=${DC1_STATUS_FILE:-/tmp/installer-status}
 WR_FIRST=/tmp/first-mib
 WR_SHA256=""
 WR_BYTES=""
 WR_RESIZE_NOTE=""
+
+# --- progress reporting (shared by both transports) -------------------------
+# PID 1's painter reads $STATUS_FILE once a second: a line beginning with
+# "PROGRESS " carries an integer percentage 0..100 and drives the bar; every
+# other line is text. These helpers build both from a byte count using nothing
+# beyond busybox awk (floats are fine).
+
+# human_bytes N -> "123.4 MiB" or "5.6 GiB" (one decimal place).
+human_bytes() {
+	awk -v n="${1:-0}" 'BEGIN {
+		if (n >= 1073741824) printf "%.1f GiB\n", n / 1073741824;
+		else printf "%.1f MiB\n", n / 1048576;
+	}'
+}
+
+# net_progress_line DONE TOTAL ELAPSED -> a "PROGRESS <pct>" line (when TOTAL
+# is known) followed by a human line: "<pct>%  <done> of <total>  <speed>".
+# DONE/TOTAL are bytes, ELAPSED seconds since the transfer started (so the
+# speed is a smoothed average, not a jittery per-second delta). TOTAL 0 means
+# unknown size: no percentage, just "<done>  <speed>".
+net_progress_line() {
+	awk -v done="${1:-0}" -v total="${2:-0}" -v el="${3:-0}" 'BEGIN {
+		speed = (el > 0) ? done / el / 1048576 : 0;
+		if (done >= 1073741824) d = sprintf("%.1f GiB", done / 1073741824);
+		else d = sprintf("%.1f MiB", done / 1048576);
+		if (total >= 1073741824) t = sprintf("%.1f GiB", total / 1073741824);
+		else t = sprintf("%.1f MiB", total / 1048576);
+		if (total > 0) {
+			pct = int(done * 100 / total);
+			if (pct < 0) pct = 0;
+			if (pct > 100) pct = 100;
+			printf "PROGRESS %d\n%d%%  %s of %s  %.1f MiB/s\n", pct, pct, d, t, speed;
+		} else {
+			printf "%s  %.1f MiB/s\n", d, speed;
+		}
+	}'
+}
+
+# dev_progress STATFILE START_SECTORS TOTAL_BYTES LABEL -- background ticker:
+# read field 7 (sectors written since boot) of STATFILE, turn the delta into
+# bytes, and repaint the status file. TOTAL_BYTES 0 -> human line only.
+dev_progress() {
+	dp_stat=$1 dp_start=$2 dp_total=$3 dp_label=$4
+	case "$dp_start" in *[!0-9]*|'') dp_start=0 ;; esac
+	case "$dp_total" in *[!0-9]*|'') dp_total=0 ;; esac
+	dp_t0=$(date +%s)
+	while :; do
+		dp_sec=$(awk '{ print $7 }' "$dp_stat" 2>/dev/null)
+		case "$dp_sec" in *[!0-9]*|'') dp_sec=$dp_start ;; esac
+		dp_done=$(( (dp_sec - dp_start) * 512 ))
+		[ "$dp_done" -lt 0 ] && dp_done=0
+		dp_elapsed=$(( $(date +%s) - dp_t0 ))
+		dp_line=$(net_progress_line "$dp_done" "$dp_total" "$dp_elapsed")
+		printf '%s\n%s\n' "$dp_label" "$dp_line" > "$STATUS_FILE" 2>/dev/null
+		sleep 1
+	done
+}
 
 # wr_open_target: resolve and sanity-check the target. Sets WR_DEV and
 # WR_PART_BYTES; calls fail on any mismatch.

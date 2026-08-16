@@ -15,6 +15,37 @@ bad() { failn=$((failn + 1)); echo "  FAIL: $*"; }
 
 MIB=1048576
 
+echo "== human_bytes / net_progress_line =="
+
+# Pure helpers (no device, no scenario): sourced alone.
+. "$HERE/../src/writelib.sh"
+
+[ "$(human_bytes 0)" = "0.0 MiB" ] \
+	&& ok "human_bytes 0" || bad "human_bytes 0 = '$(human_bytes 0)'"
+[ "$(human_bytes $MIB)" = "1.0 MiB" ] \
+	&& ok "human_bytes 1 MiB" || bad "human_bytes 1 MiB = '$(human_bytes $MIB)'"
+[ "$(human_bytes $((512 * MIB)))" = "512.0 MiB" ] \
+	&& ok "human_bytes 512 MiB" || bad "human_bytes 512 MiB = '$(human_bytes $((512 * MIB)))'"
+[ "$(human_bytes $((1024 * MIB)))" = "1.0 GiB" ] \
+	&& ok "human_bytes 1 GiB" || bad "human_bytes 1 GiB = '$(human_bytes $((1024 * MIB)))'"
+[ "$(human_bytes $((1536 * MIB)))" = "1.5 GiB" ] \
+	&& ok "human_bytes 1.5 GiB" || bad "human_bytes 1.5 GiB = '$(human_bytes $((1536 * MIB)))'"
+
+[ "$(net_progress_line $((50 * MIB)) $((100 * MIB)) 10)" = \
+	"PROGRESS 50
+50%  50.0 MiB of 100.0 MiB  5.0 MiB/s" ] \
+	&& ok "net_progress_line 50%" || bad "net_progress_line 50% = '$(net_progress_line $((50 * MIB)) $((100 * MIB)) 10)'"
+[ "$(net_progress_line $((100 * MIB)) $((100 * MIB)) 1)" = \
+	"PROGRESS 100
+100%  100.0 MiB of 100.0 MiB  100.0 MiB/s" ] \
+	&& ok "net_progress_line 100%" || bad "net_progress_line 100% = '$(net_progress_line $((100 * MIB)) $((100 * MIB)) 1)'"
+[ "$(net_progress_line $((200 * MIB)) $((100 * MIB)) 1)" = \
+	"PROGRESS 100
+100%  200.0 MiB of 100.0 MiB  200.0 MiB/s" ] \
+	&& ok "net_progress_line clamps >100%" || bad "net_progress_line clamp = '$(net_progress_line $((200 * MIB)) $((100 * MIB)) 1)'"
+[ "$(net_progress_line $((50 * MIB)) 0 5)" = "50.0 MiB  10.0 MiB/s" ] \
+	&& ok "net_progress_line unknown total (no pct)" || bad "net_progress_line unknown = '$(net_progress_line $((50 * MIB)) 0 5)'"
+
 # Each scenario runs in a subshell where fail() aborts with 99, mirroring
 # the real callers (whose fail() never returns).
 scenario() {

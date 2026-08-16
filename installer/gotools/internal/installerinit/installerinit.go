@@ -250,8 +250,12 @@ func loop(ops Ops, surface Surface, paintMu *sync.Mutex, log io.Writer) {
 		if surface != nil && paintMu.TryLock() {
 			w, h := surface.Size()
 			lines := StatusLines(status)
+			pct, hasPct := ProgressPct(status)
+			if !hasPct {
+				pct = -1 // -1 means "no bar": PaintStatus draws the empty track
+			}
 			surface.Paint(func(pix []byte, stride int) {
-				PaintStatus(pix, stride, w, h, lines, tick)
+				PaintStatus(pix, stride, w, h, lines, tick, pct)
 			})
 			_ = surface.Blit()
 			paintMu.Unlock()
