@@ -3,13 +3,13 @@
 # panel, run in the background by rc.sh. The USB installd daemon keeps
 # running in parallel the whole time, so a host can always take over.
 #
-# All screens are drawn by /bin/dc1-ask (static, evdev touch + framebuffer;
-# see gotools/internal/ask). While a dc1-ask screen is up, /tmp/ui-active
-# suppresses PID 1's status painting; removing it hands the panel back to the
-# status screen (used during the long-running download/write phases).
+# The screens are drawn by PID 1, which owns the panel (a second DRM modeset
+# blackens it): /bin/dc1-ask is now a thin client that forwards its argv to
+# PID 1's in-process dialog server over /tmp/dc1-ask.sock and relays the
+# answer. Nothing here paints, and there is no panel handover.
 #
-# If dc1-ask cannot run (no framebuffer, no touchscreen), this script exits
-# and the classic status screen + USB flow remain -- the touch UI is an
+# If dc1-ask cannot reach PID 1 (no panel, or no touchscreen), this script
+# exits and the classic status screen + USB flow remain -- the touch UI is an
 # addition, never a dependency, and the USB path is the fallback.
 #
 # Secrets: passwords and PSKs live in shell variables and mode-0600 files
@@ -100,42 +100,13 @@ if [ -n "${DC1_LIB:-}" ]; then
 fi
 
 # -------------------------------------------------------------------- screens
-# ask MODE ARGS... -> dc1-ask with the panel handed over for the duration.
-# Output is the user's answer on stdout; non-zero means the UI is unusable
-# (missing fb/touch) and the caller must fall back.
+# ask MODE ARGS... -> dc1-ask, which forwards the request to PID 1's dialog
+# server and relays the answer. Output is the user's answer on stdout; exit 2
+# means the UI is unusable (PID 1 not serving -- no panel or no touchscreen)
+# and the caller must fall back to the USB flow.
 
 ask() {
-	# OFF by default, and deliberately so. Two independent reasons, neither
-	# of which can be settled while the device is unreachable:
-	#
-	#  * dc1-ask paints through /dev/fb0 or the LK scanout buffer. init.c
-	#    records, photographically, that neither reaches this panel's glass
-	#    -- only a DRM atomic commit does. So the screen below is drawn into
-	#    a buffer nobody scans out.
-	#  * it would still take taps. dc1-sway.conf carries a
-	#    hardware-confirmed `transform 180` PLUS `calibration_matrix -1 0 1
-	#    0 -1 1`, i.e. raw evdev is inverted on both axes relative to the
-	#    untransformed scanout dc1-ask draws into. Every tap lands mirrored
-	#    through screen centre, so the menu entries swap.
-	#
-	# Together that is an invisible, live installer whose top menu offers
-	# "Install now (ERASES the Linux data partition)" -- and touching
-	# /tmp/ui-active below tells PID 1 to stop painting the one status
-	# screen that IS proven to reach the glass, so the panel would go black
-	# for the whole session rather than falling back visibly.
-	#
-	# Returning 2 here is the "UI unusable" code the callers already handle:
-	# the menu logs "dc1-ask unavailable; USB flow only" and the
-	# hardware-proven USB flow carries on, with PID 1 still painting status.
-	# Set DC1_TOUCH_UI=1 to exercise it on a panel; the corner test that
-	# would settle the axis question is written down at touch.go's tap().
-	[ "${DC1_TOUCH_UI:-0}" = 1 ] || return 2
-
-	touch /tmp/ui-active
 	/bin/dc1-ask "$@"
-	ask_rc=$?
-	rm -f /tmp/ui-active
-	return $ask_rc
 }
 
 usb_screen() {
@@ -306,6 +277,16 @@ net_flow() {
 
 # Give the panel + touchscreen + rc.sh a moment to settle.
 sleep 3
+
+# PID 1 opens the dialog socket only after the display gate returns, which can
+# take ~35 s in the worst case. Wait for it before the first prompt; if it
+# never appears (no panel), the touch UI is unusable and the USB flow remains.
+i=0
+while [ ! -e /tmp/dc1-ask.sock ]; do
+	[ "$i" -ge 60 ] && { log "dialog socket never appeared; USB flow only"; exit 0; }
+	sleep 1
+	i=$((i + 1))
+done
 
 while :; do
 	choice=$(ask menu "DC-1 INSTALLER" \

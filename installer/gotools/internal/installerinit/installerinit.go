@@ -29,12 +29,6 @@
 //     costs nothing.
 //
 // If PID 1 exits the kernel panics, so Run never returns on the device.
-//
-// NOT YET WIRED AS /init: installer/build.sh still stages the C
-// installer-init. This exists so the port can be exercised and reviewed; the
-// switch happens only once a Go init has demonstrably booted on hardware,
-// because the device's recovery path runs through the image this would
-// replace.
 package installerinit
 
 import (

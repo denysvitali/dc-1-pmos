@@ -83,10 +83,10 @@ is why the installer is flashed and later replaced.
   `/usr/sbin/dc1-reboot-fastboot` on the installed system; it is compiled
   into both initramfses from the same file.
 
-Progress is painted on the panel by `src/init.c` (from
-`/tmp/installer-status`; suppressed while `/tmp/ui-active` marks a touch
-screen as up) and streamed to the host on `/dev/ttyACM0`; a debug shell
-listens on TCP 4444 and on the second ACM port.
+Progress is painted on the panel by PID 1 (the Go `installerinit`, from
+`/tmp/installer-status`; the status painter yields to an in-process touch
+dialog while one is on screen) and streamed to the host on `/dev/ttyACM0`; a
+debug shell listens on TCP 4444 and on the second ACM port.
 
 ## Why the touch UI is hand-rolled (`gotools/internal/ask`)
 
@@ -95,23 +95,22 @@ postmarketOS **buffyboard** injects keys through `/dev/uinput`, and the
 jagar kernel config does not enable `CONFIG_INPUT_UINPUT`; **unl0kr** is no
 longer packaged in Alpine, shows only a hardcoded password prompt, and
 needs libinput + libxkbcommon + a running udevd. `dc1-ask` is instead one
-static binary (<1 MiB) with zero runtime dependencies: an fbdev-or-`/dev/mem`
-framebuffer with a cached shadow buffer, and raw evdev from the built-in
-touchscreen driver (`CONFIG_TOUCHSCREEN_ILITEK=y`, `CONFIG_INPUT_EVDEV=y`).
-One screen per question: menu, text (QWERTY + symbols on-screen keyboard),
-secret (masked), info. If it cannot acquire the framebuffer or a touchscreen
-it exits and the USB flow remains — the touch UI is an addition, never a
-dependency.
+static binary (<1 MiB) with zero runtime dependencies: it forwards each
+prompt to PID 1's in-process dialog server over `/tmp/dc1-ask.sock`, and PID
+1 draws the screen into the DRM surface it already owns (a second DRM modeset
+blackens this panel) using raw evdev from the built-in touchscreen driver
+(`CONFIG_TOUCHSCREEN_ILITEK=y`, `CONFIG_INPUT_EVDEV=y`). One screen per
+question: menu, text (QWERTY + symbols on-screen keyboard), secret (masked),
+info. If it cannot reach PID 1 — no panel or no touchscreen — it exits and
+the USB flow remains: the touch UI is an addition, never a dependency.
 
-**Neither of those two interfaces has been observed working on the
-device.** `dc1-ask` has never run on hardware, and its framebuffer path is
-not the one PID 1 uses: `src/init.c` records that fbdev does not reach this
-panel's glass and paints over DRM instead, and DRM allows only one master
-per device, so `dc1-ask` cannot simply borrow that surface while PID 1 holds
-it. Treat the touch installer as unproven until it is exercised on the
-panel; the USB flow is the path with hardware behind it. See the headers of
-`gotools/internal/ask/fb.go` and `touch.go` for the evidence and for the
-cheap tests that would settle both questions.
+**Enabled by default, but the end-to-end flow is not yet hardware-verified.**
+The dialogs' paint path and touch mapping are the hardware-measured ones, and
+the client/server plumbing is covered by offline tests, but a freshly flashed
+installer image running the full flow has not been confirmed on a panel. Until
+it is, the USB flow is the path with hardware behind it. See the headers of
+`gotools/internal/ask/dialog.go`, `screen.go` and `touch.go` for the model and
+the evidence.
 
 ## System boot image (`jagar-boot.img`)
 

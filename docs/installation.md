@@ -48,14 +48,15 @@ The DC-1 boots via MediaTek LK with A/B slots, and LK provides `fastboot`.
 
 A fully on-device installer — the same questions, answered on the panel's own
 touch keyboard, with no computer involved after step 1 — is built and shipped
-(`dc1-ask`), but it is **disabled by default and should be treated as not
-working**. It paints through `/dev/fb0`, which on this panel is a dead
-instrument (two maximally different framebuffers produced photographically
-identical screens; only a DRM atomic commit reaches the glass), and its touch
-mapping is very likely mirrored on both axes. Enabled, it would be an
-invisible screen that still accepts taps. `DC1_TOUCH_UI=1` turns it on for
-anyone testing it against a panel. Until that is settled the USB flow is the
-path with hardware behind it, and it is the one documented below.
+(`dc1-ask`). Its dialogs render **inside PID 1**, which owns the panel: a
+second DRM modeset blackens this panel, so `dc1-ask` is a thin client that
+forwards each prompt to PID 1's in-process dialog server over a Unix socket,
+and PID 1 draws the screen into the surface it already committed (using the
+hardware-measured touch mapping). It is **enabled by default but not yet
+hardware-verified end-to-end** — the plumbing builds and its offline tests
+pass, but a freshly flashed image running the full on-device flow has not been
+confirmed on a panel. Until it is, the USB flow below is the path with
+hardware behind it.
 
 Note: tethered `fastboot boot <img>` (boot without flashing) is unverified
 on this LK — there is no recorded evidence it works. That is why the

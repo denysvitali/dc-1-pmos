@@ -163,8 +163,8 @@ done
 # ------------------------------------------------- 4. touch UI front-end
 # The primary install path: pick Wi-Fi on the panel, download the release,
 # feed the shared write core. Backgrounded and optional by design -- if
-# dc1-ask cannot acquire the framebuffer or touchscreen, tui.sh exits and
-# everything below still works exactly as before.
+# dc1-ask cannot reach PID 1's dialog server (no panel or no touchscreen),
+# tui.sh exits and everything below still works exactly as before.
 if [ -x /etc/installer/tui.sh ] && [ -x /bin/dc1-ask ]; then
     log "starting touch installer UI"
     setsid sh /etc/installer/tui.sh </dev/null >/dev/null 2>&1 &

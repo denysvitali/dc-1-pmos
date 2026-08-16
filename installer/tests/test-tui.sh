@@ -69,12 +69,14 @@ else
 	echo "  skip: no cryptpw on this host (device busybox provides it; build.sh enforces the applet)"
 fi
 
-echo "== touch UI gate =="
+echo "== touch UI =="
 
 # ask() is defined after tui.sh's library-mode return, so it is extracted
-# rather than sourced. The discriminator is exact: the gate returns 2 ("UI
-# unusable", which the menu falls back on), while a tui.sh with the gate
-# removed would reach /bin/dc1-ask -- absent on this host -- and return 127.
+# rather than sourced. It is now a thin forwarding wrapper: /bin/dc1-ask is
+# PID 1's dialog client, and the old DC1_TOUCH_UI gate (which kept the broken
+# local paint path off) is gone. The discriminator is exact -- /bin/dc1-ask is
+# absent on this host, so a forwarding ask() returns 127 (command not found),
+# not the gate's 2.
 sed -n '/^ask() {/,/^}/p' "$HERE/../src/tui.sh" > "$TMP/ask.sh"
 [ -s "$TMP/ask.sh" ] || bad "could not extract ask() from tui.sh"
 . "$TMP/ask.sh"
@@ -82,13 +84,12 @@ sed -n '/^ask() {/,/^}/p' "$HERE/../src/tui.sh" > "$TMP/ask.sh"
 rc=0
 ask menu "T" "a" >/dev/null 2>&1 || rc=$?
 case "$rc" in
-	2) ok "touch UI is off by default (unproven paint path + mirrored taps)" ;;
-	127) bad "ask() ran /bin/dc1-ask with DC1_TOUCH_UI unset: the gate is gone" ;;
-	*) bad "ask() returned $rc with DC1_TOUCH_UI unset, expected 2" ;;
+	127) ok "ask() forwards to /bin/dc1-ask (absent on host: 127)" ;;
+	*) bad "ask() returned $rc, expected 127 -- the gate is gone and it forwards" ;;
 esac
 
 [ ! -e /tmp/ui-active ] ||
-	bad "ask() left /tmp/ui-active behind, which gates PID 1's painting off"
+	bad "ask() left /tmp/ui-active behind, which would gate PID 1's painting off"
 
 echo
 echo "test-tui: $pass ok, $failn failed"

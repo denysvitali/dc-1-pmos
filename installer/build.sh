@@ -231,8 +231,9 @@ mkdir -p "$OUT" "$ROOT"
 # boot-mode nibble LK reads on the way up -- busybox `reboot` only does
 # RB_AUTOBOOT, which LK answers by booting the same slot again) and bootctl
 # (read-only A/B bootloader_control dump; all mutations refused by design),
-# plus dc1-installd (the USB byte path) and dc1-ask (the touch prompt screens
-# tui.sh drives -- framebuffer + evdev, no dependencies).
+# plus dc1-installd (the USB byte path) and dc1-ask (the touch prompt client
+# tui.sh drives -- it forwards each prompt to PID 1's in-process dialog
+# server, which draws into the panel PID 1 owns).
 #
 # One binary with argv[0] dispatch, because the Go runtime is ~1.2 MB and this
 # initramfs is loaded into RAM: five separate binaries would pay for it five
