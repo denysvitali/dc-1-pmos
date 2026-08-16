@@ -41,14 +41,10 @@ device_ver=$(awk -F= '$1=="pkgver" { print $2; exit }' \
 	"$overlay/device-daylight-jagar/APKBUILD")
 device_rel=$(awk -F= '$1=="pkgrel" { print $2; exit }' \
 	"$overlay/device-daylight-jagar/APKBUILD")
-ui_ver=$(awk -F= '$1=="pkgver" { print $2; exit }' "$overlay/dc1-ui/APKBUILD")
-ui_rel=$(awk -F= '$1=="pkgrel" { print $2; exit }' "$overlay/dc1-ui/APKBUILD")
 kernel_apk="linux-postmarketos-mediatek-mt6789-$kernel_ver-r$kernel_rel.apk"
 device_apk="device-daylight-jagar-$device_ver-r$device_rel.apk"
-ui_apk="dc1-ui-$ui_ver-r$ui_rel.apk"
 printf 'fake\n' >"$packages/$kernel_apk"
 printf 'fake\n' >"$packages/$device_apk"
-printf 'fake\n' >"$packages/$ui_apk"
 printf 'stale\n' >"$packages/linux-postmarketos-mediatek-mt6789-0.1_git1-r0.apk"
 printf 'pinned upstream sources\n' >"$tmp/SOURCES"
 
@@ -60,7 +56,7 @@ PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$root" "$tmp/packages" "$tmp/SOURCES" \
 for f in jagar-rootfs.tar.gz jagar-rootfs.ext4.zst FILES.tsv SOURCES \
 	PROVENANCE SHA256SUMS boot/Image.gz \
 	boot/mt8781-daylight-jagar.dtb \
-	"packages/$kernel_apk" "packages/$device_apk" "packages/$ui_apk"; do
+	"packages/$kernel_apk" "packages/$device_apk"; do
 	[ -s "$out/$f" ] || fail "missing or empty output: $f"
 done
 [ ! -e "$out/jagar-rootfs.ext4" ] || fail "uncompressed image was left behind"

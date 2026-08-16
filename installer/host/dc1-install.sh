@@ -185,7 +185,7 @@ trap 'rm -rf "$TMPDIR_INSTALL"' EXIT
 # ------------------------------------------------------------- 1. answers
 # Collected FIRST so the user is not typing against a timeout while the
 # device waits. --skip-provision installs with no answers at all, so the
-# on-device Flutter onboarding runs on first boot instead of the classic
+# on-device onboarding runs on first boot instead of the classic
 # host-driven prompts.
 
 if [ -n "$SKIP_PROVISION" ]; then

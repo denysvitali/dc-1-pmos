@@ -5,7 +5,6 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 overlay_dir=$(CDPATH= cd -- "$script_dir/../pmaports" && pwd)
 device_dir="$overlay_dir/device/testing/device-daylight-jagar"
 kernel_dir="$overlay_dir/device/testing/linux-postmarketos-mediatek-mt6789"
-ui_dir="$overlay_dir/device/testing/dc1-ui"
 
 fail() {
 	echo "postmarketOS packaging verification failed: $*" >&2
@@ -16,8 +15,7 @@ for file in \
 	"$script_dir/versions.env" \
 	"$device_dir/APKBUILD" \
 	"$device_dir/deviceinfo" \
-	"$kernel_dir/APKBUILD" \
-	"$ui_dir/APKBUILD"; do
+	"$kernel_dir/APKBUILD"; do
 	[ -f "$file" ] || fail "missing $file"
 done
 
@@ -25,15 +23,9 @@ sh -n "$script_dir/prepare.sh"
 sh -n "$script_dir/build-rootfs.sh"
 sh -n "$script_dir/export-artifacts.sh"
 sh -n "$script_dir/make-ext4-image.sh"
-sh -n "$script_dir/build-flutter-ui.sh"
-sh -n "$script_dir/build-backend.sh"
-sh -n "$script_dir/build-ui-payload.sh"
-sh -n "$script_dir/verify-flutter-gtk.sh"
 sh -n "$script_dir/verify.sh"
 sh -n "$device_dir/APKBUILD"
 sh -n "$kernel_dir/APKBUILD"
-sh -n "$ui_dir/APKBUILD"
-sh -n "$ui_dir/dc1-ui-session"
 python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' \
 	"$script_dir/make-rootfs-archive.py"
 python3 "$script_dir/tests/test_make_rootfs_archive.py"
@@ -77,26 +69,6 @@ grep -q 'wireless-regdb' "$device_dir/APKBUILD" ||
 find "$overlay_dir" -name '*.bin' -print -quit | grep -q . &&
 	fail "a firmware blob is committed in the overlay" || :
 
-# The shipped rootfs gets the runtime Flutter embedder and nothing else of
-# the toolchain: flutter-desktop pulls flutter-common, flutter-tool and
-# dart-sdk, which is ~2 GB written to userdata for a build dependency. The
-# exact-version pin is what makes the engine ABI claim true; details and the
-# byte-level pin live in scripts/verify-flutter-gtk.sh.
-grep -qF 'flutter-gtk=3.38.4-r2' "$ui_dir/APKBUILD" ||
-	fail "dc1-ui no longer pins the flutter-gtk embedder exactly"
-# Scoped to the depends block on purpose: the APKBUILD names these packages
-# in a comment saying they must never be dependencies.
-ui_depends=$(sed -n '/^depends="/,/^\t"/p' "$ui_dir/APKBUILD")
-for buildonly in flutter-desktop flutter-common flutter-tool dart-sdk; do
-	! printf '%s\n' "$ui_depends" | grep -q "$buildonly" ||
-		fail "build-only Flutter package in the shipped package: $buildonly"
-done
-# The installed rootfs is GNOME Mobile only: onboarding is an install-time
-# concern handled by the installer's own (sway) touch UI, so the Flutter shell
-# must not ship into the desktop.
-! grep -q '^extra_packages = .*dc1-ui' "$script_dir/build-rootfs.sh" ||
-	fail "the installed rootfs must not ship the Flutter shell (dc1-ui)"
-
 grep -q "_commit=\"$KERNEL_COMMIT\"" "$kernel_dir/APKBUILD" ||
 	fail "kernel commit drift"
 grep -q 'github.com/denysvitali/$_repository/archive/$_commit.tar.gz' \
@@ -126,11 +98,7 @@ for forbidden in flasher fastboot ssh scp /dev/sd; do
 	! grep -E "(^|[^A-Za-z0-9_-])$forbidden([^A-Za-z0-9_-]|$)" \
 		"$script_dir/prepare.sh" "$script_dir/build-rootfs.sh" \
 		"$script_dir/export-artifacts.sh" \
-		"$script_dir/make-ext4-image.sh" \
-		"$script_dir/build-flutter-ui.sh" \
-		"$script_dir/build-ui-payload.sh" \
-		"$script_dir/build-backend.sh" \
-		"$script_dir/verify-flutter-gtk.sh" >/dev/null ||
+		"$script_dir/make-ext4-image.sh" >/dev/null ||
 		fail "builder contains forbidden deployment primitive: $forbidden"
 done
 
@@ -149,7 +117,5 @@ grep -qF 'boot_image_included=false' "$script_dir/export-artifacts.sh" ||
 
 sh "$script_dir/tests/test_make_ext4_image.sh"
 sh "$script_dir/tests/test_export_artifacts.sh"
-sh "$script_dir/tests/test_flutter_ui.sh"
-sh "$script_dir/tests/test_dc1_ui_package.sh"
 
 echo "postmarketOS packaging verification passed"

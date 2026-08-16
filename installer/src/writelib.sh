@@ -179,8 +179,7 @@ wr_finalize() {
 	# Provisioning is SKIPPED for an unprovisioned install: the rootfs is
 	# written and resized, but no user/hostname/timezone/Wi-Fi is applied and
 	# the idempotence marker is left unset. On first boot the installed
-	# system's Flutter UI then runs onboarding and provisions itself (via
-	# dc1-backend's /onboard, the Go port of provision.sh). This is the
+	# system's own onboarding runs and provisions itself. This is the
 	# "flash and interact with the touchscreen immediately" flow; the classic
 	# provisioned install (answers applied here) is still the default.
 	if [ -n "${DC1_SKIP_PROVISION:-}" ]; then

@@ -35,7 +35,7 @@ start() {
 	# succeeded. Measured on hardware 2026-08-15: this service had never once
 	# started -- it reported "failed to start" immediately after a modprobe
 	# that worked, so panfrost never bound, there was no renderD128, and the
-	# Flutter shell fell back to llvmpipe on a device with a perfectly good
+	# the shell fell back to llvmpipe on a device with a perfectly good
 	# Mali-G57. The drivers_probe check below always had its braces, which is
 	# why only these two lines were wrong.
 	modprobe mt6789-live-gpu-overlay 2>/dev/null \

@@ -200,7 +200,7 @@ net_install() {
 
 	# An unprovisioned install (DC1_SKIP_PROVISION, set by tui.sh's "set up
 	# later" or the USB host's unprovisioned=1 header) has no answers to
-	# validate: the first-boot Flutter onboarding provisions instead.
+	# validate: first-boot onboarding provisions instead.
 	if [ -z "${DC1_SKIP_PROVISION:-}" ]; then
 		/etc/installer/provision.sh --validate "$answers" \
 			|| fail "answers failed validation"

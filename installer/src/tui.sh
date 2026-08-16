@@ -185,7 +185,7 @@ net_flow() {
 
 	# Account setup can be deferred to first boot. An unprovisioned install
 	# writes the rootfs with no account and leaves the idempotence marker
-	# unset, so the installed system's Flutter onboarding (Wi-Fi, username,
+	# unset, so the installed system's onboarding (Wi-Fi, username,
 	# password, hostname, timezone) runs on first boot. Asking everything
 	# here remains the default; "set up later" is the "flash and interact"
 	# path.

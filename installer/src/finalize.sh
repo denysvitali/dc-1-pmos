@@ -7,8 +7,8 @@
 # proven provisioning logic stays where it is.
 #
 # DC1_SKIP_PROVISION=1 installs the image without applying answers and without
-# the idempotence marker, so the installed system's Flutter onboarding runs on
-# first boot.
+# the idempotence marker, so the installed system's onboarding runs on first
+# boot.
 set -eu
 
 HERE=$(dirname "$0")

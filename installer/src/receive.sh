@@ -76,7 +76,7 @@ read_header() {
 	[ ${#hdr_sha256} -eq 64 ] || { echo "sha256 not 64 hex chars" >&2; return 1; }
 	# answers is required only for a provisioned install. unprovisioned=1
 	# (an optional, backward-compatible header) installs the image with no
-	# answers, so the on-device Flutter onboarding runs on first boot.
+	# answers, so the on-device onboarding runs on first boot.
 	if [ "$hdr_unprovisioned" = "1" ]; then
 		hdr_answers=""
 	else

@@ -1,3 +1,0 @@
-# Enable the DC-1 UI control plane under systemd. The OpenRC equivalent is
-# registered by dc1-ui.post-install (rc-update), which no-ops under systemd.
-enable dc1-backend.service

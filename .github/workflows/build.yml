@@ -90,29 +90,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-          # mkboot and dc1-backend have no dependencies (no go.sum); key their
-          # cache on go.mod. installer/gotools now vendors golang.org/x/image
-          # (the anti-aliased font), so key its cache on go.sum.
+          # mkboot has no dependencies (no go.sum); key its cache on go.mod.
+          # installer/gotools now vendors golang.org/x/image (the
+          # anti-aliased font), so key its cache on go.sum.
           cache-dependency-path: |
             boot/mkboot/go.mod
-            ui/backend/go.mod
             installer/gotools/go.sum
 
       - name: mkboot build, vet, test
         working-directory: boot/mkboot
-        run: |
-          go build ./...
-          go vet ./...
-          go test ./...
-
-      # CGO_ENABLED=0 here too, so this job fails on a cgo import rather than
-      # letting the aarch64 job discover it while cross-building the shipped
-      # binary. The tests are hermetic: no nmcli, no /etc, no socket outside
-      # a temp directory.
-      - name: dc1-backend build, vet, test
-        working-directory: ui/backend
-        env:
-          CGO_ENABLED: "0"
         run: |
           go build ./...
           go vet ./...
@@ -199,15 +185,16 @@ jobs:
           echo /usr/sbin >> "$GITHUB_PATH"
           echo /sbin >> "$GITHUB_PATH"
 
-      # scripts/build-rootfs.sh cross-builds ui/backend into the dc1-ui
-      # package payload (GOOS=linux GOARCH=arm64 CGO_ENABLED=0), so this job
-      # needs a Go toolchain on PATH before the rootfs build, not just the
-      # lint job. This runner is already aarch64, so the "cross" build is
-      # native; the flags are kept explicit anyway.
+      # installer/build.sh cross-compiles the dc1tools Go userland into the
+      # initramfs (CGO_ENABLED=0 GOOS=linux GOARCH=arm64), so this job needs a
+      # Go toolchain on PATH before the boot-image build, not just the lint
+      # job. This runner is already aarch64, so the "cross" build is native;
+      # the flags are kept explicit anyway. gotools vendors golang.org/x/image
+      # (the anti-aliased font), so key its cache on go.sum.
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-          cache-dependency-path: ui/backend/go.mod
+          cache-dependency-path: installer/gotools/go.sum
 
       - name: Prepare pinned sources
         run: sh scripts/prepare.sh work/postmarketos
