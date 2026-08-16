@@ -9,6 +9,7 @@
 rc-update add dc1-display-gate boot 2>/dev/null || true
 rc-update add dc1-gpu boot 2>/dev/null || true
 rc-update add dc1-frontlight default 2>/dev/null || true
+rc-update add dc1-screen-backlight default 2>/dev/null || true
 rc-update add dc1-rtcsync default 2>/dev/null || true
 rc-update add dc1-usb-gadget boot 2>/dev/null || true
 rc-update add dc1-debug-shell default 2>/dev/null || true
@@ -22,8 +23,9 @@ if [ -x /etc/init.d/sshd ]; then
 	rc-update add sshd default 2>/dev/null || true
 fi
 
-# Compile the gschema overrides (including ours: no power-key suspend, no
-# idle blank/sleep) so the GNOME power defaults take effect. Best-effort: only
-# relevant when a GNOME desktop is installed.
+# Compile the gschema overrides (including ours: the power key opens the power
+# menu instead of blanking, and nothing idle-blanks or sleeps) so the GNOME
+# power defaults take effect. Best-effort: only relevant when a GNOME desktop
+# is installed.
 glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true
 exit 0

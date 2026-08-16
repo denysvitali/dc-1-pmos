@@ -1,0 +1,26 @@
+#!/sbin/openrc-run
+# Put the DC-1 frontlights out while the panel is blanked.
+#
+# The two RT4539 frontlights are independent i2c devices, not the panel's DRM
+# backlight: the device boots LK's stock device tree and its nt36523 panel node
+# has no backlight phandle, so drm_panel_{enable,disable} never touches them.
+# A compositor DPMS-off therefore leaves an evenly lit, empty panel behind,
+# which reads as a wedged display rather than an off screen.
+#
+# The helper mirrors the DRM connector's dpms state onto bl_power; see
+# /usr/libexec/dc1-screen-backlight for the full rationale.
+
+description="Put the DC-1 frontlights out while the panel is blanked"
+
+command="/usr/libexec/dc1-screen-backlight"
+command_background="yes"
+pidfile="/run/dc1-screen-backlight.pid"
+
+depend() {
+	need dc1-display-gate
+}
+
+stop_post() {
+	# Never leave the lights out with the panel on.
+	/usr/libexec/dc1-screen-backlight --restore
+}

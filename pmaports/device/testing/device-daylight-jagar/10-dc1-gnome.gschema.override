@@ -1,12 +1,40 @@
 [org.gnome.settings-daemon.plugins.power]
-# The DC-1 panel cannot be re-lit after a blank (single-handoff modeset), and
-# the s2idle suspend path aborts with unfreezable tasks. Both leave the screen
-# blank with the frontlight on and no way to wake it short of a reboot, so the
-# power key and both sleep triggers must not start any power-state transition.
-power-button-action='nothing'
+# gnome-shell-mobile handles the power key itself -- it grabs it as a mutter
+# keybinding ("DBus: disallowing the grabbing of power key accelerator"), so
+# neither logind's HandlePowerKey nor gnome-settings-daemon ever sees it. Its
+# misc/powerManager.js then maps our old value onto the very action we were
+# trying to avoid:
+#
+#     let action = this._powerSettings.get_string('power-button-action');
+#     if (action === 'nothing') { // FIXME: get rid of this in favor of new action
+#         action = 'blank';
+#     } else if (action === 'interactive') { this._showInteractivePowerMenu(); return; }
+#
+# 'interactive' is the only value that returns without blanking; it opens the
+# quick-settings power menu. Suspend and hibernate are masked system-wide (see
+# the sleep-target masks in the APKBUILD), so logind reports CanSuspend=no and
+# the menu offers only restart/power off -- the s2idle path that aborts with
+# unfreezable tasks stays unreachable.
+power-button-action='interactive'
 sleep-inactive-ac-type='nothing'
 sleep-inactive-battery-type='nothing'
 
 [org.gnome.desktop.session]
-# Never idle-blank either: a blanked DC-1 panel stays blank until reboot.
+# Never idle-blank: this key is what powerManager arms its screensaver idle
+# watch from, and 0 disables the watch entirely.
 idle-delay=0
+
+[org.gnome.desktop.screensaver]
+# Locking on blank raises the screen shield, and powerManager then arms a
+# *hardcoded* 10 s idle watch instead of honouring idle-delay:
+#
+#     const idleTimeoutMs = Main.screenShield.active
+#         ? 10 * 1000
+#         : this._sessionSettings.get_uint('idle-delay') * 1000;
+#
+# so a screen woken from a blank went dark again 10 s later, which reads as
+# "the power button does nothing". With the shield down, a blank is a plain
+# screen-off that stays off until the user wakes it. Manual locking is
+# unaffected: screenShield.lock() consults org.gnome.desktop.lockdown
+# disable-lock-screen, not this key.
+lock-enabled=false

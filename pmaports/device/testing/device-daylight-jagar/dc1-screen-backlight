@@ -1,0 +1,76 @@
+#!/bin/sh
+# dc1-screen-backlight -- put the frontlights out while the panel is blanked.
+# Systemd helper; the OpenRC path is dc1-screen-backlight.initd, which carries
+# the same sequence and rationale.
+#
+# The DC-1's two RT4539 frontlights are independent i2c devices, not the
+# panel's DRM backlight. The device boots LK's stock device tree (compatible
+# "mediatek,MT6789"), not ours, and the stock nt36523 panel node carries no
+# backlight phandle -- so drm_panel_{enable,disable} never touches them. A
+# compositor DPMS-off stops the DSI and leaves the frontlight burning: an
+# evenly lit, empty panel that reads as a wedged display rather than an off
+# screen.
+#
+# Mirror the connector state onto the lights instead. bl_power, not
+# brightness, is the knob: rt4539_backlight_update_status() reads
+# backlight_get_brightness(), which returns 0 whenever props.power is off, so
+# the light goes out through the driver's own disable path and the user's
+# brightness value survives to be restored on wake.
+#
+# Polling is deliberate. DRM emits no uevent and no netlink message for a DPMS
+# transition, and the compositor-side signal (mutter's PowerSaveMode property)
+# exists only under GNOME; reading one small sysfs file twice a second keeps
+# this working under sway and the installer too.
+
+interval=0.5
+
+# 0 = BACKLIGHT_POWER_ON, 4 = BACKLIGHT_POWER_OFF -- the FB_BLANK values the
+# backlight class still takes on bl_power.
+lights_set() {
+	for bl in /sys/class/backlight/*/bl_power; do
+		[ -w "$bl" ] || continue
+		printf '%s\n' "$1" > "$bl" 2>/dev/null || true
+	done
+}
+
+# --restore is the stop path: never leave the panel lit-but-dark behind us.
+case ${1-} in
+--restore)
+	lights_set 0
+	exit 0
+	;;
+esac
+
+# Sets $state to on/off/none. "none" means no connector has appeared yet (the
+# display gate has not run), which must leave the lights alone rather than
+# guess. No command substitution: this runs twice a second.
+state=none
+read_screen_state() {
+	state=none
+	for dpms in /sys/class/drm/*/dpms; do
+		[ -r "$dpms" ] || continue
+		read -r value < "$dpms" || continue
+		if [ "$value" = "On" ]; then
+			state=on
+			return
+		fi
+		state=off
+	done
+}
+
+applied=none
+while :; do
+	read_screen_state
+	case $state in
+	on) want=0 ;;
+	off) want=4 ;;
+	*) want=$applied ;;
+	esac
+
+	if [ "$want" != "$applied" ]; then
+		lights_set "$want"
+		applied=$want
+	fi
+
+	sleep "$interval"
+done

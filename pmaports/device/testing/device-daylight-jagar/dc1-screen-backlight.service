@@ -1,0 +1,15 @@
+[Unit]
+Description=Put the DC-1 frontlights out while the panel is blanked
+Requires=dc1-display-gate.service
+After=dc1-display-gate.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/dc1-screen-backlight
+# A stopped mirror must not leave the lights out with the panel on.
+ExecStopPost=/usr/libexec/dc1-screen-backlight --restore
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
