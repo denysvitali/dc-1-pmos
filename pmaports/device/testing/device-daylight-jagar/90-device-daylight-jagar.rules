@@ -12,3 +12,15 @@
 # characterized in the mainline DT (the touch node is intentionally unwritten
 # there), so a name match would encode a guess.
 ACTION=="add|change", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LIBINPUT_CALIBRATION_MATRIX}="-1 0 1 0 -1 1"
+
+# Hide the fuel gauge from UPower while it is mute. The BQ78Z100 at i2c-7
+# 0x55 registers a power_supply and then NAKs every read (-ENXIO), so UPower
+# publishes a battery with no usable property and GNOME renders
+# "Battery Level: error: unknown" -- worse than showing nothing, because the
+# device really does have a battery and the reading is simply unavailable.
+#
+# ATTR{present} is the one property that still reads: bq27xxx_battery.c
+# reports 0 when its cached flags are an error, so this matches exactly the
+# failed-communication case and stops matching the moment the gauge answers
+# (P7.1). The MT6375 line-power supply is untouched, so AC state still shows.
+SUBSYSTEM=="power_supply", KERNEL=="bq78z100-0", ATTR{present}=="0", ENV{UPOWER_IGNORE}="1"
