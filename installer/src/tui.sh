@@ -183,79 +183,62 @@ net_flow() {
 		return 1
 	fi
 
-	# Account setup can be skipped. An unprovisioned install writes the
-	# rootfs with no user-chosen account (or Wi-Fi, hostname, or timezone):
-	# the answers file is emptied and provisioning is skipped, so the
-	# installed system boots straight to the GNOME desktop auto-logged-in as
-	# the build-time default user `dc1`. There is no first-boot onboarding
-	# to fill any of this in. Asking everything here remains the default;
-	# "set up later" is the "flash and interact" path.
-	choice=$(ask menu "ACCOUNT SETUP" \
-		"Set up now (username, password, hostname, timezone)" \
-		"Set up later (skip account setup)") || return 1
+	# Account setup is mandatory. There is no first-boot onboarding, and
+	# skipping it would leave the device auto-logged-in as the build-time
+	# default user with a known placeholder password on a network-connected
+	# device -- so the old "set up later" path is gone.
+	while :; do
+		A_USER=$(ask text "USERNAME" "user") || return 1
+		valid_username "$A_USER" && break
+		ask info "INVALID USERNAME" \
+			"Lowercase letters, digits, - and _;" \
+			"must start with a letter; max 32." > /dev/null
+	done
 
-	if [ "$choice" = 0 ]; then
-		while :; do
-			A_USER=$(ask text "USERNAME" "user") || return 1
-			valid_username "$A_USER" && break
-			ask info "INVALID USERNAME" \
-				"Lowercase letters, digits, - and _;" \
-				"must start with a letter; max 32." > /dev/null
-		done
+	while :; do
+		A_PASS=$(ask secret "PASSWORD FOR $A_USER") || return 1
+		[ -n "$A_PASS" ] || continue
+		A_PASS2=$(ask secret "PASSWORD (AGAIN)") || return 1
+		[ "$A_PASS" = "$A_PASS2" ] && break
+		ask info "PASSWORDS DO NOT MATCH" "Try again." > /dev/null
+	done
+	A_PASS2=""
 
-		while :; do
-			A_PASS=$(ask secret "PASSWORD FOR $A_USER") || return 1
-			[ -n "$A_PASS" ] || continue
-			A_PASS2=$(ask secret "PASSWORD (AGAIN)") || return 1
-			[ "$A_PASS" = "$A_PASS2" ] && break
-			ask info "PASSWORDS DO NOT MATCH" "Try again." > /dev/null
-		done
-		A_PASS2=""
+	while :; do
+		A_HOSTNAME=$(ask text "HOSTNAME" "dc1") || return 1
+		valid_hostname "$A_HOSTNAME" && break
+		ask info "INVALID HOSTNAME" \
+			"Lowercase letters, digits and -;" \
+			"max 63 characters." > /dev/null
+	done
 
-		while :; do
-			A_HOSTNAME=$(ask text "HOSTNAME" "dc1") || return 1
-			valid_hostname "$A_HOSTNAME" && break
-			ask info "INVALID HOSTNAME" \
-				"Lowercase letters, digits and -;" \
-				"max 63 characters." > /dev/null
-		done
+	while :; do
+		tzc=$(ask menu "TIMEZONE" \
+			"UTC" "Europe/Zurich" "Europe/Berlin" "Europe/London" \
+			"America/New_York" "America/Los_Angeles" "Asia/Tokyo" \
+			"= Type another") || return 1
+		case "$tzc" in
+			0) A_TZ=UTC ;;
+			1) A_TZ=Europe/Zurich ;;
+			2) A_TZ=Europe/Berlin ;;
+			3) A_TZ=Europe/London ;;
+			4) A_TZ=America/New_York ;;
+			5) A_TZ=America/Los_Angeles ;;
+			6) A_TZ=Asia/Tokyo ;;
+			*) A_TZ=$(ask text "TIMEZONE (AREA/CITY)" "UTC") || return 1 ;;
+		esac
+		valid_timezone "$A_TZ" && break
+		ask info "INVALID TIMEZONE" "Use Area/City, e.g. Europe/Rome." > /dev/null
+	done
 
-		while :; do
-			tzc=$(ask menu "TIMEZONE" \
-				"UTC" "Europe/Zurich" "Europe/Berlin" "Europe/London" \
-				"America/New_York" "America/Los_Angeles" "Asia/Tokyo" \
-				"= Type another") || return 1
-			case "$tzc" in
-				0) A_TZ=UTC ;;
-				1) A_TZ=Europe/Zurich ;;
-				2) A_TZ=Europe/Berlin ;;
-				3) A_TZ=Europe/London ;;
-				4) A_TZ=America/New_York ;;
-				5) A_TZ=America/Los_Angeles ;;
-				6) A_TZ=Asia/Tokyo ;;
-				*) A_TZ=$(ask text "TIMEZONE (AREA/CITY)" "UTC") || return 1 ;;
-			esac
-			valid_timezone "$A_TZ" && break
-			ask info "INVALID TIMEZONE" "Use Area/City, e.g. Europe/Rome." > /dev/null
-		done
+	A_HASH=$(hash_password "$A_PASS") || {
+		ask info "INTERNAL ERROR" "Password hashing failed." > /dev/null
+		return 1
+	}
+	A_PASS=""
 
-		A_HASH=$(hash_password "$A_PASS") || {
-			ask info "INTERNAL ERROR" "Password hashing failed." > /dev/null
-			return 1
-		}
-		A_PASS=""
-
-		make_answers "$ANSWERS" "$A_USER" "$A_HASH" "$A_HOSTNAME" "$A_TZ" \
-			"$SSID" "$PSK"
-	else
-		# Unprovisioned: write an empty answers file (netinstall.sh only
-		# checks it exists) and flag wr_finalize to skip provisioning.
-		umask 077
-		: > "$ANSWERS"
-		umask 022
-		chmod 600 "$ANSWERS"
-		export DC1_SKIP_PROVISION=1
-	fi
+	make_answers "$ANSWERS" "$A_USER" "$A_HASH" "$A_HOSTNAME" "$A_TZ" \
+		"$SSID" "$PSK"
 	PSK=""
 
 	choice=$(ask menu "READY TO INSTALL" \
