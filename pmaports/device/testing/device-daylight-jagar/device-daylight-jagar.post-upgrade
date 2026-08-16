@@ -12,4 +12,6 @@ rc-update add dc1-rtcsync default 2>/dev/null || true
 if [ -x /etc/init.d/sshd ]; then
 	rc-update add sshd default 2>/dev/null || true
 fi
+
+glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true
 exit 0

@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=21
+pkgrel=22
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -52,6 +52,8 @@ source="
 	80-device-daylight-jagar.preset
 	90-device-daylight-jagar.rules
 	10-dc1-watchdog.conf
+	10-dc1-gnome.gschema.override
+	10-dc1-power.conf
 	dc1-link-apk-keys.service
 	dc1-first-boot
 	dc1-first-boot.service
@@ -130,6 +132,14 @@ package() {
 	install -Dm644 "$srcdir"/10-dc1-watchdog.conf \
 		"$pkgdir"/etc/systemd/system.conf.d/10-dc1-watchdog.conf
 
+	# The power key must not suspend (s2idle aborts and wedges the display;
+	# the panel cannot be re-lit after a blank). logind ignores the keys and
+	# GNOME never sleeps or blanks; see the two files for the rationale.
+	install -Dm644 "$srcdir"/10-dc1-power.conf \
+		"$pkgdir"/etc/systemd/logind.conf.d/10-dc1-power.conf
+	install -Dm644 "$srcdir"/10-dc1-gnome.gschema.override \
+		"$pkgdir"/usr/share/glib-2.0/schemas/10-dc1-gnome.gschema.override
+
 	# apk signing keys (linked on-device at boot) and the first-boot desktop
 	# app install. The .service files are systemd units; the helper scripts
 	# they exec live in /usr/libexec alongside the other dc1 helpers.
@@ -194,6 +204,8 @@ e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99c
 5aeef6eae1a05143946a9b350a08d4b976bf8c1f0d206160036369d94c90198007493e7a4db78b1babc0f79712a1b66fa22dc2284afb1eee16fafaa8de57876d  80-device-daylight-jagar.preset
 90c9e9fa22039c8fe4b553fcb7e30b5ec69d8654991b9a1fa73a294ad7db6b48e01d1b67cfd246424b53d238a61db42a95a9ba01d673093fd84b034a3e99f05b  90-device-daylight-jagar.rules
 4a4422c7156a260131069161dda42efc778233f7f09e6d085c3c4fb176ddaf8395e76fcdbba2abdb270d668bd450efd7e4faa0e7919585401b81570cfb0b78b4  10-dc1-watchdog.conf
+2086ac9b86512b5488e8c51185e1a560c68c466e3ae5f1824c93ebbedc308fe15322c96297bcc9f1e22cb4de3941799f242eb620c847e76019b94e1da2bf16f3  10-dc1-gnome.gschema.override
+bd740799cff34937741b348a52a26dcb53275da204b9448b9928aa386465814563d225fb9ba5e452f7e4ba940b2d87f6eb1181b97a994b894fbd8c8dbee4127d  10-dc1-power.conf
 a5f6eac3097cd87c93b44334716c27b1110e9ebdd548abaa66c4afd63ba3c62ad4375859819a85254b69da0432d5279e81cb0f07453e00054efa9d7499b44aa0  dc1-link-apk-keys.service
 384d9b9721b22588147f11713aa17c53d90986d2fdadba3922e383cd62a1812e9995c2fc3e0834044ea73c0fef5a21d13e9fa8ca264c8acc6803610d8ced5901  dc1-first-boot
 128fecc2dc6a293971c8e3694505895e2a4a76be6d1866f78c37ba0f472aa3e01d01298f3d7dada6efd291149a41dfc3d4efd686b70d756c346ca95a44349b3d  dc1-first-boot.service

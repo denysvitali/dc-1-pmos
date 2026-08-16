@@ -1,0 +1,12 @@
+[org.gnome.settings-daemon.plugins.power]
+# The DC-1 panel cannot be re-lit after a blank (single-handoff modeset), and
+# the s2idle suspend path aborts with unfreezable tasks. Both leave the screen
+# blank with the frontlight on and no way to wake it short of a reboot, so the
+# power key and both sleep triggers must not start any power-state transition.
+power-button-action='nothing'
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='nothing'
+
+[org.gnome.desktop.session]
+# Never idle-blank either: a blanked DC-1 panel stays blank until reboot.
+idle-delay=0

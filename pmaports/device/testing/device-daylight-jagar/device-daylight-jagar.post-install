@@ -21,4 +21,9 @@ rc-update add dc1-debug-shell default 2>/dev/null || true
 if [ -x /etc/init.d/sshd ]; then
 	rc-update add sshd default 2>/dev/null || true
 fi
+
+# Compile the gschema overrides (including ours: no power-key suspend, no
+# idle blank/sleep) so the GNOME power defaults take effect. Best-effort: only
+# relevant when a GNOME desktop is installed.
+glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true
 exit 0
