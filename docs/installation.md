@@ -9,14 +9,30 @@ built by this repository's CI. Read the whole page once before starting.
 > partition. It never touches anything else — and neither should you (see
 > [Recovery notes](#recovery-notes)).
 
+## Choose an install path
+
+Two ways to install. The first is the default.
+
+1. **On-device installer (recommended).** You flash one boot image over
+   `fastboot`, then answer everything on the device's touchscreen. The device
+   downloads the release over Wi-Fi and installs itself — no computer involved
+   after the first command. Needs Wi-Fi.
+2. **USB install from a computer (advanced / fallback).** A script on your
+   computer drives the install over the USB cable. Use it when there is no
+   Wi-Fi, or when you want the image streamed from a host you control. See
+   [Install from a computer](#install-from-a-computer-advanced--fallback).
+
+Both paths write the same filesystem to the same place; they differ only in
+who asks the questions and how the image reaches the device.
+
 ## What you need
 
-- A Daylight DC-1 and a USB cable to a computer with `fastboot` (from
-  `android-tools`) — needed only for the two commands that enter
-  installation mode.
-- Optionally a Wi-Fi network (WPA/WPA2 passphrase): the installer can
-  provision the installed system's Wi-Fi for you, but it is not needed to
-  install — the rootfs comes over the USB cable.
+- A Daylight DC-1.
+- A computer with `fastboot` (from `android-tools`) and a USB cable — for the
+  one command that enters installation mode (both paths).
+- **On-device path:** a Wi-Fi network with a WPA passphrase (the device
+  downloads the release over it).
+- **USB path:** the host script and a few host tools, listed in that section.
 - The release asset `installer-boot.img` (plus `SHA256SUMS`) from the
   [rolling release](https://github.com/denysvitali/dc-1-pmos/releases).
 
@@ -26,46 +42,48 @@ Verify the download first:
 sha256sum --ignore-missing -c SHA256SUMS
 ```
 
+The on-device installer fetches everything else it needs over Wi-Fi itself.
+
 ## How the flow works
 
 The DC-1 boots via MediaTek LK with A/B slots, and LK provides `fastboot`.
 
-1. An **installer boot image** is flashed to `boot_a`. It boots into
-   "installation mode": the panel shows install progress, and USB gadget
-   networking plus a serial console come up. The install itself is driven
-   from your computer over that USB link, by `dc1-install.sh`.
-2. The host script asks for your username, password, hostname, timezone
-   and optional Wi-Fi credentials, then streams `jagar-rootfs.ext4.zst` to
-   the device. The device checks the image's SHA-256 **in full before a
-   single byte becomes mountable** (the first MiB, containing the ext4
-   superblock, is written last, only after everything verified), writes it
-   to `userdata`, resizes it to the whole partition, and applies your
-   answers (user, password hash — the cleartext is never stored — hostname,
-   timezone, Wi-Fi).
-3. The device reboots into fastboot, the script flashes the verified
-   `jagar-boot.img` to `boot_a` (the same slot you already flashed, nothing
-   else), and the device boots the installed system.
+An **installer boot image** is flashed to `boot_a`. It boots into
+"installation mode": the panel runs a touch UI (`dc1-ask`) drawn by the
+installer's PID 1, and USB gadget networking plus a serial console come up in
+parallel. The touch UI is the front door; the USB link stays up the whole time
+so a host can always take over.
 
-A fully on-device installer — the same questions, answered on the panel's own
-touch keyboard, with no computer involved after step 1 — is built and shipped
-(`dc1-ask`). Its dialogs render **inside PID 1**, which owns the panel: a
-second DRM modeset blackens this panel, so `dc1-ask` is a thin client that
-forwards each prompt to PID 1's in-process dialog server over a Unix socket,
-and PID 1 draws the screen into the surface it already committed (using the
-hardware-measured touch mapping). It is **enabled by default but not yet
-hardware-verified end-to-end** — the plumbing builds and its offline tests
-pass, but a freshly flashed image running the full on-device flow has not been
-confirmed on a panel. Until it is, the USB flow below is the path with
-hardware behind it.
+The recommended path is **Install from network**: the device scans Wi-Fi,
+connects, then downloads `jagar-rootfs.ext4.zst` and `jagar-boot.img` from the
+rolling release over TLS. It checks each file's SHA-256 **in full before a
+single byte becomes mountable** (the first MiB, containing the ext4
+superblock, is written last, only after everything verified), writes the
+rootfs to `userdata`, grows it to fill the partition, applies your answers
+(user, password hash — the cleartext is never stored — hostname, timezone,
+Wi-Fi), writes the boot image to `boot_a`, and reboots.
 
-Note: tethered `fastboot boot <img>` (boot without flashing) is unverified
-on this LK — there is no recorded evidence it works. That is why the
-installer is flashed to `boot_a` and then replaced, rather than booted
-tethered.
+The installed system is a GNOME Mobile desktop on Wayland/systemd. The boot
+initramfs finds the root filesystem by its ext4 label `jagar-root` on
+`userdata`. If anything fails, nothing half-written is ever left mountable, so
+you can simply run the flow again.
 
-## Step by step
+Note: tethered `fastboot boot <img>` (boot without flashing) is unverified on
+this LK — there is no recorded evidence it works. That is why the installer is
+flashed to `boot_a` and then replaced, rather than booted tethered.
 
-### 1. Put the device in fastboot mode
+## Install from the device (recommended)
+
+### 1. Get the installer
+
+Download `installer-boot.img` and `SHA256SUMS` from the rolling release and
+verify:
+
+```sh
+sha256sum --ignore-missing -c SHA256SUMS
+```
+
+### 2. Put the device in fastboot mode
 
 Boot the DC-1 into LK fastboot mode: power the device off, then hold
 **Power + Volume Up** until the bootloader menu appears and select fastboot.
@@ -102,50 +120,58 @@ Confirm the host sees it:
 fastboot devices
 ```
 
-### 2. Flash the installer
+### 3. Flash the installer
 
 ```sh
 fastboot flash boot_a installer-boot.img && fastboot reboot
 ```
 
-Leave the cable attached: the computer drives the rest of the install over
-it, and it also carries the serial log.
+The device boots into installation mode and shows the installer menu.
 
-### 3. Run the installer from your computer
+### 4. Walk through the touch installer
 
-The panel shows install progress, but the questions are asked by the host
-script over the USB link:
+Choose **Install from network**. (The other menu options are *Install via USB
+from a computer* — the advanced path below — and *Reboot to fastboot*.)
 
-```sh
-./dc1-install.sh --rootfs jagar-rootfs.ext4.zst \
-                 --boot-image jagar-boot.img
-```
+- **Wi-Fi.** The device scans and lists nearby networks, strongest first. Tap
+  yours, or choose *Type network name* to enter an SSID by hand. Enter the
+  passphrase (8–63 characters). The device connects and requests an IP address
+  by DHCP.
+- **Account.** Set up now: choose a **username**, a **password** (entered
+  twice), a **hostname**, and a **timezone** (a short list of common zones,
+  plus *Type another* for anything else). The password is hashed on the device
+  before it is stored; the cleartext is never written anywhere. The installer
+  also offers a *set up later* option that skips account setup; setting
+  everything up now is the recommended path.
+- **Install now.** Tap **Install now** (it warns that this erases the Linux
+  data partition). The device downloads the release over Wi-Fi, verifies each
+  file, writes the rootfs, grows it, applies your answers, writes the boot
+  image, and reboots.
 
-It asks for a **username**, **password** (hashed on your machine — the
-cleartext never leaves it), **hostname**, **timezone** and optional **Wi-Fi
-credentials**, then streams the rootfs to the device, which verifies and
-writes it, provisions it with your answers, and reboots into fastboot so the
-script can flash the real `jagar-boot.img`. Full options, host requirements
-and what each step does are in [the section below](#the-install-itself-from-your-computer).
+Leave it to finish — the panel shows download and write progress, and the
+install ends in a reboot into the installed system.
 
-The boot initramfs finds the root filesystem by its ext4 label `jagar-root`
-on `userdata`. If anything fails, nothing half-written is ever left
-mountable, so you can simply run it again.
+### 5. First boot
 
-## The install itself, from your computer
+On the first boot the installed system downloads and installs the desktop app
+set — Chromium, Ghostty, GNOME Console, GNOME Calculator, GNOME Text Editor,
+and Nautilus — from Alpine over the network. This runs once and is skipped on
+later boots; if the network is not ready on the first boot it retries on the
+next one.
 
-This is the install path, not a fallback: the on-device touch installer that
-would let the device download its own rootfs over Wi-Fi is disabled (see
-above), so the answers and the image both come over the USB cable from a
-Linux host. You need `jagar-boot.img` and
-`jagar-rootfs.ext4.zst` from the release, the host script
-`installer/host/dc1-install.sh` from this repository, and on the host:
-`zstd`, `nc`, `sha256sum`, `ip`, and one of `mkpasswd`, `openssl`, or
-`busybox` (password hashing). The host script uses `ip(8)`, so macOS is not
-currently supported as-is; run it as root or with `sudo` available.
+## Install from a computer (advanced / fallback)
 
-With the device in fastboot mode, the script can drive everything,
-including both fastboot steps:
+This is the fallback path for when there is no Wi-Fi, or when you want the
+image streamed from a host you control. The image and the answers both come
+over the USB cable; the on-device touch UI is not used. You need
+`jagar-rootfs.ext4.zst` and `jagar-boot.img` from the release, the host script
+`installer/host/dc1-install.sh` from this repository, and on the host: `zstd`,
+`nc`, `sha256sum`, `ip`, and one of `mkpasswd`, `openssl`, or `busybox`
+(password hashing). The host script uses `ip(8)`, so macOS is not currently
+supported as-is; run it as root or with `sudo` available.
+
+With the device in fastboot mode, the script can drive everything, including
+both fastboot steps:
 
 ```sh
 ./dc1-install.sh --rootfs jagar-rootfs.ext4.zst \
@@ -175,29 +201,13 @@ If the device is already in installation mode, run the script without
 `fastboot flash boot_a jagar-boot.img && fastboot reboot`. Other options:
 `--answers FILE` supplies pre-made answers non-interactively;
 `--skip-provision` installs with **no** answers at all — the image is written
-but not provisioned, so on first boot the installed system's on-device UI runs
-onboarding (Wi-Fi, username, password, hostname, timezone) on the panel's
-touchscreen instead of asking at install time;
+but not provisioned;
 `--device-ip` / `--host-ip` override the defaults. See the header comment
 of `installer/host/dc1-install.sh` for the full usage.
 
-## On-device UI
-
-The installed system ships a Flutter shell (hardware-rendered via Panfrost on
-the Mali-G57) backed by a Go control plane. On a provisioned install it shows
-a first-light screen; on an **unprovisioned** install (`--skip-provision`) it
-runs first-boot onboarding on the touchscreen. The control plane binds a Unix
-socket only — it never listens on a network address, so neither the USB host
-nor any Wi-Fi peer can reach onboarding.
-
-The onboarding flow (Wi-Fi, username, password, hostname, timezone) can be
-tried in a browser before flashing: the same Flutter source compiles to the
-web and is published at
-<https://denysvitali.github.io/dc-1-pmos/>.
-
 ## Watching progress and debugging
 
-- The device paints install progress on its panel.
+- The device paints download and write progress on its panel.
 - The install log is streamed on the first USB serial port
   (`/dev/ttyACM0` on the host).
 - A debug shell listens on TCP port 4444 (`nc 172.16.42.1 4444`) and on the

@@ -31,46 +31,19 @@ sha256sum --ignore-missing -c SHA256SUMS
 fastboot flash boot_a installer-boot.img && fastboot reboot
 ```
 
-The device comes up in installation mode, showing progress on its panel,
-with USB networking and a serial console. Leave the cable plugged in and run
-the host script (`installer/host/dc1-install.sh`), which asks for username /
-password / hostname / timezone / optional Wi-Fi, streams the rootfs over USB
-networking, and flashes the verified real boot image to `boot_a`. Every byte
-is checked against `SHA256SUMS` before anything becomes mountable, and the
-password is hashed on your machine.
+The device boots into the on-device installer. Tap **Install from network**,
+pick a Wi-Fi network, enter a username / password / hostname / timezone, then
+**Install now**. The device downloads the release over Wi-Fi, checks every
+byte against `SHA256SUMS` before anything becomes mountable, writes the
+rootfs, grows it, writes the boot image, and reboots into postmarketOS. On
+first boot it installs the desktop apps (Chromium, Ghostty, GNOME apps) from
+Alpine.
 
-A fully on-device installer (answer everything on the panel's own touch
-keyboard, no computer after the two fastboot commands) is shipped but
-**disabled**: its paint path does not reach this panel's glass and its touch
-mapping is very likely mirrored, which together would make an invisible
-screen that still takes taps. The full, explained procedure is in
+No Wi-Fi, or want the image from your computer instead? Use the host script
+(`installer/host/dc1-install.sh`) over USB — the advanced / fallback path.
+The full, explained procedure is in
 [docs/installation.md](docs/installation.md); current hardware support is
 in [docs/status.md](docs/status.md).
-
-## Try the setup in your browser
-
-The first-boot onboarding — Wi-Fi, username, password, hostname, timezone —
-is a Flutter app that runs on the device. The same source compiles to the
-web, so an interactive preview of the exact screens is published from
-`main`:
-
-<https://denysvitali.github.io/dc-1-pmos/>
-
-It runs the real onboarding code in the browser (with an in-browser stand-in
-for the backend), so you can click through Wi-Fi setup and account creation
-before flashing anything. On a window larger than the panel it is
-letterboxed, aspect-true, into a panel-sized rectangle so the proportions
-are the device's; smaller windows (a phone) get the full-bleed layout. At
-the end of the flow, "Restart now" restarts the preview — the browser's
-stand-in for the reboot the real device performs.
-
-The preview lets your own keyboard do the typing and leaves the device's
-on-screen keyboard out — on a phone the browser raises its own keyboard over
-the page, and two of them at once hide the field. To try the on-device
-keyboard itself, open the preview with
-[`?keyboard=1`](https://denysvitali.github.io/dc-1-pmos/?keyboard=1): the
-fields go read-only, so nothing else pops up and the only way to type is the
-keyboard the DC-1 actually draws.
 
 ## What CI builds
 
