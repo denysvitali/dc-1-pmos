@@ -7,3 +7,5 @@ enable dc1-display-gate.service
 enable dc1-gpu.service
 enable dc1-frontlight.service
 enable dc1-rtcsync.timer
+enable dc1-link-apk-keys.service
+enable dc1-first-boot.service

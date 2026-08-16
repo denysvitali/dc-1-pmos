@@ -1,0 +1,12 @@
+[Unit]
+Description=Install the DC-1 desktop app set on first boot
+After=dc1-link-apk-keys.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/dc1-first-boot
+
+[Install]
+WantedBy=multi-user.target

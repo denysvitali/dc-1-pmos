@@ -1,0 +1,23 @@
+#!/bin/sh
+# First-boot desktop app install: pull the DC-1 app set from Alpine over the
+# network the installer already configured. Runs as a systemd oneshot after the
+# signing keys are linked and the network is up.
+#
+# The bare rootfs ships without the heavy desktop apps (Chromium, terminals,
+# etc.) so the image stays small; this fetches them from Alpine on the device
+# where the grown root and the network actually exist. Idempotent-by-marker,
+# and the marker is written only after a SUCCESSFUL install, so a no-network
+# boot retries on the next one instead of silently skipping the apps.
+MARK=/var/lib/dc1/first-boot-apps-done
+# The curated set. Keep it small and editable: this is a list of apk package
+# names, not a manifest file.
+APPS="chromium ghostty gnome-console gnome-calculator gnome-text-editor nautilus"
+
+[ -e "$MARK" ] && exit 0
+
+mkdir -p /var/lib/dc1
+if apk update >/dev/null && apk add $APPS; then
+	touch "$MARK"
+	exit 0
+fi
+exit 1

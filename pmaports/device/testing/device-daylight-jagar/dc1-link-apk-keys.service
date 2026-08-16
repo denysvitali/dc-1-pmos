@@ -1,0 +1,13 @@
+[Unit]
+Description=Link the Alpine/postmarketOS signing keys into /etc/apk/keys
+DefaultDependencies=no
+After=local-fs.target
+Before=dc1-first-boot.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/dc1-link-apk-keys
+
+[Install]
+WantedBy=multi-user.target

@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=17
+pkgrel=18
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -52,6 +52,9 @@ source="
 	80-device-daylight-jagar.preset
 	90-device-daylight-jagar.rules
 	10-dc1-watchdog.conf
+	dc1-link-apk-keys.service
+	dc1-first-boot
+	dc1-first-boot.service
 	gdm-custom.conf
 	monitors.xml
 "
@@ -125,6 +128,16 @@ package() {
 	install -Dm644 "$srcdir"/10-dc1-watchdog.conf \
 		"$pkgdir"/etc/systemd/system.conf.d/10-dc1-watchdog.conf
 
+	# apk signing keys (linked on-device at boot) and the first-boot desktop
+	# app install. The .service files are systemd units; the helper scripts
+	# they exec live in /usr/libexec alongside the other dc1 helpers.
+	install -Dm644 "$srcdir"/dc1-link-apk-keys.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-link-apk-keys.service
+	install -Dm644 "$srcdir"/dc1-first-boot.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-first-boot.service
+	install -Dm755 "$srcdir"/dc1-first-boot \
+		"$pkgdir"/usr/libexec/dc1-first-boot
+
 	# gdm autologin + panel orientation for the GNOME (systemd) desktop. The
 	# 180-degree scanout rotation is a panel-hardware property (the scanout
 	# is upside-down relative to the glass); mutter applies it from a
@@ -164,9 +177,12 @@ f29500ad474be305cd8934aa059a50921a403b0922451a8a36fce295186cbd01bde2972616857bc3
 a611b818be1a7af166b59f9b8498c28275725d1de95c3cffe6b2c38900e3a31065fc4e5d2bda023a1bd95549246a0e5ba72126450b53a733f1a5dbf3bd654af7  dc1-frontlight.service
 7d241e69a4aaf124d949a6dc04c1ce16fc38532759f7643952b3df8645c3483bf74318c09c2eaf05742b071acbf8a5cbb4f475c96390272975efd614d2052f21  dc1-rtcsync.service
 e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99cfa9065ee15298c54054f83f997c95a99a03346d73f92d5b7  dc1-rtcsync.timer
-06c44d41c420ae0d2487b32f4ec46fb4c6f18270298b3f313226e594d7857f4ac3e99cc93df4783b0cf9956b592bcbc39660b885f6681c66bf97a46ef48901f1  80-device-daylight-jagar.preset
+5aeef6eae1a05143946a9b350a08d4b976bf8c1f0d206160036369d94c90198007493e7a4db78b1babc0f79712a1b66fa22dc2284afb1eee16fafaa8de57876d  80-device-daylight-jagar.preset
 90c9e9fa22039c8fe4b553fcb7e30b5ec69d8654991b9a1fa73a294ad7db6b48e01d1b67cfd246424b53d238a61db42a95a9ba01d673093fd84b034a3e99f05b  90-device-daylight-jagar.rules
 4a4422c7156a260131069161dda42efc778233f7f09e6d085c3c4fb176ddaf8395e76fcdbba2abdb270d668bd450efd7e4faa0e7919585401b81570cfb0b78b4  10-dc1-watchdog.conf
+a5f6eac3097cd87c93b44334716c27b1110e9ebdd548abaa66c4afd63ba3c62ad4375859819a85254b69da0432d5279e81cb0f07453e00054efa9d7499b44aa0  dc1-link-apk-keys.service
+cfc0ecbfd14934afdda9b9cf7c8ba48c74273d94a2550c23f4830c1dd64b881f0ef77ccd566096ba3f4c9519be8bff1ab8049cbb3dacd2f432c5aab84010bbfe  dc1-first-boot
+128fecc2dc6a293971c8e3694505895e2a4a76be6d1866f78c37ba0f472aa3e01d01298f3d7dada6efd291149a41dfc3d4efd686b70d756c346ca95a44349b3d  dc1-first-boot.service
 353598a3b9f8225bea0a7f091d43d7301789ba0323f5cb4b8f9d26783c039c0bf5b0293cd1dae0bcdd3da50f647ca6160f448f3cfc00565bdef0bba4477939c6  gdm-custom.conf
 21e1d1a5b412890feb45066e8e4cf48b00fcc1cd0ae32e970ef0b841853f7b6d24079b975d2bcfd27561d1a6adde9f475b39952164c5d8dc1d80c4f1c87718e0  monitors.xml
 "
