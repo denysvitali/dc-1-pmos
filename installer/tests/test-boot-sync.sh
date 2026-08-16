@@ -1,8 +1,10 @@
 #!/bin/sh
-# Offline tests for dc1-boot-sync's fail-closed boot-slot resolution. The
-# script's destructive path (download, dd, arm, reboot) is not exercised here;
-# the part worth proving offline is that resolve_boot refuses a moved or
-# ambiguous GPT mapping rather than pointing dd at a boot-critical partition.
+# Offline tests for dc1-boot-sync's fail-closed boot-slot resolution and
+# kernel extraction. The destructive path (download, dd, arm, reboot) is not
+# exercised here; the parts worth proving offline are that resolve_boot refuses
+# a moved or ambiguous GPT mapping rather than pointing dd at a boot-critical
+# partition, and that kernel_sha reads the gzip'd kernel out of an Android v4
+# boot image (kernel_size at offset 8, kernel at offset 4096).
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -45,4 +47,34 @@ printf '99999999\n' > "$tmp/sys/sdc26/size"
 printf '100\n' > "$tmp/sys/sdc26/size"
 ! resolve_boot a >/dev/null 2>&1 || fail "resolve_boot a accepted an undersized boot_a"
 
-echo "boot-sync resolver tests passed"
+echo "-- kernel extraction (Android v4 header)"
+
+# A synthetic boot image: 1584-byte header (kernel_size u32 at offset 8),
+# zero-padded to 4096, then the gzip'd kernel. kernel_sha must return exactly
+# the kernel's SHA-256, proving it reads the size from the header and the bytes
+# from offset 4096 -- the layout boot/repack-boot.sh writes.
+kern="$tmp/kernel.gz"
+head -c 12345 /dev/zero | tr '\0' 'K' > "$kern"
+want=$(sha256sum "$kern" | cut -d' ' -f1)
+python3 - "$tmp/synth.img" "$kern" <<'PY'
+import struct, sys
+kern = open(sys.argv[2], 'rb').read()
+hdr = bytearray(1584)
+hdr[0:8] = b'ANDROID!'
+struct.pack_into('<I', hdr, 8, len(kern))
+open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + kern)
+PY
+got=$(kernel_sha "$tmp/synth.img") || fail "kernel_sha failed on a valid image"
+[ "$got" = "$want" ] || fail "kernel_sha = $got, want $want"
+
+# A bogus kernel_size must refuse, not hand back a garbage hash.
+python3 - "$tmp/bogus.img" <<'PY'
+import struct, sys
+hdr = bytearray(1584)
+hdr[0:8] = b'ANDROID!'
+struct.pack_into('<I', hdr, 8, 0x7fffffff)
+open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + b'x' * 4096)
+PY
+! kernel_sha "$tmp/bogus.img" >/dev/null 2>&1 || fail "kernel_sha accepted an implausible kernel size"
+
+echo "boot-sync resolver + kernel extraction tests passed"
