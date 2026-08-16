@@ -166,14 +166,14 @@ wr_finalize() {
 	mount -t proc  proc  /mnt/root/proc 2>/dev/null
 	mount -t sysfs sysfs /mnt/root/sys  2>/dev/null
 
-	# NOT resized here. The online chroot resize2fs (EXT4_IOC_RESIZE_FS on the
-	# mounted filesystem) corrupts the extent tree on this kernel
-	# (7.2.0-rc5 mtk-ufs): after an install that mounted cleanly and then ran
-	# the resize, every read failed with "ext4_map_blocks: inode #2: lblock 0
-	# mapped to illegal pblock" and the final umount returned EBUSY -- a fresh
-	# install left unbootable. The image write is byte-verified, so the device
-	# boots fine at image size; growing the filesystem belongs at first boot,
-	# where resize2fs runs against the real root instead of a chroot bind.
+	# Resizing happens OFFLINE, below, after the final umount. The ONLINE path
+	# (EXT4_IOC_RESIZE_FS on a mounted fs) corrupts the extent tree on this
+	# kernel (7.2.0-rc5 mtk-ufs): after an install that mounted cleanly and then
+	# ran an online resize, every read failed with "ext4_map_blocks: inode #2:
+	# lblock 0 mapped to illegal pblock" and the final umount returned EBUSY --
+	# a fresh install left unbootable. resize2fs on the UNMOUNTED device rewrites
+	# the fs directly and is safe. Until the finalize path below, the note stays
+	# the "not yet resized" default.
 	WR_RESIZE_NOTE="NOT-RESIZED"
 
 	# Provisioning is SKIPPED for an unprovisioned install: the rootfs is
@@ -197,6 +197,22 @@ wr_finalize() {
 	umount /mnt/root/dev /mnt/root/proc /mnt/root/sys 2>/dev/null
 	umount /mnt/root || fail "umount failed"
 	sync
+
+	# Grow the filesystem to fill userdata, OFFLINE (see the note above). The
+	# device is unmounted here, so resize2fs rewrites the fs directly instead of
+	# the corrupting online ioctl. Idempotent and best-effort: a failure leaves
+	# a valid (smaller) root, which the boot initramfs can still grow later.
+	if command -v resize2fs >/dev/null 2>&1; then
+		if resize2fs "$WR_DEV" >/dev/null 2>&1; then
+			WR_RESIZE_NOTE="RESIZED"
+			say "RESIZED ROOT FILESYSTEM"
+		else
+			WR_RESIZE_NOTE="RESIZE-FAILED"
+			say "RESIZE FAILED (root left at image size)"
+		fi
+	else
+		WR_RESIZE_NOTE="NOT-RESIZED"
+	fi
 }
 
 # One install at a time, across BOTH transports. mkdir is the atomic test.

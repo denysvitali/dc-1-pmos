@@ -123,6 +123,12 @@ pcsc-lite-libs-2.5.1-r0
 dropbear-2026.94-r0
 utmps-libs-0.1.3.4-r0
 skalibs-libs-2.15.1.0-r0
+e2fsprogs-1.47.4-r0
+e2fsprogs-extra-1.47.4-r0
+e2fsprogs-libs-1.47.4-r0
+libcom_err-1.47.4-r0
+libblkid-2.42.2-r1
+libuuid-2.42.2-r1
 "
 
 verify_blob() {
@@ -318,6 +324,12 @@ stage bin sbin/wpa_supplicant       sbin/wpa_supplicant
 stage bin sbin/wpa_cli              sbin/wpa_cli
 stage bin usr/bin/curl              usr/bin/curl
 stage bin usr/bin/zstd              usr/bin/zstd
+# Offline rootfs grow (wr_finalize) and the optional fsck: resize2fs lives in
+# e2fsprogs-extra, e2fsck in e2fsprogs. Their DT_NEEDED libs (libext2fs,
+# libe2p, libcom_err, libblkid, libuuid) land in /usr/lib via the apk list and
+# the closure check below.
+stage bin sbin/e2fsck                sbin/e2fsck
+stage bin usr/sbin/resize2fs         usr/sbin/resize2fs
 stage lib etc/ssl/certs/ca-certificates.crt etc/ssl/certs/ca-certificates.crt
 # dropbear: SSH into the recovery environment (scp for pulling logs, a real
 # PTY, port forwarding) -- rc.sh binds it to the USB link only, never the LAN.
@@ -338,7 +350,8 @@ find "$AR/usr/lib" -maxdepth 1 \( -name '*.so' -o -name '*.so.*' \) \
 # download would fail at first boot on hardware instead of failing the build.
 if command -v readelf >/dev/null 2>&1; then
 	for bin in "$d/sbin/wpa_supplicant" "$d/sbin/wpa_cli" \
-	           "$d/usr/bin/curl" "$d/usr/bin/zstd" "$d"/usr/lib/*.so*; do
+	           "$d/usr/bin/curl" "$d/usr/bin/zstd" \
+	           "$d/sbin/e2fsck" "$d/usr/sbin/resize2fs" "$d"/usr/lib/*.so*; do
 		[ -f "$bin" ] || continue
 		readelf -d "$bin" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p' \
 		| while read -r need; do
