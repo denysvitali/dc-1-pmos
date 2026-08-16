@@ -181,7 +181,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            e2fsprogs zstd lz4 cpio file kpartx xz-utils binutils
+            e2fsprogs zstd lz4 cpio file kpartx xz-utils binutils openssl
           echo /usr/sbin >> "$GITHUB_PATH"
           echo /sbin >> "$GITHUB_PATH"
 
@@ -276,6 +276,40 @@ jobs:
           mv SHA256SUMS.tmp release/SHA256SUMS
           (cd release && sha256sum --check --strict SHA256SUMS)
           ls -l release/
+
+      # Build and sign the apk repository index for the published .apk files,
+      # so a running device can `apk upgrade` its device/kernel packages over
+      # the network instead of re-flashing. The index is signed with a STABLE
+      # key: the private half lives only in the DC1_APK_PRIVATE_KEY secret,
+      # and its public half is committed at
+      #   pmaports/device/testing/device-daylight-jagar/dc1-apk.rsa.pub
+      # and shipped on-device into /etc/apk/keys by the device package. A
+      # device that trusts that key once keeps verifying every future release.
+      #
+      # One-time keygen (run on any machine with openssl, then set the secret
+      # and keep the .rsa file safe — it is never committed):
+      #   openssl genrsa -out dc1-apk.rsa 4096
+      #   openssl rsa -in dc1-apk.rsa -pubout -out dc1-apk.rsa.pub
+      #   gh secret set DC1_APK_PRIVATE_KEY < dc1-apk.rsa
+      # The committed dc1-apk.rsa.pub must be the mate of the secret, or the
+      # build fails here (the mate check is below).
+      - name: Build and sign APKINDEX
+        env:
+          DC1_APK_PRIVATE_KEY: ${{ secrets.DC1_APK_PRIVATE_KEY }}
+        run: |
+          if [ -z "$DC1_APK_PRIVATE_KEY" ]; then
+            echo "::error::DC1_APK_PRIVATE_KEY secret is missing — refusing to publish an unsigned APKINDEX" >&2
+            exit 1
+          fi
+          sh scripts/build-apkindex.sh release
+          # Rebuild the manifest so it also covers APKINDEX.tar.gz. SHA256SUMS
+          # already exists from the assemble step, so drop it first to keep
+          # the glob from hashing the manifest itself.
+          rm -f release/SHA256SUMS
+          (cd release && sha256sum -- *) | LC_ALL=C sort -k 2 > SHA256SUMS.tmp
+          mv SHA256SUMS.tmp release/SHA256SUMS
+          (cd release && sha256sum --check --strict SHA256SUMS)
+          ls -l release/APKINDEX.tar.gz
 
       # PR runs stop here: artifact yes, release no.
       - name: Upload workflow artifact
