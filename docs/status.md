@@ -19,7 +19,7 @@ mean the artifacts built by any given CI run were booted — releases carry
 | Battery | Partial | Basic battery telemetry only. |
 | Suspend/resume | Not yet | |
 | Audio | Not yet | |
-| Sensors | Not yet | |
+| Sensors | Not yet | Accelerometer (mCube MC3416) and ambient-light/proximity (Memsic MN29xxx) are wired to the **SCP** (sensor co-processor), not an AP I²C bus, and are driven by the closed `scp_a.img` firmware. No gyro or magnetometer. A DT node + defconfig entry cannot expose them — this needs a mainline mt6789 SCP/sensorhub bring-up. The hall switch (magnetic lid) is the only directly-AP-wired sensor and is not in the DTS yet. |
 | Cameras | Not yet | It is not yet confirmed the hardware has populated camera modules. |
 
 Not listed means untested or unknown. Status updates land here as the port

@@ -79,6 +79,12 @@ Everything committed here is world-readable. Non-negotiable rules:
 - Kernel config must keep `CONFIG_BINFMT_SCRIPT`, `CONFIG_EPOLL`,
   `CONFIG_SIGNALFD`, `CONFIG_TIMERFD`, `CONFIG_EVENTFD` (udhcpc hook + BlueZ
   need them; failures are silent).
+- Sensors are SCP-attached, not AP-attached. The accelerometer (mCube
+  MC3416) and ambient-light/proximity (Memsic MN29xxx) hang off the sensor
+  co-processor and are driven by the closed `scp_a.img` firmware. There is
+  no gyro or magnetometer, and mainline has no mt6789 SCP/sensorhub driver,
+  so no DTS node or defconfig entry can expose them. The hall switch
+  (magnetic lid, GPIO) is the only directly-AP-wired motion-adjacent sensor.
 
 ## CI
 
