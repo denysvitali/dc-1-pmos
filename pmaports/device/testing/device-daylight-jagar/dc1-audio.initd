@@ -36,12 +36,14 @@ start() {
 		|| { eend 1 "drivers_probe write failed"; return 1; }
 
 	# The machine card binds only once the AFE component registers, so wait
-	# for the card itself: that is what userspace needs.
+	# for the card itself: that is what userspace needs. Match it by name --
+	# a card index says nothing about which card turned up.
 	n=0
-	while [ ! -e /proc/asound/card0 ] && [ "$n" -lt 10 ]; do
+	while ! grep -q mt6789-mt6366 /proc/asound/cards 2>/dev/null && [ "$n" -lt 10 ]; do
 		n=$((n + 1)); sleep 1
 	done
-	[ -e /proc/asound/card0 ] || { eend 1 "no ALSA card appeared"; return 1; }
+	grep -q mt6789-mt6366 /proc/asound/cards 2>/dev/null \
+		|| { eend 1 "the mt6789-mt6366 card did not appear"; return 1; }
 
 	eend 0
 }

@@ -14,9 +14,11 @@ printf '11210000.mt6789-afe-pcm\n' > /sys/bus/platform/drivers_probe 2>/dev/null
 	|| { echo "drivers_probe write failed" >&2; exit 1; }
 
 # The machine card binds only once the AFE component registers, so wait for the
-# card itself rather than for the AFE device: that is what userspace needs.
+# card itself rather than for the AFE device: that is what userspace needs. Match
+# it by name -- a card index says nothing about which card turned up.
 n=0
-while [ ! -e /proc/asound/card0 ] && [ "$n" -lt 10 ]; do
+while ! grep -q mt6789-mt6366 /proc/asound/cards 2>/dev/null && [ "$n" -lt 10 ]; do
 	n=$((n + 1)); sleep 1
 done
-[ -e /proc/asound/card0 ] || { echo "no ALSA card appeared" >&2; exit 1; }
+grep -q mt6789-mt6366 /proc/asound/cards 2>/dev/null \
+	|| { echo "the mt6789-mt6366 card did not appear" >&2; exit 1; }
