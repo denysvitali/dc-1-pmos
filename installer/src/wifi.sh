@@ -91,8 +91,21 @@ wifi_supplicant_start() {
 	: > "$WIFI_DIR/wpa.log"
 	chmod 600 "$WIFI_DIR/wpa.log"
 	ip link set "$WIFI_IFACE" up 2>>"$WIFI_DIR/wpa.log"
-	/sbin/wpa_supplicant -B -i "$WIFI_IFACE" -c "$1" \
-		-f "$WIFI_DIR/wpa.log" 2>>"$WIFI_DIR/wpa.log"
+	# No -f (log-to-file): this Alpine wpa_supplicant is built without
+	# CONFIG_DEBUG_FILE, so -f is rejected -- it prints the usage banner
+	# ("wpa_supplicant v2.11 ...") to STDOUT and exits without starting, and
+	# that banner is exactly what leaked into the Wi-Fi menu. stdout is
+	# redirected to the log here as well, so a startup failure can never flow
+	# into wifi_scan's command-substitution output.
+	/sbin/wpa_supplicant -B -i "$WIFI_IFACE" -c "$1" >>"$WIFI_DIR/wpa.log" 2>&1
+}
+
+# wpa_cli is always called with -p "$WIFI_CTRL": its default control directory
+# is /var/run/wpa_supplicant, which does not exist in this initramfs (only
+# /run), so a bare `wpa_cli -i wlan0` fails with "Failed to connect to
+# non-global ctrl_ifname" even though the socket is at $WIFI_CTRL/wlan0.
+wpa_cli() {
+	/sbin/wpa_cli -p "$WIFI_CTRL" "$@"
 }
 
 # wifi_scan -> print up to 12 SSIDs, strongest first. Starts a bare
@@ -105,9 +118,9 @@ wifi_scan() {
 		umask 022
 		wifi_supplicant_start "$WIFI_DIR/scan.conf" || return 1
 	fi
-	/sbin/wpa_cli -i "$WIFI_IFACE" scan >/dev/null 2>&1
+	wpa_cli -i "$WIFI_IFACE" scan >/dev/null 2>&1
 	sleep 4
-	/sbin/wpa_cli -i "$WIFI_IFACE" scan_results 2>/dev/null | wifi_scan_parse 12
+	wpa_cli -i "$WIFI_IFACE" scan_results 2>/dev/null | wifi_scan_parse 12
 }
 
 # wifi_connect SSID PSK -> associate and wait for wpa_state=COMPLETED.
@@ -119,7 +132,7 @@ wifi_connect() {
 	wifi_supplicant_start "$WIFI_DIR/wpa.conf" || return 1
 	n=0
 	while [ "$n" -lt 30 ]; do
-		if /sbin/wpa_cli -i "$WIFI_IFACE" status 2>/dev/null \
+		if wpa_cli -i "$WIFI_IFACE" status 2>/dev/null \
 			| grep -q '^wpa_state=COMPLETED'; then
 			return 0
 		fi
