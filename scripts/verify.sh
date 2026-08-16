@@ -37,6 +37,39 @@ python3 "$script_dir/tests/test_make_rootfs_archive.py"
 	[ "$want" = "$actual" ]
 ) || fail "deviceinfo checksum mismatch"
 
+# abuild's default_fetch() pairs $source with $sha512sums POSITIONALLY:
+# source[i] is checked against checksum[i]. The two lists must be in the
+# same order -- a filename moved in one but not the other silently compares
+# every following file against the wrong hash (a multi-CI-cycle failure).
+# Source both lists exactly as abuild does and assert the pairing, then hash
+# every local file against its paired checksum.
+for dir in "$device_dir" "$kernel_dir"; do
+	(
+		cd "$dir" || exit 1
+		startdir=$(pwd)
+		srcdir="$startdir/src"
+		# shellcheck disable=SC1090,SC1091
+		. ./APKBUILD
+		set -- $sha512sums
+		[ $# -eq $(( $(set -- $source; echo $#) * 2 )) ] ||
+			fail "$dir: source/checksum count mismatch"
+		for src in $source; do
+			hash=$1; file=$2; shift 2
+			name=${src%%::*}
+			name=${name##*/}
+			[ "$name" = "$file" ] ||
+				fail "$dir: '$name' is not paired with its own checksum '$file' (lists out of order?)"
+			case "$src" in
+				*::http://*|*::https://*|*::ftp://*|http://*|https://*|ftp://*)
+					: remote source, nothing local to hash ;;
+				*)
+					echo "$hash  $name" | sha512sum -c >/dev/null 2>&1 ||
+						fail "$dir: $name checksum mismatch" ;;
+			esac
+		done
+	)
+done
+
 . "$script_dir/versions.env"
 [ ${#PMAPORTS_COMMIT} -eq 40 ] || fail "invalid pmaports commit"
 [ ${#PMBOOTSTRAP_COMMIT} -eq 40 ] || fail "invalid pmbootstrap commit"
