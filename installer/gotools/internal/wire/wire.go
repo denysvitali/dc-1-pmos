@@ -102,7 +102,7 @@ func ParseHeader(r *bufio.Reader) (*Header, error) {
 		return nil, fmt.Errorf("size too small: %d", h.Size)
 	}
 	// Answers are required only for a provisioned install; an unprovisioned
-	// one carries none and onboards on first boot instead.
+	// one carries none (no user-chosen account is created).
 	if h.Unprovisioned {
 		h.Answers = nil
 	} else if len(h.Answers) == 0 {

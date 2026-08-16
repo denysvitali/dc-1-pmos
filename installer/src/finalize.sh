@@ -7,8 +7,9 @@
 # proven provisioning logic stays where it is.
 #
 # DC1_SKIP_PROVISION=1 installs the image without applying answers and without
-# the idempotence marker, so the installed system's onboarding runs on first
-# boot.
+# the idempotence marker, so the system boots with no user-chosen account
+# (auto-login as the build-time default user); there is no first-boot
+# onboarding to fill any of it in.
 set -eu
 
 HERE=$(dirname "$0")

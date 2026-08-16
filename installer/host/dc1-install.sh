@@ -185,13 +185,13 @@ trap 'rm -rf "$TMPDIR_INSTALL"' EXIT
 # ------------------------------------------------------------- 1. answers
 # Collected FIRST so the user is not typing against a timeout while the
 # device waits. --skip-provision installs with no answers at all, so the
-# on-device onboarding runs on first boot instead of the classic
-# host-driven prompts.
+# system boots with no user-chosen account (auto-login as the build-time
+# default user) instead of the classic host-driven prompts.
 
 if [ -n "$SKIP_PROVISION" ]; then
 	[ -z "$ANSWERS_IN" ] || die "--skip-provision and --answers are mutually exclusive"
 	ANSWERS=""
-	msg "unprovisioned install: onboarding will run on the device's touchscreen"
+	msg "unprovisioned install: no account setup (auto-login as build-time default user)"
 elif [ -n "$ANSWERS_IN" ]; then
 	[ -f "$ANSWERS_IN" ] || die "answers file missing: $ANSWERS_IN"
 	ANSWERS="$ANSWERS_IN"

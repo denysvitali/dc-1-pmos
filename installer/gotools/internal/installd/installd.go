@@ -121,7 +121,7 @@ func serve(conn net.Conn, finalize string) {
 	}
 
 	if hdr.Unprovisioned {
-		say("UNPROVISIONED INSTALL: onboarding will run on first boot")
+		say("UNPROVISIONED INSTALL: no account setup (auto-login as build-time default user)")
 	} else {
 		if err := writeAnswers(hdr.Answers); err != nil {
 			fail("answers: %v", err)
