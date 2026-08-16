@@ -288,7 +288,15 @@ func TestFitScale(t *testing.T) {
 				c.s, c.floor, c.label, c.maxW, got, c.want)
 		}
 	}
-	if textW(4, "abc") != 72 {
-		t.Errorf("textW(4,\"abc\") = %d, want 72", textW(4, "abc"))
+	// textW is now measured from the anti-aliased face, not a fixed 6px/char;
+	// assert it is sane rather than a magic bitmap number.
+	if textW(4, "abc") <= 0 {
+		t.Errorf("textW(4,\"abc\") = %d, want > 0", textW(4, "abc"))
+	}
+	if textW(2, "abc") >= textW(4, "abc") {
+		t.Errorf("textW must grow with scale")
+	}
+	if textW(4, "abc") >= textW(4, "abcd") {
+		t.Errorf("textW must grow with length")
 	}
 }

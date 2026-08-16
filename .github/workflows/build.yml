@@ -90,12 +90,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-          # Neither module has dependencies and therefore no go.sum; key the
-          # build cache on the go.mod files instead.
+          # mkboot and dc1-backend have no dependencies (no go.sum); key their
+          # cache on go.mod. installer/gotools now vendors golang.org/x/image
+          # (the anti-aliased font), so key its cache on go.sum.
           cache-dependency-path: |
             boot/mkboot/go.mod
             ui/backend/go.mod
-            installer/gotools/go.mod
+            installer/gotools/go.sum
 
       - name: mkboot build, vet, test
         working-directory: boot/mkboot

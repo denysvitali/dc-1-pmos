@@ -1,6 +1,10 @@
 package ask
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/textfont"
+)
 
 // Canvas: the shadow buffer every screen is painted into before one blit
 // puts it on the panel, so the user never sees a half-drawn keyboard. It is
@@ -32,19 +36,11 @@ func (c *canvas) fillRect(x0, y0, w, h int, col uint32) {
 	}
 }
 
+// drawText renders anti-aliased ink (the low byte of col is the grey level)
+// with its top at y0, via the shared font package. A face that cannot be built
+// renders nothing rather than panicking.
 func (c *canvas) drawText(x0, y0, s int, col uint32, str string) {
-	x := x0
-	for i := 0; i < len(str); i++ {
-		g := glyph(str[i])
-		for gc := 0; gc < 5; gc++ {
-			for row := 0; row < 7; row++ {
-				if g[gc]&(1<<row) != 0 {
-					c.fillRect(x+gc*s, y0+row*s, s, s, col)
-				}
-			}
-		}
-		x += 6 * s
-	}
+	textfont.Draw(c.pix, c.stride, c.w, c.h, x0, y0, s, byte(col&0xff), str)
 }
 
 func inRect(x, y, rx, ry, rw, rh int) bool {
@@ -53,18 +49,20 @@ func inRect(x, y, rx, ry, rw, rh int) bool {
 
 // ------------------------------ chrome -----------------------------------
 
-// Palette, identical to the C tool. The panel is little-endian 32bpp, so
-// 0xAABBGGRR as the C code wrote it.
+// Palette: greyscale, because the panel is monochrome. Paper (near-white
+// background) with ink (near-black text) reads best on a reflective panel in
+// ambient light; colour is meaningless, so R==G==B and the low byte is the
+// grey level. Values are 0xAARRGGBB written as 0xff g g g.
 const (
-	cBG      uint32 = 0xff000000
-	cFG      uint32 = 0xffffffff
-	cAccent  uint32 = 0xff00ff00
-	cKey     uint32 = 0xff303030
-	cKeyTxt  uint32 = 0xffffffff
-	cBox     uint32 = 0xff202020
-	cDim     uint32 = 0xff808080
-	cShiftOn uint32 = 0xff005000
-	cOK      uint32 = 0xff006000
+	cBG      uint32 = 0xfff0f0f0 // paper
+	cFG      uint32 = 0xff141414 // ink
+	cAccent  uint32 = 0xff141414 // caret, MORE label
+	cKey     uint32 = 0xffdddddd // key face
+	cKeyTxt  uint32 = 0xff141414 // key label
+	cBox     uint32 = 0xffcccccc // box / chrome
+	cDim     uint32 = 0xff888888 // secondary / disabled
+	cShiftOn uint32 = 0xff5a5a5a // active shift
+	cOK      uint32 = 0xff909090 // OK / primary (darkest button)
 )
 
 func (c *canvas) drawTitle(title string) {

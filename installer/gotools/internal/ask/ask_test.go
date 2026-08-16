@@ -270,9 +270,9 @@ func TestDialogsPaint(t *testing.T) {
 		if s.blits == 0 {
 			t.Errorf("%s: never blitted", c.name)
 		}
-		if !bytes.Contains(canv.pix, []byte{0xff, 0xff, 0xff, 0xff}) {
-			t.Errorf("%s: nothing white on the canvas, so the title bar "+
-				"never got drawn", c.name)
+		if !bytes.Contains(canv.pix, []byte{0xf0, 0xf0, 0xf0, 0xff}) {
+			t.Errorf("%s: no paper background on the canvas, so the screen "+
+				"never got filled", c.name)
 		}
 	}
 }

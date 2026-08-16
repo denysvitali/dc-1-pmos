@@ -3,23 +3,24 @@ package installerinit
 import (
 	"encoding/binary"
 	"strings"
+
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/textfont"
 )
 
 // The status screen: a banner, up to eight status lines, and a tick that
 // proves PID 1 is still alive even when nothing else changes.
 //
-// The font is deliberately a second, tiny copy rather than a dependency on
-// internal/ask: that package is the touch UI, it owns a keyboard and an evdev
-// reader, and PID 1 pulling all of that in to draw eight lines of text would
-// be the wrong direction of dependency. Both descend from the same 5x7 table
-// in the C sources.
+// Text is anti-aliased from internal/textfont, a focused font package shared
+// with internal/ask: it owns no keyboard, evdev reader or DRM surface, so PID
+// 1 can depend on it to draw eight lines of text without pulling the touch UI
+// in. The palette is greyscale because the panel is monochrome.
 const (
 	maxStatusLines = 8
 
-	colBackground uint32 = 0xff000000
-	colBanner     uint32 = 0xff00ff00
-	colText       uint32 = 0xffffffff
-	colTick       uint32 = 0xff808080
+	colBackground uint32 = 0xfff0f0f0 // paper
+	colBanner     uint32 = 0xff141414 // ink (banner)
+	colText       uint32 = 0xff141414 // ink (status lines)
+	colTick       uint32 = 0xff888888 // secondary (the heartbeat tick)
 )
 
 // StatusLines splits the status file into the lines the screen shows: at most
@@ -77,23 +78,11 @@ func fill(pix []byte, stride, w, h, x0, y0, rw, rh int, col uint32) {
 	}
 }
 
-// drawText renders str at scale s. Unknown bytes render as blanks rather than
-// panicking: this runs as PID 1, where a panic is a dead device.
+// drawText renders str at scale s with anti-aliased text from the shared font.
+// A face that cannot be built renders nothing rather than panicking: this runs
+// as PID 1, where a panic is a dead device.
 func drawText(pix []byte, stride, w, h, x0, y0, s int, col uint32, str string) {
-	x := x0
-	for i := 0; i < len(str); i++ {
-		g := glyph(str[i])
-		for cx := 0; cx < 5; cx++ {
-			bits := g[cx]
-			for cy := 0; cy < 7; cy++ {
-				if bits&(1<<uint(cy)) == 0 {
-					continue
-				}
-				fill(pix, stride, w, h, x+cx*s, y0+cy*s, s, s, col)
-			}
-		}
-		x += 6 * s
-	}
+	textfont.Draw(pix, stride, w, h, x0, y0, s, byte(col&0xff), str)
 }
 
 func utoa(v uint64) string {
