@@ -167,15 +167,17 @@ fi
 [ -f "$VMLINUZ" ] || { log "no $VMLINUZ; nothing to sync"; exit 0; }
 installed_sha=$(sha256sum "$VMLINUZ" | cut -d' ' -f1)
 
-active=$(active_slot) || { log "cannot determine the active slot"; exit 1; }
-[ -z "$active" ] && { log "cannot determine the active slot"; exit 1; }
-boot_dev=$(resolve_boot "$active") || exit 1
-booted_sha=$(kernel_sha "$boot_dev") || exit 1
-
-# --deploy (the apk trigger): deploy + arm now, no reboot. Best-effort -- a
-# failure must never fail the apk transaction; the boot-time path below is the
+# --deploy (the apk trigger): deploy + arm now, no reboot. FULLY BEST-EFFORT:
+# the trigger also fires inside the build chroot (the kernel package install
+# touches /boot/vmlinuz), where there is no device and no boot partition. Any
+# failure -- no active slot, no boot partition, a failed download -- must exit
+# 0 so it never fails the apk transaction; the boot-time path below is the
 # backstop that retries on next boot.
 if [ "${1:-}" = "--deploy" ]; then
+	active=$(active_slot 2>/dev/null) || active=""
+	[ -n "$active" ] || { log "no active slot (chroot?); deferring to boot"; exit 0; }
+	boot_dev=$(resolve_boot "$active" 2>/dev/null) || { log "no boot partition; deferring to boot"; exit 0; }
+	booted_sha=$(kernel_sha "$boot_dev" 2>/dev/null) || { log "cannot read booted kernel; deferring to boot"; exit 0; }
 	if [ "$booted_sha" = "$installed_sha" ]; then
 		log "already running the installed kernel; nothing to deploy"
 		exit 0
@@ -184,7 +186,13 @@ if [ "${1:-}" = "--deploy" ]; then
 	exit 0
 fi
 
-# Boot-time (oneshot) path.
+# Boot-time (oneshot) path. On a real device these must succeed: a slot we
+# cannot resolve here is a failure worth surfacing, not a silent skip.
+active=$(active_slot) || { log "cannot determine the active slot"; exit 1; }
+[ -z "$active" ] && { log "cannot determine the active slot"; exit 1; }
+boot_dev=$(resolve_boot "$active") || exit 1
+booted_sha=$(kernel_sha "$boot_dev") || exit 1
+
 if [ "$booted_sha" = "$installed_sha" ]; then
 	# In sync: nothing to flash. Ensure the running slot is proven so a LATER
 	# arm of the other slot has a reliable fallback. Best-effort: misc may be
