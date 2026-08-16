@@ -1,0 +1,188 @@
+#!/bin/sh
+# dc1-boot-sync -- keep the flashed boot image in sync with the installed
+# kernel apk, using the DC-1's A/B slots. Runs in two modes:
+#
+#   dc1-boot-sync            systemd oneshot, once per boot (network-online)
+#   dc1-boot-sync --deploy   apk trigger, at `apk upgrade` time (no reboot)
+#
+# The kernel apk (linux-postmarketos-mediatek-mt6789) installs /boot/vmlinuz
+# and /usr/share/kernel/<flavor>/kernel.release; the boot image on the active
+# slot carries the SAME kernel only if it was flashed at the same time. After
+# `apk upgrade` pulls a new kernel, the running kernel (uname -r) stops
+# matching kernel.release, and this script closes that gap WITHOUT a host and
+# WITHOUT re-flashing the whole rootfs.
+#
+# deploy() -- download the matching jagar-boot.img + SHA256SUMS from the
+#   rolling release, verify SHA-256, write it to the INACTIVE slot (read back
+#   and compare), then `dc1-slotctl arm` that slot for one try. The inactive
+#   slot is never the one we are running from, so a failed switch falls back to
+#   the still-proven slot. Does NOT reboot.
+#
+#   --deploy (the apk trigger) runs deploy() at upgrade time so the new slot is
+#   armed BEFORE the reboot; the next normal reboot lands on the new kernel.
+#
+#   The boot-time oneshot is the backstop: if the trigger could not run (no
+#   network at upgrade time, a manual kernel install, a first install that
+#   never armed), it detects uname -r != kernel.release, runs deploy(), and
+#   reboots. When uname -r == kernel.release it marks the running slot proven
+#   (mark-successful) so a LATER arm has a reliable fallback.
+#
+# Loop guard: one deploy attempt per release. If the new kernel does not boot,
+# the preloader decrements the try, marks the slot unbootable, and falls back
+# to the proven slot; the marker stops this from becoming a reboot loop.
+#
+# KNOWN LIMITATION: the rolling `latest` release can move between the apk
+# upgrade and this download. If it does, the downloaded image is a valid but
+# NEWER build; the mark-successful step then refuses (release mismatch) and the
+# device stays on the old slot until the next `apk upgrade`. No brick, no loop
+# -- the failure mode is "the upgrade did not stick". A versioned release plus
+# an on-device image/release cross-check would close this; not done yet.
+set -eu
+
+FLAVOR=postmarketos-mediatek-mt6789
+RELEASE_FILE=/usr/share/kernel/$FLAVOR/kernel.release
+MARK=/var/lib/dc1/boot-sync-attempted
+URL_BASE=${DC1_URL_BASE:-https://github.com/denysvitali/dc-1-pmos/releases/download/latest}
+# boot_a/boot_b size window in 512-byte sectors (8 MiB .. 1 GiB), same as the
+# installer's resolve_named_part uses: outside it the GPT mapping moved.
+BOOT_MIN_SECTORS=16384
+BOOT_MAX_SECTORS=2097152
+
+log() { echo "dc1-boot-sync: $*" >&2; }
+
+# resolve_boot a|b -> /dev/<node>. GPT-name resolution with a size window; a
+# moved mapping must refuse rather than point dd at a boot-critical partition.
+# DC1_SYSBLOCK overrides /sys/class/block for the offline tests.
+resolve_boot() {
+	name="boot_$1"
+	sysblock=${DC1_SYSBLOCK:-/sys/class/block}
+	found=""
+	count=0
+	for u in "$sysblock"/*/uevent; do
+		[ -f "$u" ] || continue
+		grep -q "^PARTNAME=$name\$" "$u" || continue
+		count=$((count + 1))
+		found=${u%/uevent}
+		found=${found##*/}
+	done
+	[ "$count" -eq 1 ] || {
+		log "expected exactly 1 PARTNAME=$name, found $count"
+		return 1
+	}
+	sectors=$(cat "$sysblock/$found/size" 2>/dev/null || echo 0)
+	case "$sectors" in ''|*[!0-9]*) sectors=0 ;; esac
+	if [ "$sectors" -lt "$BOOT_MIN_SECTORS" ] || \
+	   [ "$sectors" -gt "$BOOT_MAX_SECTORS" ]; then
+		log "$name is $sectors sectors; refusing (mapping moved?)"
+		return 1
+	fi
+	echo "/dev/$found"
+}
+
+# active_slot -> a|b, from dc1-slotctl's own priority-based get_suffix decode.
+active_slot() {
+	dc1-slotctl status | sed -n 's/.*active=\([ab]\).*/\1/p'
+}
+
+# deploy INSTALLED_RELEASE -- download, verify, flash the INACTIVE slot, arm it.
+# Sets the loop-guard marker. Returns 0 on success. Does NOT reboot.
+deploy() {
+	installed=$1
+	log "deploying boot image for $installed to the inactive slot"
+	mkdir -p /var/lib/dc1
+	work=$(mktemp -d)
+	trap 'rm -rf "$work"' EXIT
+	cd "$work"
+
+	# Download and verify the matching boot image. curl -f fails on HTTP
+	# errors; -L follows GitHub's S3 redirect for the asset.
+	log "downloading SHA256SUMS"
+	curl -fsSL --retry 3 --retry-delay 3 -o SHA256SUMS "$URL_BASE/SHA256SUMS" \
+		|| { log "cannot fetch SHA256SUMS (no network?)"; return 1; }
+	want=$(awk -v n=jagar-boot.img '{ f=$2; sub(/^\*/,"",f); if (f==n) print $1 }' SHA256SUMS)
+	[ -n "$want" ] || { log "no jagar-boot.img entry in SHA256SUMS"; return 1; }
+	log "downloading jagar-boot.img"
+	curl -fsSL --retry 3 --retry-delay 3 -o jagar-boot.img "$URL_BASE/jagar-boot.img" \
+		|| { log "cannot fetch jagar-boot.img"; return 1; }
+	got=$(sha256sum jagar-boot.img | cut -d' ' -f1)
+	[ "$got" = "$want" ] || { log "jagar-boot.img sha256 mismatch"; return 1; }
+
+	active=$(active_slot) || { log "cannot determine the active slot"; return 1; }
+	[ -z "$active" ] && { log "cannot determine the active slot"; return 1; }
+	inactive=$([ "$active" = a ] && echo b || echo a)
+	boot_dev=$(resolve_boot "$inactive") || return 1
+
+	img_bytes=$(wc -c < jagar-boot.img | tr -d ' ')
+	sysblock=${DC1_SYSBLOCK:-/sys/class/block}
+	bsectors=$(cat "$sysblock/${boot_dev##*/}/size" 2>/dev/null || echo 0)
+	case "$bsectors" in ''|*[!0-9]*) bsectors=0 ;; esac
+	if [ "$img_bytes" -gt $((bsectors * 512)) ]; then
+		log "jagar-boot.img ($img_bytes bytes) larger than $boot_dev"
+		return 1
+	fi
+
+	log "writing jagar-boot.img ($img_bytes bytes) to $boot_dev (inactive slot $inactive)"
+	dd if=jagar-boot.img of="$boot_dev" bs=1M conv=fsync 2>/dev/null \
+		|| { log "boot image write failed"; return 1; }
+	sync
+	readback=$(head -c "$img_bytes" "$boot_dev" | sha256sum | cut -d' ' -f1)
+	[ "$readback" = "$got" ] || { log "boot image read-back mismatch"; return 1; }
+	log "boot image verified on $boot_dev"
+
+	# Arm the inactive slot for one try: priority 15/tries 1/successful 0, the
+	# other (proven) slot dropped to 14. On a failed boot the preloader
+	# decrements the try, marks it unbootable, and falls back.
+	dc1-slotctl arm "$inactive" --tries 1 || { log "arming $inactive failed"; return 1; }
+
+	# Record the attempt so a fallback does not loop.
+	echo "$installed" > "$MARK"
+	sync
+	log "deployed to slot $inactive and armed"
+	return 0
+}
+
+# Library mode for the offline tests: source this file to get resolve_boot and
+# active_slot without running the sync.
+if [ -n "${DC1_BOOT_SYNC_LIB:-}" ]; then
+	return 0 2>/dev/null || exit 0
+fi
+
+[ -f "$RELEASE_FILE" ] || { log "no $RELEASE_FILE; nothing to sync"; exit 0; }
+installed=$(cat "$RELEASE_FILE")
+running=$(uname -r)
+
+# --deploy (the apk trigger): deploy + arm now, no reboot. Best-effort -- a
+# failure must never fail the apk transaction; the boot-time path below is the
+# backstop that retries on next boot.
+if [ "${1:-}" = "--deploy" ]; then
+	if [ "$installed" = "$running" ]; then
+		log "already running $installed; nothing to deploy"
+		exit 0
+	fi
+	deploy "$installed" || { log "deploy failed; will retry at boot"; exit 0; }
+	exit 0
+fi
+
+# Boot-time (oneshot) path.
+if [ "$installed" = "$running" ]; then
+	# In sync: nothing to flash. Ensure the running slot is proven so a LATER
+	# arm of the other slot has a reliable fallback. Best-effort: misc may be
+	# unreadable on a device whose A/B block was never set up.
+	active=$(active_slot 2>/dev/null || true)
+	[ -z "$active" ] || dc1-slotctl mark-successful "$active" 2>/dev/null || true
+	rm -f "$MARK"
+	exit 0
+fi
+
+# Out of sync. One attempt per release, so a kernel that cannot boot does not
+# become a reboot loop.
+if [ "$(cat "$MARK" 2>/dev/null)" = "$installed" ]; then
+	log "already tried to switch to $installed; it did not stick (still $running)"
+	log "staying on $running -- re-run 'apk upgrade' after fixing the failure"
+	exit 1
+fi
+
+log "kernel $installed installed, running $running; syncing the boot image"
+deploy "$installed" || exit 1
+log "armed the new kernel; rebooting into it"
+reboot

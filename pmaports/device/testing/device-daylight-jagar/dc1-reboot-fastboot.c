@@ -66,7 +66,6 @@
  * and DC1_MEMBASE overrides the mapped physical base.
  */
 
-#include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdint.h>
@@ -78,106 +77,17 @@
 #include <sys/reboot.h>
 #include <sys/stat.h>
 
+#include "dc1-misc.h"
+
 #define WDT_BASE		0x10007000UL
 #define WDT_MAP_LEN		0x1000UL
 #define WDT_NONRST2		0x24		/* survives a warm reset */
 #define BOOT_MODE_MASK		0x0fU
 #define BOOT_MODE_FASTBOOT	0x03U
 
-/* Real misc is well under a megabyte. A big device under PARTNAME=misc means
- * the mapping is not what we think it is, and the next write would land in
- * something that matters. 16 MiB in 512-byte sectors. */
-#define MISC_MAX_SECTORS	32768UL
-
 /* bootloader_message: char command[32]; char status[32]; ... The A/B
  * bootloader_control lives at offset 2048 and is deliberately left alone. */
 #define BCB_CLEAR_BYTES		64
-
-static const char *env_or(const char *name, const char *fallback)
-{
-	const char *v = getenv(name);
-
-	return (v && *v) ? v : fallback;
-}
-
-/* snprintf that treats truncation as an error: a silently shortened device
- * name would name a different partition. */
-static int fmt(char *dst, size_t n, const char *f, const char *a, const char *b)
-{
-	int r = snprintf(dst, n, f, a, b);
-
-	return (r < 0 || (size_t)r >= n) ? -1 : 0;
-}
-
-static int read_file(const char *path, char *buf, size_t n)
-{
-	int fd = open(path, O_RDONLY);
-	ssize_t got;
-
-	if (fd < 0)
-		return -1;
-	got = read(fd, buf, n - 1);
-	close(fd);
-	if (got < 0)
-		return -1;
-	buf[got] = '\0';
-	return 0;
-}
-
-/* Resolve PARTNAME=misc out of sysfs: required unique, required small. No
- * hardcoded /dev/sdc1 -- a fixed node is exactly the mapping-moved hazard the
- * size check is here to catch. */
-static int resolve_misc(char *out, size_t n)
-{
-	const char *sysblock = env_or("DC1_SYSBLOCK", "/sys/class/block");
-	const char *devdir = env_or("DC1_DEVDIR", "/dev");
-	char found[NAME_MAX + 1] = "", path[PATH_MAX], buf[4096];
-	struct dirent *de;
-	int count = 0;
-	DIR *d;
-
-	d = opendir(sysblock);
-	if (!d) {
-		fprintf(stderr, "dc1-reboot-fastboot: opendir %s failed\n", sysblock);
-		return -1;
-	}
-	while ((de = readdir(d))) {
-		if (de->d_name[0] == '.')
-			continue;
-		if (fmt(path, sizeof(path), "%s/%s/uevent", sysblock, de->d_name) < 0)
-			continue;
-		if (read_file(path, buf, sizeof(buf)) < 0)
-			continue;
-		if (!strstr(buf, "PARTNAME=misc\n"))
-			continue;
-		count++;
-		/* A name we cannot hold is a name we must not act on: bump the
-		 * count again so the "exactly 1" check below refuses. */
-		if (fmt(found, sizeof(found), "%s%s", de->d_name, "") < 0)
-			count++;
-	}
-	closedir(d);
-
-	if (count != 1) {
-		fprintf(stderr, "dc1-reboot-fastboot: expected exactly 1 "
-				"PARTNAME=misc, found %d\n", count);
-		return -1;
-	}
-
-	if (fmt(path, sizeof(path), "%s/%s/size", sysblock, found) < 0 ||
-	    read_file(path, buf, sizeof(buf)) < 0) {
-		fprintf(stderr, "dc1-reboot-fastboot: cannot read %s\n", path);
-		return -1;
-	}
-	if (strtoul(buf, NULL, 10) > MISC_MAX_SECTORS) {
-		fprintf(stderr, "dc1-reboot-fastboot: misc (%s) is %lu sectors, "
-				"refusing (mapping moved?)\n",
-			found, strtoul(buf, NULL, 10));
-		return -1;
-	}
-
-	return fmt(out, n, "%s/%s", devdir, found);
-}
 
 static void print_command(const char *what, const char *cmd)
 {
@@ -242,8 +152,8 @@ static int disarm_bcb(const char *dev, int dry_run)
 
 static int arm_nibble(int dry_run)
 {
-	const char *memdev = env_or("DC1_MEMDEV", "/dev/mem");
-	unsigned long base = strtoul(env_or("DC1_MEMBASE", "0x10007000"), NULL, 16);
+	const char *memdev = dc1_env_or("DC1_MEMDEV", "/dev/mem");
+	unsigned long base = strtoul(dc1_env_or("DC1_MEMBASE", "0x10007000"), NULL, 16);
 	volatile uint32_t *regs;
 	uint32_t old, want, got;
 	int fd;
@@ -334,11 +244,11 @@ int main(int argc, char **argv)
 	 * worth doing either way -- but it is the first thing to suspect if the
 	 * device comes back to Linux instead of fastboot. */
 	if (misc_arg) {
-		if (fmt(misc, sizeof(misc), "%s%s", misc_arg, "") < 0) {
+		if (dc1_fmt(misc, sizeof(misc), "%s%s", misc_arg, "") < 0) {
 			fprintf(stderr, "dc1-reboot-fastboot: --misc path too long\n");
 			return 1;
 		}
-	} else if (resolve_misc(misc, sizeof(misc)) < 0) {
+	} else if (dc1_resolve_misc(misc, sizeof(misc)) < 0) {
 		misc[0] = '\0';
 	}
 

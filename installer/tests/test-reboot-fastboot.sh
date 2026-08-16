@@ -9,6 +9,7 @@ set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 SRC="$HERE/../../pmaports/device/testing/device-daylight-jagar/dc1-reboot-fastboot.c"
+MISC_SRC="$HERE/../../pmaports/device/testing/device-daylight-jagar/dc1-misc.c"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
@@ -22,7 +23,7 @@ BIN="$TMP/dc1-reboot-fastboot"
 # -D_FORTIFY_SOURCE=2 on purpose: Ubuntu's gcc turns it on by default and its
 # snprintf checks are stricter than the plain build, so CI would otherwise be
 # the first place a truncation warning shows up.
-"$CC" -Os -Wall -Wextra -Werror -D_FORTIFY_SOURCE=2 -o "$BIN" "$SRC" \
+"$CC" -Os -Wall -Wextra -Werror -D_FORTIFY_SOURCE=2 -o "$BIN" "$SRC" "$MISC_SRC" \
 	|| { echo "  FAIL: compile"; exit 1; }
 ok "compiles clean with -Wall -Wextra -Werror -D_FORTIFY_SOURCE=2"
 

@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=22
+pkgrel=23
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -11,6 +11,7 @@ options="!check !archcheck"
 # (mediatek/WIFI_RAM_CODE_MT7902_1.bin, WIFI_MT7902_patch_mcu_1_1_hdr.bin,
 # BT_RAM_CODE_MT7902_1_1_hdr.bin) and regulatory.db from wireless-regdb.
 depends="
+	curl
 	linux-firmware-mediatek
 	linux-postmarketos-mediatek-mt6789
 	openssh-server
@@ -24,6 +25,10 @@ makedepends="devicepkg-dev"
 # postmarketos-ui-os-installer uses to override gdm's custom.conf.
 replaces="gdm"
 install="$pkgname.post-install $pkgname.post-upgrade"
+# Fire dc1-boot-sync --deploy when the kernel apk drops a new kernel, so
+# `apk upgrade` arms the inactive slot before the reboot. The watched paths
+# are what the kernel package installs on every upgrade.
+triggers="$pkgname.trigger=/boot/vmlinuz:/usr/share/kernel/*"
 source="
 	deviceinfo
 	dc1-display-gate.initd
@@ -36,6 +41,12 @@ source="
 	dc1-sway.conf
 	00-logo-key.conf
 	dc1-reboot-fastboot.c
+	dc1-misc.c
+	dc1-misc.h
+	dc1-slotctl.c
+	dc1-boot-sync
+	dc1-boot-sync.service
+	device-daylight-jagar.trigger
 	dc1-link-apk-keys
 	dc1-usb-gadget
 	dc1-usb-gadget.service
@@ -67,10 +78,14 @@ build() {
 	devicepkg_build "$startdir" "$pkgname"
 
 	# No tarball, so no $builddir to compile in -- keep both ends in
-	# $srcdir, where abuild has already put the source.
+	# $srcdir, where abuild has already put the source. Both C tools share
+	# dc1-misc.c (the PARTNAME=misc resolver): one implementation of the
+	# safety-critical partition lookup, not one per tool.
 	# shellcheck disable=SC2086
 	${CC:-gcc} $CFLAGS $LDFLAGS -o "$srcdir"/dc1-reboot-fastboot \
-		"$srcdir"/dc1-reboot-fastboot.c
+		"$srcdir"/dc1-reboot-fastboot.c "$srcdir"/dc1-misc.c
+	${CC:-gcc} $CFLAGS $LDFLAGS -o "$srcdir"/dc1-slotctl \
+		"$srcdir"/dc1-slotctl.c "$srcdir"/dc1-misc.c
 }
 
 package() {
@@ -174,6 +189,25 @@ package() {
 	# the only route back to flashing. See the source for the LK evidence.
 	install -Dm755 "$srcdir"/dc1-reboot-fastboot \
 		"$pkgdir"/usr/sbin/dc1-reboot-fastboot
+	# On-device A/B slot control (the bootloader_control block in misc). This
+	# is the mutation the initramfs bootctl dump tool retired, re-entered now
+	# that the layout is pinned against real blocks; see dc1-slotctl.c.
+	install -Dm755 "$srcdir"/dc1-slotctl \
+		"$pkgdir"/usr/sbin/dc1-slotctl
+
+	# Boot-image auto-sync: keep the flashed boot image in step with the
+	# kernel apk over the A/B slots (download the release image, flash the
+	# inactive slot, arm it, reboot). Runs once per boot as a oneshot; see
+	# dc1-boot-sync and dc1-boot-sync.service.
+	install -Dm755 "$srcdir"/dc1-boot-sync \
+		"$pkgdir"/usr/libexec/dc1-boot-sync
+	install -Dm644 "$srcdir"/dc1-boot-sync.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-boot-sync.service
+	# apk trigger script: apk runs it when /boot/vmlinuz or /usr/share/kernel/*
+	# changes (i.e. a kernel package upgrade). Installed explicitly so it does
+	# not depend on abuild auto-installing the $pkgname.trigger from $source.
+	install -Dm755 "$srcdir"/device-daylight-jagar.trigger \
+		"$pkgdir"/usr/share/apk/triggers/device-daylight-jagar.trigger
 }
 
 sha512sums="
@@ -187,7 +221,13 @@ ee90a6b36e45008b76cc6d2dcc5aaa264e7c2cecfc691263762b92758353c72995e34f02f55f5cf1
 40cc32d4b8f241071f438bdf86c2a559b2145b004ec69aa3e17daec680385a35becfc70f4cec5d4bf1dbabd5efeca1d4163ce2ce6d69870ff4cd5996d1db527c  dc1-networkmanager-usb0.conf
 95d1f0a2e2a12cac305c8f3ca2b5fe0dbad16cda1ca0ce4652ced31c8e0b9d3349d10a65adc0c2c2006331e028e11017ad0fefda5d00cd0ea88d641fb6d372b8  dc1-sway.conf
 45bfbe7279140132e722b1bf7f34b96b71a45f4bd3b4c393d0865c0bd193eafb99104da438d67b3025401d0da4720bbc82ffc64294487c2ce9a0779f3d53724e  00-logo-key.conf
-5fbf5abc67c74b4191dce70727edfe438ed60144d3f2f713e2714858036b1075df22f8a05b0f72f2bb519f3f2a45734630cf580a2ef829cd78725eb161092676  dc1-reboot-fastboot.c
+c59b626985f89c88b4a7edb1de78291b9b3ef95453a6aa1969dfc936c2012c8714ae2b8bfef2d102a234a8518900b0748ca641b3f805d24477f7311eb4e9b983  dc1-reboot-fastboot.c
+2e4530a11bf7f504280f1e7854e679065c8adedb2a6078eaacfbf7c83abc002b7d250985dd2fe8b02d3b21a1ceee78b642eacaf2e8d9db29652c24fded382282  dc1-misc.c
+e415530ead956df9d613725c4b165f89221093b3b29a5c9e543bca5fd3f935a1083602d287a2cc9e9a962b7348ecef0a75f090aa3111266bf0a70d9f149052ad  dc1-misc.h
+fef7de2bf3ca96f628a30bca8f9226d8a2be9b2bc1d3e19ae28e1eb0012bd142cafa2b00ed57debdb5873145ff1cb1651bbff68b64280e3914cd109ba8bcf32b  dc1-slotctl.c
+9074654da5a56557b96b71abdb23fdee399c86f4c1693c29fa7c32d94d02d3480bd1641eaf04a8200b507fda4438f931500783c3437739e9977c334e917df774  dc1-boot-sync
+cb13bde7764d827402f55d5642e1078d2494be6c985740b8da287fe4226f4181922304017e9fe108b1cf81566899bc9202dfd0031efd43a70a5eb3231ffb82e8  device-daylight-jagar.trigger
+efd2b7c4bce2380cc36706b0deefc6e2d901ee856165ea0e89f2faa2d38010125a9048ce73ee23a104d03e2d6e94054746de88486bac8e503174765d45cebb6f  dc1-boot-sync.service
 5a9537f7bb98a69f73be28e15e4e54e2e68afa53a80e8c52c44eba8bde21c3d4696e0580c958807486b7cd2f805fafc14f1c4352bef599570c0f84d0cb639493  dc1-link-apk-keys
 eba8f099ec781c8c4fbe4e9f73f544a0531d10fc3249fade605b434514f7b1efb025da08859c618e988b66a36677a8de95a742fe717f120338caf0f411f3d88f  dc1-usb-gadget
 ef0b3a6abeb2f201071f8cf136aa147e818e672d2c1ef313252269aca6670e55897912cb965c5f9cd1939f0def0571a116c4651598104d18ce4e4de2773c5ec7  dc1-usb-gadget.service

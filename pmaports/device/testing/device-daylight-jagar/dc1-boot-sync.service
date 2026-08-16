@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep the DC-1 boot image in sync with the installed kernel
+After=dc1-link-apk-keys.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/dc1-boot-sync
+
+[Install]
+WantedBy=multi-user.target

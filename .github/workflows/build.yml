@@ -78,13 +78,22 @@ jobs:
       # define __user empty exactly as build.sh does.
       - name: Installer C smoke build
         run: |
-          for src in installer/src/init.c \
-                     installer/src/system/init.c \
-                     pmaports/device/testing/device-daylight-jagar/dc1-reboot-fastboot.c; do
+          set -eu
+          for src in installer/src/init.c installer/src/system/init.c; do
             out=$(mktemp)
             gcc -static -Os -Wall -Wextra -D__user= -I installer/src/uapi -o "$out" "$src"
             rm -f "$out"
             echo "compiled $src"
+          done
+          # The device-package C tools share dc1-misc.c (the PARTNAME=misc
+          # resolver), so each links against it here exactly as the APKBUILD
+          # build() does.
+          dev=pmaports/device/testing/device-daylight-jagar
+          for tool in dc1-reboot-fastboot dc1-slotctl; do
+            out=$(mktemp)
+            gcc -Wall -Wextra -Os -o "$out" "$dev/$tool.c" "$dev/dc1-misc.c"
+            rm -f "$out"
+            echo "compiled $dev/$tool.c + $dev/dc1-misc.c"
           done
 
       - uses: actions/setup-go@v5

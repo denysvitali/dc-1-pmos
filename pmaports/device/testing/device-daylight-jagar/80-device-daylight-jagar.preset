@@ -9,3 +9,4 @@ enable dc1-frontlight.service
 enable dc1-rtcsync.timer
 enable dc1-link-apk-keys.service
 enable dc1-first-boot.service
+enable dc1-boot-sync.service
