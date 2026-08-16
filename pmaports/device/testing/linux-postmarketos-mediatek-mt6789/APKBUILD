@@ -176,5 +176,5 @@ package() {
 }
 
 sha512sums="
-b762763f6ebd75770da8e28decce39ad9840b0ea252d2798463834d67844acae0e3380e2ac2f2f92a8c1d8b27efab6f5d5246bd10eacfcdf3cad5ae99c9cbfe4  linux-postmarketos-mediatek-mt6789-3975da14759af3f4426cfd0c80bed5e9acb6f0b8.tar.gz
+2345e73f21be467eb98bf30a51c3678d4b2ba6e59d43865755ccd8ff465f21d8e5660e65422528bb529e04daaea37fceb82a2802034e98fdad069cfe589e4595  linux-postmarketos-mediatek-mt6789-3975da14759af3f4426cfd0c80bed5e9acb6f0b8.tar.gz
 "
