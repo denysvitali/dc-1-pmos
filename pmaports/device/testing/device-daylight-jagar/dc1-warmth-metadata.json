@@ -1,0 +1,8 @@
+{
+  "uuid": "dc1-warmth@denv.it",
+  "name": "DC-1 Frontlight Warmth",
+  "description": "Adds a quick-settings slider for the DC-1's amber frontlight, held as a ratio of the white channel so it reads as a colour temperature rather than a second brightness.",
+  "shell-version": ["48", "49", "50"],
+  "settings-schema": "org.gnome.shell.extensions.dc1-warmth",
+  "url": "https://github.com/denysvitali/dc-1-pmos"
+}

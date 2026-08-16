@@ -24,7 +24,7 @@ start() {
 			|| { echo "configfs mount failed" >&2; return 1; }
 	fi
 
-	rm -rf "$G" 2>/dev/null
+	stop
 	mkdir -p "$G" || { echo "configfs usb_gadget unavailable" >&2; return 1; }
 	write "$G/idVendor" 0x18d1
 	write "$G/idProduct" 0x4ee7
@@ -63,8 +63,25 @@ start() {
 }
 
 stop() {
-	[ -e "$G/UDC" ] && echo "" >"$G/UDC" 2>/dev/null
-	rm -rf "$G" 2>/dev/null
+	[ -d "$G" ] || return 0
+
+	# Tear the gadget down in configfs order, never with rm -rf. configfs
+	# directories are kernel objects: a removal that arrives out of order (a
+	# function still linked into a config, or anything at all while the UDC is
+	# bound) can block in the kernel *uninterruptibly*. That is not
+	# theoretical -- usb-signaller wedged exactly this way on 2026-08-16 and
+	# stayed in D state for hours, taking every later configfs reader with it
+	# and failing the suspend freezer (20 s per attempt) because a D-state
+	# task can never be frozen.
+	[ -e "$G/UDC" ] && printf '\n' >"$G/UDC" 2>/dev/null
+	for link in "$G"/configs/*/*; do
+		[ -L "$link" ] && rm -f "$link" 2>/dev/null
+	done
+	for dir in "$G"/configs/*/strings/* "$G"/configs/* \
+		"$G"/functions/* "$G"/strings/*; do
+		[ -d "$dir" ] && rmdir "$dir" 2>/dev/null
+	done
+	rmdir "$G" 2>/dev/null
 }
 
 case "$1" in

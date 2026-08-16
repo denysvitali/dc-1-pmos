@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.dc1-warmth"
+          path="/org/gnome/shell/extensions/dc1-warmth/">
+    <key name="warmth" type="d">
+      <default>0.0</default>
+      <range min="0.0" max="1.0"/>
+      <summary>Amber frontlight ratio</summary>
+      <description>
+        The amber frontlight as a fraction of the white one: the amber channel
+        is driven to this share of the white channel's current level, so the
+        tint holds while GNOME's brightness slider moves. 0 keeps the amber
+        light off, which is how the device boots.
+      </description>
+    </key>
+  </schema>
+</schemalist>
