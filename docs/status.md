@@ -10,7 +10,7 @@ mean the artifacts built by any given CI run were booted — releases carry
 | Display | Works | DSI panel; Wayland sessions (Sway, GNOME) run. |
 | GPU | Works | Mali-G57 MC2 via Panfrost. |
 | Touchscreen | Works | ILI2910, 10-point multitouch. |
-| On-device UI | Works | GNOME (gnome-mobile) session on the panel, hardware-accelerated via Panfrost. |
+| On-device UI | Works | Installer: touch UI (`dc1-ask`) drawn by PID 1, hardware-verified to boot and serve its menu. Desktop: GNOME Mobile on the panel, hardware-accelerated via Panfrost — no Flutter shell, no first-boot onboarding. |
 | Frontlight | Works | Dual RT4539 backlight drivers. |
 | Wi-Fi | Works | MT7902 via mainline mt7921s. Confirmed on device 2026-08-15: firmware loads, `wlan0` appears, and a scan returns a dozen networks. Needs `CONFIG_FW_LOADER_COMPRESS_ZSTD` — linux-firmware ships the three MT7902 blobs `.zst`-compressed, and without it the loader reports `-2` for a file that is present, `hardware init failed`, and no `wlan0`. Carried by the pinned kernel since `ea54394`. |
 | Bluetooth | Works | MT7902, same upstream firmware. |

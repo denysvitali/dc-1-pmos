@@ -183,15 +183,16 @@ net_flow() {
 		return 1
 	fi
 
-	# Account setup can be deferred to first boot. An unprovisioned install
-	# writes the rootfs with no account and leaves the idempotence marker
-	# unset, so the installed system's onboarding (Wi-Fi, username,
-	# password, hostname, timezone) runs on first boot. Asking everything
-	# here remains the default; "set up later" is the "flash and interact"
-	# path.
+	# Account setup can be skipped. An unprovisioned install writes the
+	# rootfs with no user-chosen account (or Wi-Fi, hostname, or timezone):
+	# the answers file is emptied and provisioning is skipped, so the
+	# installed system boots straight to the GNOME desktop auto-logged-in as
+	# the build-time default user `dc1`. There is no first-boot onboarding
+	# to fill any of this in. Asking everything here remains the default;
+	# "set up later" is the "flash and interact" path.
 	choice=$(ask menu "ACCOUNT SETUP" \
 		"Set up now (username, password, hostname, timezone)" \
-		"Set up later (onboard on first boot)") || return 1
+		"Set up later (skip account setup)") || return 1
 
 	if [ "$choice" = 0 ]; then
 		while :; do
