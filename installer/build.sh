@@ -129,6 +129,7 @@ e2fsprogs-libs-1.47.4-r0
 libcom_err-1.47.4-r0
 libblkid-2.42.2-r1
 libuuid-2.42.2-r1
+libeconf-0.8.4-r0
 "
 
 verify_blob() {
@@ -326,8 +327,8 @@ stage bin usr/bin/curl              usr/bin/curl
 stage bin usr/bin/zstd              usr/bin/zstd
 # Offline rootfs grow (wr_finalize) and the optional fsck: resize2fs lives in
 # e2fsprogs-extra, e2fsck in e2fsprogs. Their DT_NEEDED libs (libext2fs,
-# libe2p, libcom_err, libblkid, libuuid) land in /usr/lib via the apk list and
-# the closure check below.
+# libe2p, libcom_err, libblkid, libuuid, and libblkid's own libeconf) land in
+# /usr/lib via the apk list and the closure check below.
 stage bin sbin/e2fsck                sbin/e2fsck
 stage bin usr/sbin/resize2fs         usr/sbin/resize2fs
 stage lib etc/ssl/certs/ca-certificates.crt etc/ssl/certs/ca-certificates.crt
