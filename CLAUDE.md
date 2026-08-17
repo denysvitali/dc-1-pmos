@@ -127,10 +127,13 @@ Everything committed here is world-readable. Non-negotiable rules:
   state and a stock `panel1@0` under `dsi@14013000`, i.e. pinctrl failing to
   probe (`invalid resource (null)`, -22), no display, no UDC, and LK
   exhausting the slot's retries. This is the **one** sanctioned exception to
-  "never write `dtbo`": both writers replace `dtbo_a` with an empty
-  `dt_table` (zero entries) whenever they write the mainline
+  "never write `dtbo`": both writers replace `dtbo_a` with a `dt_table`
+  holding one inert overlay whenever they write the mainline
   `vendor_boot_a`, slot A only, leaving `vendor_boot_b`/`dtbo_b` a matched
-  stock pair. The rule elsewhere still holds — nothing in the normal install
+  stock pair. It must be **one** entry, not zero: LK's own strings show a
+  zero-entry table takes the `dtbo_entry_idx >= num_of_dtbo` path and then
+  loads entry 0 of an empty table (`load_dtbo fail`, `DT overlay fail`), and
+  a zero-entry stub was tried on hardware and did not boot. The rule elsewhere still holds — nothing in the normal install
   path writes `dtbo`.
 - `Machine model: MT8781V/NA` in the kernel log says **nothing** about which
   DT loaded. LK carries a chip-variant string table (`MT6789(ENG)`,

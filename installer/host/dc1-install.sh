@@ -52,7 +52,7 @@ maybe_sudo() {
 	if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi
 }
 
-# write_dtbo_stub FILE -- a dt_table_header with dt_entry_count = 0.
+# write_dtbo_stub FILE -- a dt_table holding one overlay that does nothing.
 #
 # LK merges dtbo_<slot> onto the DTB it takes from vendor_boot_<slot>, so the
 # stock overlay and our mainline DTB cannot coexist. The stock overlay's
@@ -64,14 +64,26 @@ maybe_sudo() {
 # to probe ("invalid resource (null)", -22), then no display, no UDC, and LK
 # exhausting the slot's retries.
 #
-# Zero entries gives LK nothing to merge. Header fields are big-endian: magic,
-# total_size, header_size, dt_entry_size, dt_entry_count, dt_entries_offset,
-# page_size, version -- then zero padding over the old entry table.
+# This carries ONE entry rather than zero. An empty table looks like the
+# obvious "nothing to merge", but it is an error path in this LK, whose own
+# strings are:
+#
+#   Set dtbo_entry_idx to 0: dtbo_entry_idx %d >= num_of_dtbo %d.
+#   load_dtbo fail, fdt size(%d)
+#   ufdt_apply_overlay() failed!
+#   DT overlay fail (%d)
+#
+# With num_of_dtbo = 0 the index clamps to 0 and LK loads entry 0 of a table
+# that has none. A zero-entry stub was tried on hardware and did not boot.
+#
+# So: one entry, pointing at a valid FDT whose root is empty and which declares
+# no fragments. LK finds a well-formed overlay, applies it, changes nothing.
+# Bytes are dt_table_header (magic, total_size 136, header_size 32,
+# dt_entry_size 32, dt_entry_count 1, dt_entries_offset 32, page_size 2048,
+# version 0), then one dt_table_entry (size 72, offset 64), then the 72-byte
+# overlay -- `/dts-v1/; /plugin/; / { };` as built by dtc.
 write_dtbo_stub() {
-	{
-		printf '\327\267\253\036\000\000\000\040\000\000\000\040\000\000\000\040\000\000\000\000\000\000\000\040\000\000\010\000\000\000\000\000'
-		dd if=/dev/zero bs=4064 count=1 2>/dev/null
-	} > "$1"
+	printf '\327\267\253\036\000\000\000\210\000\000\000\040\000\000\000\040\000\000\000\001\000\000\000\040\000\000\010\000\000\000\000\000\000\000\000\110\000\000\000\100\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\320\015\376\355\000\000\000\110\000\000\000\070\000\000\000\110\000\000\000\050\000\000\000\021\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\002\000\000\000\011' > "$1"
 }
 
 # --------------------------------------------------------------- validation
@@ -377,7 +389,7 @@ if [ -n "$BOOT_IMAGE" ]; then
 		# what produced the logo -> blank -> reset loop reported against this
 		# path. Slot A only: vendor_boot_b/dtbo_b stay a matched stock pair, so
 		# LK still has somewhere to fall back to.
-		msg "replacing dtbo_a with an empty overlay (required by the above)"
+		msg "replacing dtbo_a with an inert overlay (required by the above)"
 		msg "  The stock overlay is written against the stock tree and corrupts"
 		msg "  the mainline one. dtbo_b is untouched."
 		write_dtbo_stub "$TMPDIR_INSTALL/dtbo-empty.img"
@@ -395,7 +407,7 @@ else
 	msg "has not been booted on hardware yet. If you take it, re-run with"
 	msg "--vendor-boot-image rather than flashing it by hand: LK merges dtbo"
 	msg "onto the vendor_boot DTB, so the mainline tree also needs dtbo_a"
-	msg "replaced with an empty overlay in the same step. Flashing"
+	msg "replaced with an inert overlay in the same step. Flashing"
 	msg "vendor_boot_a alone leaves the stock overlay to corrupt it, which"
 	msg "boots to a blank screen and no USB. Slot A only, either way."
 fi

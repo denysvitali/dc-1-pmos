@@ -259,7 +259,8 @@ is streamed over USB).
   `invalid resource (null)` and then no display, no USB, and LK falling back to
   slot B. So writing the mainline `vendor_boot_a` **without** neutralising
   `dtbo_a` reliably produces a logo → blank → reset loop. Both tools now write
-  an empty overlay (a `dt_table` with zero entries) to `dtbo_a` in the same
+  an inert overlay (a `dt_table` with exactly one fragment-free entry --
+  zero entries is an LK error path, not "no overlay") to `dtbo_a` in the same
   operation; this is the one sanctioned `dtbo` write, it is slot A only, and
   `dtbo_b` stays paired with the stock `vendor_boot_b`. Do not flash a
   mainline `vendor_boot` by hand without doing the same.

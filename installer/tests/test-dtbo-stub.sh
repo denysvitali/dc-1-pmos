@@ -19,39 +19,45 @@ fail() { echo "dtbo-stub test failed: $*" >&2; exit 1; }
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# Host side: dc1-install.sh writes a 4096-byte file for `fastboot flash`.
+# Host side: dc1-install.sh writes the image `fastboot flash` sends.
 DC1_INSTALL_LIB=1 . "$INSTALL" || fail "could not source dc1-install.sh"
 write_dtbo_stub "$tmp/host.img"
-[ "$(wc -c < "$tmp/host.img" | tr -d ' ')" = 4096 ] || \
-	fail "write_dtbo_stub is not 4096 bytes"
 
-# Device side: dc1-boot-sync emits the bare 32-byte header on stdout.
+# Device side: dc1-boot-sync emits the same bytes on stdout.
 mkdir -p "$tmp/sys"
 DC1_BOOT_SYNC_LIB=1 DC1_SYSBLOCK="$tmp/sys" . "$SYNC" || \
 	fail "could not source dc1-boot-sync"
 dtbo_stub > "$tmp/dev.img"
-[ "$(wc -c < "$tmp/dev.img" | tr -d ' ')" = 32 ] || fail "dtbo_stub is not 32 bytes"
 
 # The two literals must not drift apart.
-cmp -n 32 "$tmp/host.img" "$tmp/dev.img" || \
-	fail "host and device stubs disagree in the first 32 bytes"
+cmp "$tmp/host.img" "$tmp/dev.img" || fail "host and device stubs differ"
 
-# Everything past the header must be zero: it lands on the old entry table.
-[ -z "$(dd if="$tmp/host.img" bs=1 skip=32 2>/dev/null | tr -d '\0')" ] || \
-	fail "write_dtbo_stub padding is not zeroed"
-
-# Parse it the way LK does rather than comparing to a golden blob.
-python3 - "$tmp/host.img" <<'PY' || fail "stub is not a zero-entry dt_table"
+# Parse it the way LK does rather than comparing to a golden blob. The entry
+# count is the point of this test: a zero-entry table is not "no overlay" to
+# this LK, it is `dtbo_entry_idx >= num_of_dtbo` -> load entry 0 of an empty
+# table -> "load_dtbo fail" / "DT overlay fail", which did not boot on
+# hardware. Exactly one entry, and it must be a real FDT with no fragments.
+python3 - "$tmp/host.img" <<'PY' || fail "stub is not a one-entry no-op dt_table"
 import struct, sys
 d = open(sys.argv[1], 'rb').read()
 magic, total, hdr, entsz, entcnt, entoff, pagesz, ver = struct.unpack('>8I', d[:32])
 assert magic == 0xd7b7ab1e, f"magic {magic:#x}, want 0xd7b7ab1e"
-assert entcnt == 0, f"dt_entry_count {entcnt}, want 0 (LK must find no overlay)"
-assert total == 32, f"total_size {total}, want 32"
+assert entcnt == 1, f"dt_entry_count {entcnt}, want exactly 1 (0 is an LK error path)"
 assert hdr == 32 and entoff == 32, f"header_size {hdr} dt_entries_offset {entoff}"
 assert entsz == 32, f"dt_entry_size {entsz}"
 assert pagesz == 2048, f"page_size {pagesz}"
 assert ver == 0, f"version {ver}"
+assert total == len(d), f"total_size {total} != image length {len(d)}"
+
+size, off = struct.unpack('>2I', d[entoff:entoff + 8])
+assert off + size <= len(d), f"entry runs past the image: off {off} size {size}"
+fdt = d[off:off + size]
+fmagic, fsize = struct.unpack('>2I', fdt[:8])
+assert fmagic == 0xd00dfeed, f"entry is not an FDT: magic {fmagic:#x}"
+assert fsize == size, f"FDT totalsize {fsize} != entry size {size}"
+# No fragments and no fixups: applying it must be a no-op on any base tree.
+for bad in (b'fragment', b'__overlay__', b'__fixups__', b'target'):
+    assert bad not in fdt, f"overlay is not inert: contains {bad!r}"
 PY
 
 echo "dtbo stub tests passed"

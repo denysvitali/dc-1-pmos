@@ -41,7 +41,7 @@ visible. Keep it that way until a boot on the mainline DTB is observed to light
 the panel; that boot is the gate for the accelerometer, LVTS thermal, and this
 whole row set.
 
-Both writers now also replace `dtbo_a` with an empty `dt_table` in the same
+Both writers now also replace `dtbo_a` with a one-entry, inert `dt_table` in the same
 operation, because LK merges the slot's overlay onto the `vendor_boot` DTB and
 the stock overlay corrupts a mainline base — reported from hardware
 (2026-08-17) as a mainline `pinctrl@10005000` carrying stock pin state and a

@@ -100,19 +100,24 @@ printf '131073\n' > "$tmp/sys/sdc29/size"
 printf '100\n' > "$tmp/sys/sdc29/size"
 ! resolve_dtbo a >/dev/null 2>&1 || fail "resolve_dtbo a accepted an undersized dtbo_a"
 
-# The stub must be a dt_table LK reads as "no overlays": magic d7b7ab1e and
-# dt_entry_count 0. Parsed the same way LK does rather than compared byte-wise,
-# so a hand-edit of the octal string cannot silently ship a bad header.
+# The stub must be a dt_table LK reads as one inert overlay: magic d7b7ab1e and
+# dt_entry_count 1. Zero entries is an LK error path (dtbo_entry_idx >=
+# num_of_dtbo, then "load_dtbo fail"), not "no overlay", and did not boot on
+# hardware. Parsed rather than compared byte-wise so a hand-edit of the octal
+# string cannot silently ship a bad header; the full structural checks are in
+# test-dtbo-stub.sh.
 dtbo_stub > "$tmp/stub.img"
-[ "$(wc -c < "$tmp/stub.img" | tr -d ' ')" = 32 ] || fail "dtbo_stub is not 32 bytes"
 python3 - "$tmp/stub.img" <<'PY' || exit 1
 import struct, sys
 d = open(sys.argv[1], 'rb').read()
 magic, total, hdr, entsz, entcnt, entoff, pagesz, ver = struct.unpack('>8I', d[:32])
 assert magic == 0xd7b7ab1e, f"magic {magic:#x}"
-assert entcnt == 0, f"dt_entry_count {entcnt}, want 0"
-assert total == 32 and hdr == 32 and entoff == 32, (total, hdr, entoff)
+assert entcnt == 1, f"dt_entry_count {entcnt}, want 1"
+assert total == len(d), f"total_size {total} != image length {len(d)}"
+assert hdr == 32 and entoff == 32, (hdr, entoff)
 assert entsz == 32 and pagesz == 2048 and ver == 0, (entsz, pagesz, ver)
+size, off = struct.unpack('>2I', d[entoff:entoff + 8])
+assert d[off:off + 4] == b'\xd0\x0d\xfe\xed', "entry does not point at an FDT"
 PY
 
 # neutralize_dtbo must refuse a target that is not already a dt_table, so a
@@ -123,14 +128,14 @@ DC1_SYSBLOCK="$tmp/sys"
 ! (resolve_dtbo() { echo "$tmp/notdtbo.img"; }; neutralize_dtbo a) >/dev/null 2>&1 \
 	|| fail "neutralize_dtbo overwrote a target with no dt_table magic"
 
-# On a real dt_table it rewrites the header in place and verifies the readback.
+# On a real dt_table it rewrites the stub in place and verifies the readback.
 cp "$tmp/stub.img" "$tmp/real.img"
-head -c 4064 /dev/zero >> "$tmp/real.img"
-printf 'STALE-ENTRY-TABLE' | dd of="$tmp/real.img" bs=1 seek=32 conv=notrunc 2>/dev/null
+head -c 3960 /dev/zero >> "$tmp/real.img"
+printf 'STALE-ENTRY-TABLE' | dd of="$tmp/real.img" bs=1 seek=136 conv=notrunc 2>/dev/null
 (resolve_dtbo() { echo "$tmp/real.img"; }; neutralize_dtbo a) >/dev/null 2>&1 \
 	|| fail "neutralize_dtbo refused a valid dt_table"
-cmp -n 32 "$tmp/real.img" "$tmp/stub.img" || fail "neutralize_dtbo did not write the stub header"
-[ -z "$(dd if="$tmp/real.img" bs=1 skip=32 count=32 2>/dev/null | tr -d '\0')" ] \
-	|| fail "neutralize_dtbo left the old entry table behind"
+cmp -n 136 "$tmp/real.img" "$tmp/stub.img" || fail "neutralize_dtbo did not write the stub"
+[ -z "$(dd if="$tmp/real.img" bs=1 skip=136 count=32 2>/dev/null | tr -d '\0')" ] \
+	|| fail "neutralize_dtbo left the old table behind"
 
 echo "boot-sync resolver + kernel extraction + dtbo tests passed"
