@@ -319,6 +319,16 @@ func gadget(o Ops) {
 // spawnHelper re-execs this binary in a helper role. See the package comment:
 // these replace init.c's fork()s, and they must be started before switch_root
 // because that is what makes them outlive the initramfs they came from.
+//
+// OWED BEFORE THIS BECOMES /init: the C now signals its kmsg and shell helpers
+// to exit at the systemd handoff (init.c stop_debug_channels), and this port
+// does not. Outliving switch_root is the point of these helpers, but the shell
+// one must not outlive the boot: it has a tty on stdin, so busybox ash treats
+// it as interactive and sets SIGTERM to SIG_IGN, and systemd-shutdown then
+// waits the full DefaultTimeoutStopSec on every reboot before escalating to
+// SIGKILL -- 90s of a panel frozen on the last compositor frame, measured on
+// hardware 2026-08-17. dc1-debug-shell.service re-provides both channels, so
+// there is nothing to lose by exiting.
 func spawnHelper(o Ops, cfg Config, role string) {
 	argv := []string{cfg.Self, "system-init", "-helper", role}
 	if role == helperShell {

@@ -59,6 +59,37 @@ static pid_t g_petter_pid = -1;
 static volatile sig_atomic_t g_petter_handoff = 0;
 static void on_watchdog_handoff(int sig) { (void)sig; g_petter_handoff = 1; }
 
+/* Debug-channel handoff to systemd, for the same reason and by the same
+ * mechanism as the watchdog handoff above. The channels below survive
+ * switch_root, but dc1-debug-shell.service re-provides both of them in the
+ * installed system, so keeping ours costs a duplicate owner of ttyGS0/ttyGS1
+ * and -- the reason this exists -- a 90s stall on every reboot: the ttyGS1
+ * shell has a tty on stdin, so busybox ash treats it as interactive and sets
+ * SIGTERM to SIG_IGN. systemd-shutdown broadcasts SIGTERM, cannot reap it, and
+ * waits DefaultTimeoutStopSec before escalating to SIGKILL ("Waiting for
+ * process: 154 (busybox)"), with the panel still showing the last compositor
+ * frame because this device has no fbcon. So exit on SIGUSR1 instead.
+ *
+ * The shell itself ignores SIGTERM, so the supervisor SIGKILLs it: uncatchable,
+ * and there is nothing to clean up. Both actions are async-signal-safe, so the
+ * handler does the work directly rather than setting a flag -- these children
+ * block in read()/waitpid(), which musl's signal() restarts on return, and a
+ * flag checked after a restarted waitpid() would never be looked at again.
+ *
+ * The supervisor blocks SIGUSR1 across fork() and the g_shell_child store. A
+ * signal that lands in that window is delivered at the unblock, by which time
+ * the handler can see the pid it has to kill; without the block it would exit
+ * and leave behind exactly the process this is meant to remove. */
+static pid_t g_kmsg_pid = -1, g_shell_pid = -1;
+static volatile sig_atomic_t g_shell_child = 0;
+static void on_debug_handoff(int sig)
+{
+	(void)sig;
+	if (g_shell_child > 0)
+		kill((pid_t)g_shell_child, SIGKILL);
+	_exit(0);
+}
+
 static size_t slen(const char *s) { size_t n = 0; while (s[n]) n++; return n; }
 
 static int wr(const char *path, const char *val)
@@ -310,6 +341,7 @@ static void start_debug_channels(void)
 		 * invalidates the old fd; a one-shot streamer would go silent for
 		 * the rest of the boot. */
 		char buf[4096];
+		signal(SIGUSR1, on_debug_handoff);
 		for (;;) {
 			int out = open("/dev/ttyGS0", O_WRONLY | O_NOCTTY);
 			int k = out >= 0 ? open("/dev/kmsg", O_RDONLY) : -1;
@@ -329,6 +361,8 @@ static void start_debug_channels(void)
 			sleep(1);
 		}
 	}
+	if (p > 0)
+		g_kmsg_pid = p;
 
 	p = fork();
 	if (p == 0) {
@@ -336,12 +370,18 @@ static void start_debug_channels(void)
 		 * interactive way into a failed boot; losing it permanently (as a
 		 * one-shot exec does the moment the gadget re-enumerates) strands
 		 * the device with no way to drive it. */
+		sigset_t usr1, prev;
+		sigemptyset(&usr1);
+		sigaddset(&usr1, SIGUSR1);
+		signal(SIGUSR1, on_debug_handoff);
 		for (;;) {
 			int fd = open("/dev/ttyGS1", O_RDWR | O_NOCTTY);
 			pid_t c;
 			if (fd < 0) { sleep(1); continue; }
+			sigprocmask(SIG_BLOCK, &usr1, &prev);
 			c = fork();
 			if (c == 0) {
+				sigprocmask(SIG_SETMASK, &prev, NULL);
 				setsid();
 				dup2(fd, 0); dup2(fd, 1); dup2(fd, 2);
 				if (fd > 2) close(fd);
@@ -351,9 +391,41 @@ static void start_debug_channels(void)
 			}
 			close(fd);
 			if (c > 0)
+				g_shell_child = (sig_atomic_t)c;
+			/* Unblock: a handoff that raced the fork lands here, with
+			 * g_shell_child already set for the handler to kill. */
+			sigprocmask(SIG_SETMASK, &prev, NULL);
+			if (c > 0) {
 				while (waitpid(c, NULL, 0) < 0 && errno == EINTR)
 					;
+				sigprocmask(SIG_BLOCK, &usr1, NULL);
+				g_shell_child = 0;
+				sigprocmask(SIG_SETMASK, &prev, NULL);
+			}
 			sleep(1);
+		}
+	}
+	if (p > 0)
+		g_shell_pid = p;
+}
+
+/* Stop the debug channels, mirroring the watchdog handoff: signal, then reap
+ * with a bounded wait so the shells have released ttyGS0/ttyGS1 before the
+ * installed system's dc1-debug-shell.service opens them. */
+static void stop_debug_channels(void)
+{
+	pid_t kid[2] = { g_kmsg_pid, g_shell_pid };
+
+	for (int i = 0; i < 2; i++)
+		if (kid[i] > 0)
+			kill(kid[i], SIGUSR1);
+	for (int i = 0; i < 2; i++) {
+		if (kid[i] <= 0)
+			continue;
+		for (int n = 0; n < 50; n++) {
+			if (waitpid(kid[i], NULL, WNOHANG) == kid[i])
+				break;
+			usleep(100000);
 		}
 	}
 }
@@ -465,14 +537,23 @@ int main(void)
 	 * petter unchanged. The petter magic-closes on SIGUSR1; wait for it to
 	 * exit so systemd's immediately-following open does not hit EBUSY. Bounded:
 	 * the handler exits in microseconds, 5s is a pathological upper bound. */
-	if (access("/mnt/root/usr/lib/systemd/systemd", X_OK) == 0 && g_petter_pid > 0) {
-		say("watchdog: systemd root -- handing the watchdog over");
-		kill(g_petter_pid, SIGUSR1);
-		for (int i = 0; i < 50; i++) {
-			if (waitpid(g_petter_pid, NULL, WNOHANG) == g_petter_pid)
-				break;
-			usleep(100000);
+	if (access("/mnt/root/usr/lib/systemd/systemd", X_OK) == 0) {
+		if (g_petter_pid > 0) {
+			say("watchdog: systemd root -- handing the watchdog over");
+			kill(g_petter_pid, SIGUSR1);
+			for (int i = 0; i < 50; i++) {
+				if (waitpid(g_petter_pid, NULL, WNOHANG) == g_petter_pid)
+					break;
+				usleep(100000);
+			}
 		}
+		/* Same gate, same reason: dc1-debug-shell.service re-provides both
+		 * channels, and ours would otherwise stall every reboot for
+		 * DefaultTimeoutStopSec. A switch_root that fails after this still
+		 * has the rescue shell on tty1/ttyS0, which is already the case --
+		 * the UDC unbind below drops ttyGS0/ttyGS1 regardless. */
+		say("debug channels: systemd root -- handing ttyGS0/ttyGS1 over");
+		stop_debug_channels();
 	}
 
 	/* Cleanly unbind the initramfs gadget's UDC before switch_root.

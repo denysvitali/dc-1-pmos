@@ -7,6 +7,12 @@ After=dc1-usb-gadget.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/libexec/dc1-debug-shell
+# The ttyGS1 shell has a tty on stdin, so busybox ash treats it as interactive
+# and sets SIGTERM to SIG_IGN. Without a cap, stopping this unit waits the full
+# DefaultTimeoutStopSec (90s) before escalating to SIGKILL, and every reboot
+# pays it with the panel frozen on the last compositor frame (no fbcon here).
+# Nothing in this unit has state to flush: a kmsg cat, a shell, and an nc.
+TimeoutStopSec=2s
 
 [Install]
 WantedBy=multi-user.target
