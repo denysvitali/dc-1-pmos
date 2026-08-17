@@ -6,8 +6,15 @@ built by this repository's CI. Read the whole page once before starting.
 > **Warning.** CI proves the build compiles, not that it boots. Releases
 > record `hardware_verified=false`. Flashing is at your own risk. The
 > procedure below only ever writes the `boot_a` slot and the `userdata`
-> partition. It never touches anything else — and neither should you (see
+> partition, plus `misc` for the A/B slot metadata once the system is
+> running. It never touches anything else — and neither should you (see
 > [Recovery notes](#recovery-notes)).
+>
+> One partition is deliberately left out of the default flow: `vendor_boot`,
+> which is where LK reads the device tree from. Writing it is how our mainline
+> device tree would ship, and it is opt-in precisely because a tree that fails
+> to light the panel leaves a device you can only reach over fastboot. It is
+> not part of any step below.
 
 ## Choose an install path
 
@@ -225,12 +232,20 @@ is streamed over USB).
   authenticated preloader does not accept a download agent for storage
   writes. If the partitions LK itself depends on are damaged, the device
   cannot be recovered over USB. For this reason, **never flash `preloader`,
-  `lk`, `dtbo`, `vendor_boot`, or the UFS boot LUNs.** The documented flow
-  never writes them, and the device-side installer refuses to touch them by
-  construction (it resolves its target strictly by the GPT partition name
-  `userdata`, and writes a boot image only to the GPT partition named
-  `boot_a` — the slot you already flashed — after verifying the image
-  against `SHA256SUMS`).
+  `lk`, `dtbo`, or the UFS boot LUNs.** The documented flow never writes
+  them, and the device-side installer refuses to touch them by construction
+  (it resolves its target strictly by the GPT partition name `userdata`, and
+  writes a boot image only to the GPT partition named `boot_a` — the slot you
+  already flashed — after verifying the image against `SHA256SUMS`).
+- **`vendor_boot` is a special case, not a blanket prohibition.** LK reads the
+  device tree from it, so it is the only way our mainline tree can ship, and
+  the repo does write it — but never by default. `dc1-boot-sync` needs
+  `DC1_DEPLOY_VENDOR_BOOT=1`; `dc1-install.sh` needs an explicit
+  `--vendor-boot-image`. Both write `vendor_boot_a` only, so `vendor_boot_b`
+  keeps the stock tree and one slot stays known-good. Do not write both. Note
+  the mainline tree has not been booted on hardware yet: it gained a panel
+  node only recently, and before that it disabled `dsi0` outright and would
+  have given you a device with no display.
 - The device has A/B slots; this flow only uses `boot_a`.
 - If a flashed boot image fails to boot, the watchdog resets the device
   back into LK fastboot, so you can reflash `boot_a` and try again. A
