@@ -1,7 +1,7 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=linux-postmarketos-mediatek-mt6789
 pkgver=7.2_rc5_git20260817
-pkgrel=24
+pkgrel=25
 pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
 arch="aarch64"
 _carch="arm64"
@@ -30,7 +30,7 @@ makedepends="
 "
 
 _repository="dc-1-linux-kernel"
-_commit="6c96f743f81d7c560498f53231a044c55096a328"
+_commit="3d3de59a51f025da5fc737ac03f0580fabfdf2b6"
 # The kernel source tarball is the ONLY distfile. The config used to be
 # fetched separately from raw.githubusercontent.com under a commit-independent
 # filename (config-$_flavor.$arch), which collided with the persisted distfiles
@@ -184,5 +184,5 @@ package() {
 }
 
 sha512sums="
-896a085bb639b7e4b6051a8147b1e24180fd63ffd0ef314cb915db11a3db351e8ffafb27046c340e84e7bf6a5cc423049f6b059203a9d17b88956116eaa0e5be  linux-postmarketos-mediatek-mt6789-6c96f743f81d7c560498f53231a044c55096a328.tar.gz
+58c11a5794773fedccd98664bcada705b567b9d51b698a89b9063525b2850b6520509217af7b08c9a991f42f6e8aad3d109d65d07f245dc7a32901c0fe38c463  linux-postmarketos-mediatek-mt6789-3d3de59a51f025da5fc737ac03f0580fabfdf2b6.tar.gz
 "
