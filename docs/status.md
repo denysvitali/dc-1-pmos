@@ -41,6 +41,16 @@ visible. Keep it that way until a boot on the mainline DTB is observed to light
 the panel; that boot is the gate for the accelerometer, LVTS thermal, and this
 whole row set.
 
+Both writers now also replace `dtbo_a` with an empty `dt_table` in the same
+operation, because LK merges the slot's overlay onto the `vendor_boot` DTB and
+the stock overlay corrupts a mainline base — reported from hardware
+(2026-08-17) as a mainline `pinctrl@10005000` carrying stock pin state and a
+stock `panel1@0` under `dsi@14013000`, giving `pinctrl` probe failure
+(`invalid resource (null)`), a blank panel, no UDC, and an LK fallback to slot
+B. The first attempts at booting the mainline DTB hit exactly this, so those
+runs did **not** test the tree itself; it remains unbooted rather than
+disproven. See [installation.md](installation.md) for the full rule.
+
 **What the switch would cost, audited 2026-08-17.** Every device with a driver
 bound on the running (stock) tree was mapped back to its DT node and checked
 against the built `mt8781-daylight-jagar.dtb`. Most of the 341 compatible

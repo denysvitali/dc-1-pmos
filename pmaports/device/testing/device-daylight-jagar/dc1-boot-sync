@@ -52,6 +52,12 @@ URL_BASE=${DC1_URL_BASE:-https://github.com/denysvitali/dc-1-pmos/releases/downl
 BOOT_MIN_SECTORS=16384
 BOOT_MAX_SECTORS=2097152
 
+# dtbo_a/dtbo_b size window in 512-byte sectors (8 MiB .. 64 MiB). Tighter than
+# the boot window on purpose: the stub below is written to offset 0, so a moved
+# mapping would destroy whatever partition it landed on.
+DTBO_MIN_SECTORS=16384
+DTBO_MAX_SECTORS=131072
+
 log() { echo "dc1-boot-sync: $*" >&2; }
 
 # resolve_boot a|b -> /dev/<node>. GPT-name resolution with a size window; a
@@ -110,6 +116,75 @@ resolve_vendor_boot() {
 		return 1
 	fi
 	echo "/dev/$found"
+}
+
+# resolve_dtbo a|b -> /dev/<node>. Same fail-closed shape as resolve_boot, on
+# the dtbo window.
+resolve_dtbo() {
+	name="dtbo_$1"
+	sysblock=${DC1_SYSBLOCK:-/sys/class/block}
+	found=""
+	count=0
+	for u in "$sysblock"/*/uevent; do
+		[ -f "$u" ] || continue
+		grep -q "^PARTNAME=$name\$" "$u" || continue
+		count=$((count + 1))
+		found=${u%/uevent}
+		found=${found##*/}
+	done
+	[ "$count" -eq 1 ] || {
+		log "expected exactly 1 PARTNAME=$name, found $count"
+		return 1
+	}
+	sectors=$(cat "$sysblock/$found/size" 2>/dev/null || echo 0)
+	case "$sectors" in ''|*[!0-9]*) sectors=0 ;; esac
+	if [ "$sectors" -lt "$DTBO_MIN_SECTORS" ] || \
+	   [ "$sectors" -gt "$DTBO_MAX_SECTORS" ]; then
+		log "$name is $sectors sectors; refusing (mapping moved?)"
+		return 1
+	fi
+	echo "/dev/$found"
+}
+
+# dtbo_stub -- 32 bytes of dt_table_header with dt_entry_count = 0.
+#
+# LK merges dtbo_<slot> onto the DTB it takes from vendor_boot_<slot>. The
+# stock overlay is written against the stock tree: its __fixups__ bind symbols
+# (`pio`, `mt6358_vrf18_reg`, ...) that our mainline DTB does not export at all,
+# because kernel dtbs are not built with `-@` and so carry no __symbols__ node.
+# Merged onto the mainline base anyway, it grafts stock nodes into mainline
+# ones -- observed on hardware as a mainline `pinctrl@10005000` holding stock
+# pin state and `panel1@0` under `dsi@14013000`, i.e. pinctrl failing to probe
+# with "invalid resource (null)", no display, no UDC, and LK falling back.
+#
+# An entry count of zero gives LK nothing to merge, so the mainline tree
+# reaches the kernel as built. Header fields, big-endian: magic, total_size,
+# header_size, dt_entry_size, dt_entry_count, dt_entries_offset, page_size,
+# version.
+dtbo_stub() {
+	printf '\327\267\253\036\000\000\000\040\000\000\000\040\000\000\000\040\000\000\000\000\000\000\000\040\000\000\010\000\000\000\000\000'
+}
+
+# neutralize_dtbo a|b -- replace that slot's overlay with an empty dt_table.
+# Refuses unless the target already looks like a dt_table, so a resolver that
+# somehow returned the wrong node cannot be written to. Idempotent: a stub is
+# itself a valid dt_table.
+neutralize_dtbo() {
+	dtbo_dev=$(resolve_dtbo "$1") || return 1
+	magic=$(od -An -tx1 -N4 "$dtbo_dev" 2>/dev/null | tr -d ' \n')
+	[ "$magic" = "d7b7ab1e" ] || {
+		log "$dtbo_dev does not start with a dt_table magic (got '${magic:-nothing}'); refusing"
+		return 1
+	}
+	# Header plus enough zeroes to wipe the old entry table behind it.
+	{ dtbo_stub; dd if=/dev/zero bs=4064 count=1 2>/dev/null; } \
+		| dd of="$dtbo_dev" bs=4096 count=1 conv=fsync 2>/dev/null \
+		|| { log "dtbo stub write failed"; return 1; }
+	sync
+	readback=$(od -An -tx1 -N32 "$dtbo_dev" 2>/dev/null | tr -d ' \n')
+	want=$(dtbo_stub | od -An -tx1 -N32 | tr -d ' \n')
+	[ "$readback" = "$want" ] || { log "dtbo stub read-back mismatch"; return 1; }
+	log "dtbo neutralized on $dtbo_dev (empty dt_table; nothing for LK to merge)"
 }
 
 # active_slot -> a|b, from dc1-slotctl's own priority-based get_suffix decode.
@@ -183,8 +258,9 @@ deploy() {
 		got_vb=$(sha256sum jagar-vendor-boot.img | cut -d' ' -f1)
 		[ "$got_vb" = "$want_vb" ] || { log "jagar-vendor-boot.img sha256 mismatch"; return 1; }
 	else
-		log "not deploying vendor_boot (mainline DTB disables dsi0 -- no display);"
-		log "  set DC1_DEPLOY_VENDOR_BOOT=1 to override"
+		log "not deploying vendor_boot (mainline DTB unproven on hardware);"
+		log "  set DC1_DEPLOY_VENDOR_BOOT=1 to override -- that also replaces"
+		log "  the same slot's stock dtbo with an empty one, which it must"
 	fi
 
 	active=$(active_slot) || { log "cannot determine the active slot"; return 1; }
@@ -229,6 +305,17 @@ deploy() {
 		readback_vb=$(head -c "$vb_bytes" "$vendor_boot_dev" | sha256sum | cut -d' ' -f1)
 		[ "$readback_vb" = "$got_vb" ] || { log "vendor_boot image read-back mismatch"; return 1; }
 		log "vendor_boot image verified on $vendor_boot_dev"
+
+		# The mainline DTB and this slot's stock overlay cannot coexist: LK
+		# merges the overlay onto whatever vendor_boot carries, and the stock
+		# one mangles a mainline base (see dtbo_stub). Neutralize it on the
+		# SAME slot we just wrote, and only that slot -- the other keeps its
+		# stock vendor_boot/dtbo pair as the fallback.
+		neutralize_dtbo "$inactive" || {
+			log "could not neutralize dtbo_$inactive; refusing to arm a slot"
+			log "  whose mainline DTB would be merged with the stock overlay"
+			return 1
+		}
 	fi
 
 	# Arm the inactive slot for one try: priority 15/tries 1/successful 0, the
@@ -244,7 +331,8 @@ deploy() {
 }
 
 # Library mode for the offline tests: source this file to get resolve_boot,
-# resolve_vendor_boot, and active_slot without running the sync.
+# resolve_vendor_boot, resolve_dtbo, dtbo_stub, and active_slot without running
+# the sync.
 if [ -n "${DC1_BOOT_SYNC_LIB:-}" ]; then
 	return 0 2>/dev/null || exit 0
 fi

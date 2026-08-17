@@ -117,6 +117,28 @@ Everything committed here is world-readable. Non-negotiable rules:
   slots: that leaves no fallback, and a tree that fails to light the panel
   is only recoverable through fastboot. The mainline DTB has not been booted
   on hardware yet.
+- LK also **merges `dtbo_<slot>` onto that DTB**, so shipping the mainline
+  tree means neutralising the stock overlay on the same slot. The stock
+  `dtbo` is written against the stock tree — its `__fixups__` bind symbols
+  (`pio`, `mt6358_vrf18_reg`, …) that a kernel-built DTB never exports,
+  since kernel dtbs are not built with `-@` and carry no `__symbols__`.
+  Merged onto the mainline base it grafts stock nodes into mainline ones:
+  reported from hardware as a mainline `pinctrl@10005000` holding stock pin
+  state and a stock `panel1@0` under `dsi@14013000`, i.e. pinctrl failing to
+  probe (`invalid resource (null)`, -22), no display, no UDC, and LK
+  exhausting the slot's retries. This is the **one** sanctioned exception to
+  "never write `dtbo`": both writers replace `dtbo_a` with an empty
+  `dt_table` (zero entries) whenever they write the mainline
+  `vendor_boot_a`, slot A only, leaving `vendor_boot_b`/`dtbo_b` a matched
+  stock pair. The rule elsewhere still holds — nothing in the normal install
+  path writes `dtbo`.
+- `Machine model: MT8781V/NA` in the kernel log says **nothing** about which
+  DT loaded. LK carries a chip-variant string table (`MT6789(ENG)`,
+  `MT6789V/CD`, `MT8781V/CA`, `MT8781V/NA`) and patches `model` from the
+  fuses before handing the tree over; a device running the stock tree whose
+  `vendor_boot` DTB reads `model = MT6789` still reports `MT8781V/NA`. Do
+  not use it to diagnose DT substitution — check for node names unique to
+  one tree instead.
 
 ## CI
 
