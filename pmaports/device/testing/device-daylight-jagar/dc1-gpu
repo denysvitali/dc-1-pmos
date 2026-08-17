@@ -10,16 +10,25 @@ modprobe mt6789-live-gpu-overlay 2>/dev/null \
 modprobe panfrost 2>/dev/null \
 	|| { echo "could not load panfrost" >&2; exit 1; }
 
-# Re-probe the mali platform device so panfrost binds it. The overlay
-# changes its status from disabled to okay; the deferred probe has already
-# given up, so it must be poked to retry -- the same pattern as the panel gate.
-printf '13000000.mali\n' > /sys/bus/platform/drivers_probe 2>/dev/null \
-	|| { echo "drivers_probe write failed" >&2; exit 1; }
-
-# Wait for the render node so downstream (gdm -> mutter) is ordered after the
-# GPU is actually usable.
+# Re-probe the mali platform device so panfrost binds it. The overlay changes
+# its status from disabled to okay; the deferred probe has already given up, so
+# it must be poked to retry -- the same pattern as the panel gate.
+#
+# The poke has to be retried. Applying the overlay only edits the live tree;
+# registering the platform device for the newly-enabled node happens after, so
+# a write issued straight after modprobe hits an empty platform bus and
+# drivers_probe answers ENODEV. Measured on hardware 2026-08-17: the write ran
+# at t=4.98 s, failed ENODEV, and the service died -- while panfrost bound
+# anyway at t=15.17 s off the kernel's own deferred-probe timeout. So the GPU
+# worked and the unit was red, which costs the ordering guarantee that gdm ->
+# mutter starts with a render node. Poll for the device, then poke until the
+# render node shows up; only a missing renderD128 is a real failure.
 n=0
-while [ ! -e /dev/dri/renderD128 ] && [ "$n" -lt 15 ]; do
+while [ ! -e /dev/dri/renderD128 ] && [ "$n" -lt 30 ]; do
+	if [ -e /sys/bus/platform/devices/13000000.mali ]; then
+		printf '13000000.mali\n' > /sys/bus/platform/drivers_probe 2>/dev/null
+	fi
+	[ -e /dev/dri/renderD128 ] && break
 	n=$((n + 1)); sleep 1
 done
 [ -e /dev/dri/renderD128 ] || { echo "renderD128 did not appear" >&2; exit 1; }

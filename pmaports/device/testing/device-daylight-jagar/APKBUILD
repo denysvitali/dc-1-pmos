@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=33
+pkgrel=34
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -12,6 +12,7 @@ options="!check !archcheck"
 # BT_RAM_CODE_MT7902_1_1_hdr.bin) and regulatory.db from wireless-regdb.
 depends="
 	curl
+	iio-sensor-proxy
 	linux-firmware-mediatek
 	linux-postmarketos-mediatek-mt6789
 	openssh-server
@@ -39,6 +40,7 @@ source="
 	dc1-rtcsync.initd
 	dc1-debug-shell.initd
 	dc1-usb-gadget.initd
+	dc1-bluetooth.initd
 	dc1-networkmanager-usb0.conf
 	dc1-sway.conf
 	00-logo-key.conf
@@ -60,6 +62,8 @@ source="
 	dc1-gpu.service
 	dc1-audio
 	dc1-audio.service
+	dc1-bluetooth
+	dc1-bluetooth.service
 	dc1-frontlight
 	dc1-frontlight.service
 	dc1-screen-backlight
@@ -71,6 +75,7 @@ source="
 	10-dc1-watchdog.conf
 	10-dc1-gnome.gschema.override
 	10-dc1-power.conf
+	net.hadess.SensorProxy.service
 	dc1-warmth-extension.js
 	dc1-warmth-metadata.json
 	org.gnome.shell.extensions.dc1-warmth.gschema.xml
@@ -115,6 +120,8 @@ package() {
 		"$pkgdir"/etc/init.d/dc1-gpu
 	install -Dm755 "$srcdir"/dc1-audio.initd \
 		"$pkgdir"/etc/init.d/dc1-audio
+	install -Dm755 "$srcdir"/dc1-bluetooth.initd \
+		"$pkgdir"/etc/init.d/dc1-bluetooth
 	install -Dm755 "$srcdir"/dc1-rtcsync.initd \
 		"$pkgdir"/etc/init.d/dc1-rtcsync
 
@@ -141,6 +148,7 @@ package() {
 	install -Dm755 "$srcdir"/dc1-display-gate "$pkgdir"/usr/libexec/dc1-display-gate
 	install -Dm755 "$srcdir"/dc1-gpu "$pkgdir"/usr/libexec/dc1-gpu
 	install -Dm755 "$srcdir"/dc1-audio "$pkgdir"/usr/libexec/dc1-audio
+	install -Dm755 "$srcdir"/dc1-bluetooth "$pkgdir"/usr/libexec/dc1-bluetooth
 	install -Dm755 "$srcdir"/dc1-frontlight "$pkgdir"/usr/libexec/dc1-frontlight
 	install -Dm755 "$srcdir"/dc1-screen-backlight \
 		"$pkgdir"/usr/libexec/dc1-screen-backlight
@@ -154,6 +162,12 @@ package() {
 		"$pkgdir"/usr/lib/systemd/system/dc1-gpu.service
 	install -Dm644 "$srcdir"/dc1-audio.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-audio.service
+	install -Dm644 "$srcdir"/dc1-bluetooth.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-bluetooth.service
+	# D-Bus activation for iio-sensor-proxy, which Alpine's aport omits -- see
+	# the file's header. Without it the accelerometer reaches no compositor.
+	install -Dm644 "$srcdir"/net.hadess.SensorProxy.service \
+		"$pkgdir"/usr/share/dbus-1/system-services/net.hadess.SensorProxy.service
 	install -Dm644 "$srcdir"/dc1-frontlight.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-frontlight.service
 	install -Dm644 "$srcdir"/dc1-screen-backlight.service \
@@ -275,11 +289,12 @@ sha512sums="
 66d1dd8ae1f222e36e43d4e11e8905b8a894b35b39ad0d36157a13be3335bf6422e9ee181526afafe89d28f096874c4158feb6e7131e917b2a47cd969eb095ba  dc1-display-gate.initd
 a74965c50efc38879c4ce684ae1322b172d66be0b27ef2c74bff86eca12aaf8a948fc56edd37ef3249e57b1f993bda51672777137eb267bc3b26b753d1144ea2  dc1-frontlight.initd
 217b426571dd3fb8516541edf01dc79ea4433a8d8e31d6fd596a97e6f7178508a999c19793e60b621d897babbd5213a2484573d7a6e3e58b43fe1d3a411ee708  dc1-screen-backlight.initd
-06b6dd6ae65bbe27927d87e761a18b0cc9aec01272b5972be81143d41b8ac09ce58abba8f786949218e1bfd7d720f02277ea2ca13e59ab8825af94afc187ef34  dc1-gpu.initd
+f6bf5986233660564f33ef0e92013c919629628826613e3872c0bcacfcafd0186e0b385851401f7626bd9dfe2ea9ae19434284fd28f67387abc8ec7a43753efd  dc1-gpu.initd
 c3a1028de72e268be698c134256a90976ad5d04447df4713882839893d6b85d09145f79868b88dc6dbd55db0f0afbe6bc6c6b78ad811cb5ff73759bea22416d2  dc1-audio.initd
 3b454548f91e949ebb428e7f1a256de879ed42a2be541ae3bbaf8b8dc8cd240c62cb2c89306c9332170d0747c6c99ff7a856aa34ef98633e15a517bfa39fafc1  dc1-rtcsync.initd
 6ded04475b6982d02d72ed5d42d1ed257df7a8a6cd71451b71d7bb040c4202fe574371792d00eaa2ff7dfccd49d766fc10aa32fdf09a5fb6491eac0418e2ab42  dc1-debug-shell.initd
-83048ba0f16de0272770df2412b7f8daf78d29981a0e59b582334cc7d07a0b26acdfbbd62f584fe3fcec6a3c70a727abd0bb39d0ac2271615fb20fa0e9358cee  dc1-usb-gadget.initd
+ee58289d7e49a2fd4cea545041ffda000ceb482c7929231dc6188ec25c072565879cf75ce8c14e00db5b139be9c717b8819ffd17a566a2381599bc848bdff194  dc1-usb-gadget.initd
+ad45ae810e550de9f9d1ef92f10d32d2ec93dca8f8a9ff3aece8adcfd4c575dd774eb906dac56ebf3c8ed5f9cf1142da21a7cffa94d1a10ac95145b2a883b50a  dc1-bluetooth.initd
 40cc32d4b8f241071f438bdf86c2a559b2145b004ec69aa3e17daec680385a35becfc70f4cec5d4bf1dbabd5efeca1d4163ce2ce6d69870ff4cd5996d1db527c  dc1-networkmanager-usb0.conf
 95d1f0a2e2a12cac305c8f3ca2b5fe0dbad16cda1ca0ce4652ced31c8e0b9d3349d10a65adc0c2c2006331e028e11017ad0fefda5d00cd0ea88d641fb6d372b8  dc1-sway.conf
 45bfbe7279140132e722b1bf7f34b96b71a45f4bd3b4c393d0865c0bd193eafb99104da438d67b3025401d0da4720bbc82ffc64294487c2ce9a0779f3d53724e  00-logo-key.conf
@@ -291,27 +306,30 @@ fba0f289d5be09f79cf47383b6dbfbdd86540a4c11381da6422ec44eb1e13d7636f1436be7258323
 efd2b7c4bce2380cc36706b0deefc6e2d901ee856165ea0e89f2faa2d38010125a9048ce73ee23a104d03e2d6e94054746de88486bac8e503174765d45cebb6f  dc1-boot-sync.service
 cb13bde7764d827402f55d5642e1078d2494be6c985740b8da287fe4226f4181922304017e9fe108b1cf81566899bc9202dfd0031efd43a70a5eb3231ffb82e8  device-daylight-jagar.trigger
 5a9537f7bb98a69f73be28e15e4e54e2e68afa53a80e8c52c44eba8bde21c3d4696e0580c958807486b7cd2f805fafc14f1c4352bef599570c0f84d0cb639493  dc1-link-apk-keys
-7a54cb279df32b45ced3e2928f975724a8f5a352fb136c35ee6efbe1aea84e3b64b46cf6d24a56bc9d2cfed3e7323d7e799fbaec21603c129e7c97e1213dd348  dc1-usb-gadget
+fdf8d6f958474554e27d62c9a9b9330a2ea3fec9591e50fc863de5cbb27bfbb1ff440ab14f8631cfc72cc3b86a37bef2e509231d9cc6ae190cc92781564b5b8b  dc1-usb-gadget
 ef0b3a6abeb2f201071f8cf136aa147e818e672d2c1ef313252269aca6670e55897912cb965c5f9cd1939f0def0571a116c4651598104d18ce4e4de2773c5ec7  dc1-usb-gadget.service
 20ea802bd872e644b2ffd27d75094a304302b59f86427c62a21872ddd3e0050883c9891ff7fddf779255f8f73a52b3dfaf381a4917dd6a321acbc082aad57d2b  dc1-debug-shell
 654db8c8e1717bab8a34fafdc1494406133aa7e50f61c57e14459bb4b471dd0ba2293d0772d0cd4346393390a98f3765fc33ef8ba7220c10c90fac402b2a084c  dc1-debug-shell.service
 376ce1dd3adb3037817c1526d375ce28fae7db697f7507e0559306e34ea93cbfa701733fa709d94c1a5a6a0af224e592cf957227f15a2ab400382bab0abb7018  dc1-display-gate
 d435afb2025114983e8e0b545f859a0bc7fbcb86d7ddf07acdd89070e1ae7384841c8d42d3cab238445316782cb1bc5b655b07837eb372d60d526d8f4886c3d7  dc1-display-gate.service
-2ab16e51fc8043aec332113621976319bbe8c12d48776673614fabbc2e6918b81979e14e74c95968d20d4a4ebc0230f26b2c2626a695bf3b42b725ab48189dd4  dc1-gpu
+e209f55dae0b7b23ba24f90c298763dac5828145c631a880aa3ff3ff5b642a630a2bbcf396cc7813118e4cefeac3d0a07017b5f82f8e5e33b9c1e18eef785d36  dc1-gpu
 e9f0a80372e63be8a04a027326af59e565760c8f97640e2a6627cdf6386fedae2be4e25f4c8888908cbf3ad246ccf5f0748d2f42038ee5ba5735f8ae344963ef  dc1-gpu.service
 1f4e9821e611cb19693f0ac23d940fbf103cc7b74ec0fedc2b096d63fd5b94035fb438bfd55e2a40377ce2a70464a472f2beda125d46e77b8d658aa911cf02fc  dc1-audio
 a2cce1d92c32b59c120ee298b5c0f037888edc573dab7cdadabe6ea927cd8ebabbc35095d857dfd124f131103550db7d59f37b8ad58c2055da17a5d76d91f10b  dc1-audio.service
+f05558dc1c813003e347cd37fb526ec464148d32143a697cd152bc489e98dec3ea6811e77899dfa8d42e4ffb0a2a135037d43644520cca7c04d5567fca24a13e  dc1-bluetooth
+2c0b0e3f6fe32b754521cc0022b6a1a5808f1b8c30f2e98bc4cd7c2f70a3a8c276d53f938a1fcb272f7130462f732b2a310d4d2ac53f8fc30be12968499e018d  dc1-bluetooth.service
 f29500ad474be305cd8934aa059a50921a403b0922451a8a36fce295186cbd01bde2972616857bc32d4970161be136c9b09549010c6284f69da6f9c027285b24  dc1-frontlight
 a611b818be1a7af166b59f9b8498c28275725d1de95c3cffe6b2c38900e3a31065fc4e5d2bda023a1bd95549246a0e5ba72126450b53a733f1a5dbf3bd654af7  dc1-frontlight.service
 bcbea953414f25402e10e3596f0968ab0f4308f170247f07590ea2ddd289297b41d727eba7c832f3ae843fc20582a1da33d59dcbadf640e5ddd3893ebc637169  dc1-screen-backlight
 51c547dff77fe30aa8459ff2fbc64856ad2ad05fad2d050901fed169d72960deeb22b21e212e5e529a78044b2a62e661efb9c9de44cb3f152c37a5876889a0a7  dc1-screen-backlight.service
 7d241e69a4aaf124d949a6dc04c1ce16fc38532759f7643952b3df8645c3483bf74318c09c2eaf05742b071acbf8a5cbb4f475c96390272975efd614d2052f21  dc1-rtcsync.service
 e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99cfa9065ee15298c54054f83f997c95a99a03346d73f92d5b7  dc1-rtcsync.timer
-d32cdb5a9a511eaa30ff3a7c79a1807cf1e0cff248dc92edf008b920c67ba88db72f9865776edbb974310b42165fe7fbaf42214d7d1d5c2e6de5a83eba4e0822  80-device-daylight-jagar.preset
+5a4af57abbb3a7c84447d445ce3bf87601e35e8fefc1d8f5ead722cb34c24d0db8651b67ebdf30d92ffbca00972b5997374fc18ab860416d580af34fe6a27c7c  80-device-daylight-jagar.preset
 bd385f9e00a6b72922567c567698ee9ab8aea5de2d21c1fe2d373b0c361376570202c79c1ed3a7f021c5b5684ffcea7d99d1afb21c70924f19fc0eeef1fa7119  90-device-daylight-jagar.rules
 4a4422c7156a260131069161dda42efc778233f7f09e6d085c3c4fb176ddaf8395e76fcdbba2abdb270d668bd450efd7e4faa0e7919585401b81570cfb0b78b4  10-dc1-watchdog.conf
 92ddf71d7ef12a1b57676797813a696a7260fe72e5658e7c264079dfdd0be5fb1f0706e80e59245cc2e3094234836b0b2b48921ad3250b99a5aebda66ffb33da  10-dc1-gnome.gschema.override
 50dfd0ea25c80a97c1625dbf6dc42a8c114148cadafa20e21d210a9ea8c224e0069a75251ce11e427b51b50896929c833166988855a2c96deef03e6d3b94eb58  10-dc1-power.conf
+9ba63fe59f355b45cfc5dbad15a9e4a94d571b28eaf6b09af040be110f080ba01fccc79f96f5ff40beabc9a76e1677fb1e0fd6359f1c03f4465543cad710026b  net.hadess.SensorProxy.service
 b65e984555cef4027fe40070fa90f08d915b1b852be8a7343908de2348a287e24945cfec704af61ccf03f061caf7c1b16a0725b8b5b64d35134fca0c1961910b  dc1-warmth-extension.js
 90979c3b358c57256eed9a577b159725c2711e94f20e38e76528f8d527aece42c8ea2cb38ec2c3bda00e08682908e8b499453394d36ba176a9ec10f8274bc27c  dc1-warmth-metadata.json
 587d05a11510765e4ede06306f7362396d3812075ce24cdd0dd936f2ca02bfbf2201ab619030f134f12b50e4d1227e398b6bd50dc3b543aae6cae418cea5267b  org.gnome.shell.extensions.dc1-warmth.gschema.xml

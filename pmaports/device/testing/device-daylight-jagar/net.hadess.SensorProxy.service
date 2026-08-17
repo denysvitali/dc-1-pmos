@@ -1,0 +1,23 @@
+# D-Bus activation for iio-sensor-proxy, which is what turns the MC3416
+# accelerometer into GNOME screen auto-rotation.
+#
+# Alpine's iio-sensor-proxy aport ships only the bus *policy* file
+# (/usr/share/dbus-1/system.d/net.hadess.SensorProxy.conf) and not this
+# activation file, and its systemd unit is Type=dbus with no [Install] section
+# -- so `systemctl status` reports it "static" and it can never start: nothing
+# enables it and nothing can bus-activate it. GNOME asks for net.hadess.
+# SensorProxy, gets no such name, and silently does without rotation and
+# ambient light. Verified on device 2026-08-17: the unit sat inactive/static
+# with no activation file present.
+#
+# Naming SystemdService as well as Exec covers both init systems this package
+# supports: systemd hands the request to the unit, while a plain dbus-daemon
+# under OpenRC execs the binary itself.
+#
+# This belongs in the iio-sensor-proxy aport upstream, not in a device package.
+# It is here because the device needs it now; drop it if Alpine ever ships one.
+[D-BUS Service]
+Name=net.hadess.SensorProxy
+Exec=/usr/libexec/iio-sensor-proxy
+User=root
+SystemdService=iio-sensor-proxy.service

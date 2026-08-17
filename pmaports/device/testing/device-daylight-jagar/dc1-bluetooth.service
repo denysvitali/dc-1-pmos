@@ -1,0 +1,13 @@
+[Unit]
+Description=Recover the MT7902 Bluetooth controller after the firmware race
+After=local-fs.target
+Before=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/dc1-bluetooth
+
+[Install]
+WantedBy=multi-user.target

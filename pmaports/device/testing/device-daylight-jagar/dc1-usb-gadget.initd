@@ -21,6 +21,26 @@ write() {
 	printf '%s\n' "$2" >"$1" 2>/dev/null
 }
 
+# Make sure the config we are about to bind actually carries the ECM function.
+# The handed-off gadget is not always the one the installer built: a plain
+# (non-installer) boot can hand over an ACM-only gadget, and on hardware
+# 2026-08-17 it did -- g1 held acm.0 and acm.1 and no ecm.0 at all, so the
+# rebind produced /dev/ttyGS0 and /dev/ttyGS1 but never a usb0, taking USB
+# ethernet and SSH-over-USB with it. Adding the missing function here is safe:
+# the UDC is unbound, which is exactly the state the build path below works in.
+# Removing anything is not safe (see teardown), so this only ever adds.
+ensure_ecm() {
+	cfg=$(find "$G"/configs -maxdepth 1 -mindepth 1 -type d 2>/dev/null \
+		| head -1)
+	[ -n "$cfg" ] || return 1
+	[ -e "$cfg/ecm.0" ] && return 0
+
+	mkdir -p "$G/functions/ecm.0" || return 1
+	write "$G/functions/ecm.0/dev_addr" 02:1a:11:00:00:02
+	write "$G/functions/ecm.0/host_addr" 02:1a:11:00:00:01
+	ln -sf "$G/functions/ecm.0" "$cfg/ecm.0"
+}
+
 start() {
 	ebegin "Bringing up the DC-1 USB gadget"
 
@@ -36,19 +56,17 @@ start() {
 	UDC=$(ls /sys/class/udc 2>/dev/null | head -1)
 	[ -n "$UDC" ] || { eend 1 "no UDC (MUSB not registered?)"; return 1; }
 
-	# The initramfs builds an identical gadget, binds the UDC, then unbinds
-	# it before switch_root but leaves the configfs tree intact.  Trying to
-	# rmdir USB function objects in that state blocks the kernel indefinitely:
-	# the gadget framework holds a reference on each function that is only
-	# released after a userspace bind→unbind cycle.  Detect this handoff via
-	# /sys/class/udc/ (sysfs, always safe) -- function is empty when no
-	# gadget driver is bound -- and skip teardown; just rebind.
-	if [ -d "$G" ] && \
-	   [ -z "$(cat "/sys/class/udc/$UDC/function" 2>/dev/null)" ]; then
-		echo "$UDC" >"$G/UDC" 2>/dev/null \
-			|| { eend 1 "UDC bind failed"; return 1; }
+	# An existing tree is always reused, never rebuilt -- removing gadget
+	# objects is what wedges this device (see unbind()). The initramfs leaves
+	# one behind: it builds a gadget, binds the UDC, then unbinds it before
+	# switch_root but leaves the configfs tree intact. Unbind whatever is bound
+	# (safe, reversible), complete the tree in place, then bind.
+	if [ -d "$G" ]; then
+		unbind
+		ensure_ecm \
+			|| { eend 1 "could not add ecm.0 to the existing gadget"; \
+				return 1; }
 	else
-		teardown
 		mkdir -p "$G" || { eend 1 "configfs usb_gadget unavailable"; return 1; }
 		write "$G/idVendor" 0x18d1
 		write "$G/idProduct" 0x4ee7
@@ -65,51 +83,59 @@ start() {
 		ln -sf "$G/functions/acm.0" "$G/configs/c.1/acm.0"
 		ln -sf "$G/functions/acm.1" "$G/configs/c.1/acm.1"
 		ln -sf "$G/functions/ecm.0" "$G/configs/c.1/ecm.0"
-
-		echo "$UDC" >"$G/UDC" 2>/dev/null \
-			|| { eend 1 "UDC bind failed"; return 1; }
 	fi
 
-	eend 0
+	echo "$UDC" >"$G/UDC" 2>/dev/null \
+		|| { eend 1 "UDC bind failed"; return 1; }
 
-	# usb0 appears shortly after the UDC bind; address it statically so the
-	# host always finds the same address (matches the installer). NetworkManager
-	# is told to leave usb0 alone (see dc1-networkmanager-usb0.conf).
-	(
-		n=0
-		while [ ! -e /sys/class/net/usb0 ] && [ "$n" -lt 30 ]; do
-			n=$((n + 1)); sleep 0.5
-		done
-		[ -e /sys/class/net/usb0 ] || exit 0
-		ip link set usb0 up 2>/dev/null
-		ip addr show usb0 2>/dev/null | grep -q 'inet ' || \
-			ip addr add "$DEV_IP/24" dev usb0 2>/dev/null
-	) &
+	# usb0 appears on the UDC bind -- the ECM function registers the netdev
+	# itself and does not wait for a host to enumerate -- so this is a short
+	# wait, and a usb0 that never turns up means the gadget is not what this
+	# service claims to have built. Wait for it before eend and fail on it:
+	# the old code waited in a background subshell and `exit 0`-ed when usb0
+	# was missing, so the service reported started with no USB ethernet.
+	#
+	# Address it statically so the host always finds the same address (matches
+	# the installer). NetworkManager is told to leave usb0 alone -- see
+	# dc1-networkmanager-usb0.conf.
+	n=0
+	while [ ! -e /sys/class/net/usb0 ] && [ "$n" -lt 20 ]; do
+		n=$((n + 1)); sleep 0.5
+	done
+	[ -e /sys/class/net/usb0 ] || { eend 1 "usb0 did not appear"; return 1; }
+	ip link set usb0 up 2>/dev/null
+	ip addr show usb0 2>/dev/null | grep -q 'inet ' || \
+		ip addr add "$DEV_IP/24" dev usb0 2>/dev/null
+
+	eend 0
 }
 
-teardown() {
-	[ -d "$G" ] || return 0
-
-	# Tear the gadget down in configfs order, never with rm -rf. configfs
-	# directories are kernel objects: a removal that arrives out of order (a
-	# function still linked into a config, or anything at all while the UDC is
-	# bound) can block in the kernel *uninterruptibly*. usb-signaller wedged
-	# exactly this way on 2026-08-16 and stayed in D state for hours, taking
-	# every later configfs reader with it and failing the suspend freezer,
-	# because a D-state task can never be frozen.
-	[ -e "$G/UDC" ] && printf '\n' >"$G/UDC" 2>/dev/null
-	for link in "$G"/configs/*/*; do
-		[ -L "$link" ] && rm -f "$link" 2>/dev/null
-	done
-	for dir in "$G"/configs/*/strings/* "$G"/configs/* \
-		"$G"/functions/* "$G"/strings/*; do
-		[ -d "$dir" ] && rmdir "$dir" 2>/dev/null
-	done
-	rmdir "$G" 2>/dev/null
+# Drop the gadget driver off the UDC. This is the whole of stop(): the tree
+# stays standing, deliberately.
+#
+# The previous version tore the tree down in careful configfs order (unbind ->
+# unlink functions from the config -> rmdir bottom-up), on the theory that the
+# uninterruptible hangs came from removals arriving out of order. They do not.
+# Measured on hardware 2026-08-17: with the UDC cleanly unbound, every function
+# unlinked from c.1, the configs already gone, and no process holding
+# /dev/ttyGS0 or /dev/ttyGS1 open, `rmdir functions/acm.0` still went to D state
+# and stayed there. It cannot be signalled, so the mount is wedged for the rest
+# of the boot -- and because it holds the parent directory's lock, every later
+# configfs access blocks behind it too (a plain `find` over usb_gadget/ hung
+# immediately). That is the same wedge blamed on usb-signaller on 2026-08-16,
+# and it is what fails the suspend freezer: a D-state task can never be frozen.
+#
+# So do not remove gadget objects at all. Nothing needs them removed -- start()
+# reuses and completes an existing tree -- and an unbound gadget already
+# releases the USB bus. If the tree ever genuinely has to be rebuilt, reboot.
+unbind() {
+	[ -e "$G/UDC" ] || return 0
+	[ -n "$(cat "$G/UDC" 2>/dev/null)" ] || return 0
+	printf '\n' >"$G/UDC" 2>/dev/null
 }
 
 stop() {
 	ebegin "Stopping the DC-1 USB gadget"
-	teardown
+	[ -d "$G" ] && unbind
 	eend 0
 }
