@@ -51,7 +51,10 @@ prepare_checkout() {
 			exit 1
 		}
 	fi
-	git -C "$directory" fetch --depth=1 origin "$commit"
+	# Fetch both the pinned commit and the main branch tip. The commit fetch
+	# brings in the exact tree we need; the main fetch makes origin/main exist
+	# so that pmbootstrap's init can read channels.cfg from it.
+	git -C "$directory" fetch --depth=1 origin "$commit" main
 	git -C "$directory" checkout --detach "$commit"
 	[ "$(git -C "$directory" rev-parse HEAD)" = "$commit" ]
 }
