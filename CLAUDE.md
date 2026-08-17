@@ -96,12 +96,22 @@ Everything committed here is world-readable. Non-negotiable rules:
   mt6789 sensorhub driver and these nodes cannot both own the pins.
 - There is still no gyro or magnetometer. The hall switch (magnetic lid,
   GPIO) is directly AP-wired and still not in the DTS.
-- The panel's scanout is 180° from the glass and jagar ships **no panel
-  node**, so DRM exposes no `panel orientation` property for the compositor
-  to compensate with. The accelerometer's `mount-matrix` therefore carries
-  that 180° itself, on top of the chip's physical mounting. If a panel node
-  with `rotation = <180>` is ever added, take the 180° back out of the
-  matrix or the screen will rotate the wrong way round.
+- The panel's scanout is 180° from the glass, and **no tree carries a
+  `rotation` property** — not the stock one, and not the mainline board DTS,
+  which since kernel `a3a633ef9` does describe the panel
+  (`sharp,nt36523n,vdo,120hz`, driven by `panel-novatek-nt36523.c`) but
+  deliberately omits `rotation`. So DRM exposes no `panel orientation` for
+  the compositor to compensate with, and the accelerometer's `mount-matrix`
+  carries that 180° itself, on top of the chip's physical mounting. If
+  `rotation = <180>` is ever added, take the 180° back out of the matrix in
+  the same change or the screen will rotate the wrong way round.
+- LK takes the DTB from **`vendor_boot`**, not `boot.img`. Writing it is
+  therefore how a device tree ships — and it is gated: `dc1-boot-sync`
+  needs `DC1_DEPLOY_VENDOR_BOOT=1`, `dc1-install.sh` needs an explicit
+  `--vendor-boot-image` and writes `vendor_boot_a` only. Never write both
+  slots: that leaves no fallback, and a tree that fails to light the panel
+  is only recoverable through fastboot. The mainline DTB has not been booted
+  on hardware yet.
 
 ## CI
 

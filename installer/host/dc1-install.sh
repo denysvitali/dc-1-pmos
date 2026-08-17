@@ -336,18 +336,17 @@ if [ -n "$BOOT_IMAGE" ]; then
 	if [ -n "$VENDOR_BOOT_IMAGE" ]; then
 		# Only vendor_boot_a, never both. The DTB in vendor_boot is what LK
 		# hands the kernel, so writing both slots at once removes the only
-		# fallback -- and this DTB is not safe to land blind: the mainline
-		# board DTS carries no panel node (the Sharp NT36523N timings are
-		# inside a proprietary Android .ko) and so sets
-		# `&dsi0 { status = "disabled"; }`, which means no display at all.
-		# Verified 2026-08-17 against the built image: model "Daylight
-		# Computer DC-1", dsi@14013000 disabled, zero panel nodes. Leaving
-		# vendor_boot_b on the stock tree keeps one bootable, visible slot.
+		# fallback. This used to be flashed to both from an auto-detected
+		# file while the tree still disabled dsi0, i.e. a plain install left
+		# a device with no display and nothing to fall back to. The DTS
+		# describes the panel now (kernel a3a633ef9), but no boot on it has
+		# been observed, so leaving vendor_boot_b on the stock tree keeps one
+		# slot known-visible.
 		msg "flashing mainline DTB (vendor_boot) to vendor_boot_a only"
-		msg "  WARNING: this DTB disables dsi0 -- the display will not come up."
-		msg "  It exists to reach the accelerometer and LVTS thermal, which the"
-		msg "  stock tree cannot express. Keep serial or SSH access to recover,"
-		msg "  and leave vendor_boot_b alone as the fallback."
+		msg "  This tree is what reaches the accelerometer and LVTS thermal,"
+		msg "  which the stock tree cannot express. It has not yet been booted"
+		msg "  on hardware -- keep serial or SSH access to recover, and leave"
+		msg "  vendor_boot_b alone as the fallback."
 		fastboot flash vendor_boot_a "$VENDOR_BOOT_IMAGE"
 	fi
 	fastboot reboot
@@ -357,7 +356,8 @@ else
 	msg "    fastboot flash boot_a jagar-boot.img"
 	msg "    fastboot reboot"
 	msg ""
-	msg "Do NOT flash jagar-vendor-boot.img unless you know you want it: our"
-	msg "mainline DTB has no panel node and disables dsi0, so the display will"
-	msg "not come up. It exists to reach the accelerometer and LVTS thermal."
+	msg "jagar-vendor-boot.img (our mainline DTB) is deliberately not part of"
+	msg "that. It is what reaches the accelerometer and LVTS thermal, but it"
+	msg "has not been booted on hardware yet. If you take it, flash"
+	msg "vendor_boot_a only and leave vendor_boot_b on the stock tree."
 fi

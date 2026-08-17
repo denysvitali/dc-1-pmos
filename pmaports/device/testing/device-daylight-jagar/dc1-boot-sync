@@ -160,22 +160,19 @@ deploy() {
 	# Our mainline DTB, and it is NOT deployed by default -- see below.
 	#
 	# LK reads the DTB from vendor_boot, not boot.img, so shipping our own
-	# tree means writing vendor_boot. That was switched on unconditionally,
-	# and it is not safe yet: the mainline board DTS deliberately carries no
-	# panel node (the Sharp NT36523N timings live inside a proprietary Android
-	# .ko and cannot be written) and therefore disables dsi0 outright --
-	# `&dsi0 { status = "disabled"; }`. Verified 2026-08-17 by decompiling the
-	# very image this function had just written: model "Daylight Computer
-	# DC-1", `dsi@14013000 { status = "disabled" }`, and zero panel nodes,
-	# against a stock DT that has dsi0 `okay` and a panel1@0. Booting it gives
-	# a device with no display at all. The stock DT is what every display
-	# workaround in this repo (dc1-display-gate, the live GPU/audio overlays,
-	# the ldo_vibr of_node fallback) is written against.
+	# tree means writing vendor_boot. That was switched on unconditionally
+	# while the board DTS still had no panel node and set
+	# `&dsi0 { status = "disabled"; }` -- i.e. it was deploying a device tree
+	# that gives no display at all, confirmed 2026-08-17 by decompiling the
+	# very image this function had just written and armed.
 	#
-	# So this is opt-in until the mainline DTS can drive the panel. Set
-	# DC1_DEPLOY_VENDOR_BOOT=1 to get it -- worth doing to reach the
-	# accelerometer and LVTS thermal, which the stock DT cannot express, but
-	# only with a serial console or SSH to recover through.
+	# The DTS describes the panel now (kernel a3a633ef9), so the tree is
+	# expected to light the screen. Expected, not observed: no boot on the
+	# mainline DTB has happened yet, and getting it wrong costs the display
+	# with only fastboot to recover through. Keep it opt-in until one does.
+	# Set DC1_DEPLOY_VENDOR_BOOT=1 to take it -- that is what reaches the
+	# accelerometer and LVTS thermal, which the stock tree cannot express --
+	# and keep a serial console or SSH open when you do.
 	if [ "${DC1_DEPLOY_VENDOR_BOOT:-0}" = 1 ]; then
 		want_vb=$(awk -v n=jagar-vendor-boot.img '{ f=$2; sub(/^\*/,"",f); if (f==n) print $1 }' SHA256SUMS)
 		[ -n "$want_vb" ] || { log "no jagar-vendor-boot.img entry in SHA256SUMS"; return 1; }

@@ -15,19 +15,31 @@ source and unverified on hardware.
 
 The device still boots the **stock LK device tree** rather than our mainline
 DTB out of `vendor_boot`, and that is what blocks the accelerometer and LVTS
-thermal. It is **not** a switch to make casually, which the previous version of
-this page got wrong. LK takes the DTB from `vendor_boot`, and our mainline
-board DTS deliberately ships **no panel node** — the Sharp NT36523N timings
-live inside a proprietary Android `.ko` and cannot be written — so it sets
-`&dsi0 { status = "disabled"; }`. Verified 2026-08-17 by decompiling the image
-the build actually produces: `model = "Daylight Computer DC-1"`,
-`dsi@14013000 { status = "disabled" }`, zero panel nodes, against a stock tree
-where dsi0 is `okay` with a `panel1@0`. **Booting it gives a device with no
-display.** Until the mainline DTS can drive the panel, `vendor_boot` is opt-in:
-`dc1-boot-sync` needs `DC1_DEPLOY_VENDOR_BOOT=1`, and `dc1-install.sh` needs an
-explicit `--vendor-boot-image` and writes `vendor_boot_a` only, so the other
-slot stays visible. Getting the accelerometer and thermal therefore now depends
-on giving the mainline DTS a working panel description, not on flashing.
+thermal. LK takes the DTB from `vendor_boot`, so switching means writing that
+partition — and until 2026-08-17 doing so produced a device with **no display
+at all**: the board DTS shipped no panel node and set
+`&dsi0 { status = "disabled"; }`. That was verified by decompiling the image
+the build actually produces (`model = "Daylight Computer DC-1"`,
+`dsi@14013000` disabled, zero panel nodes) after an `apk upgrade` had already
+written it to `vendor_boot_a` and armed the slot.
+
+The DTS now describes the panel (kernel `a3a633ef9`). Both premises behind the
+old node-less tree had expired: the Sharp NT36523N timings and init sequence
+were recovered from the vendor module and live in
+`panel-novatek-nt36523.c` under the same `sharp,nt36523n,vdo,120hz` compatible
+the stock tree uses — that driver is already bound on hardware today — and the
+staged probe gates (`jagar_probe_stage`, `jagar_mt6789_probe_stage`, both
+raised by `dc1-display-gate`) are what now stop `mtk_drm` from reprogramming
+LK's live scanout, which is why the stock tree runs with dsi0 `okay`. The node
+is cross-checked property by property against the stock `panel1@0` read back
+from `/proc/device-tree`, and the DTB builds with no dtc warnings.
+
+It is still **opt-in and unbooted**: `dc1-boot-sync` needs
+`DC1_DEPLOY_VENDOR_BOOT=1`, and `dc1-install.sh` needs an explicit
+`--vendor-boot-image` and writes `vendor_boot_a` only so the other slot stays
+visible. Keep it that way until a boot on the mainline DTB is observed to light
+the panel; that boot is the gate for the accelerometer, LVTS thermal, and this
+whole row set.
 
 ✅ works on hardware &nbsp;·&nbsp; 🟡 partly working, with a known limitation
 &nbsp;·&nbsp; 🚧 being worked on, not usable yet &nbsp;·&nbsp; ⬜ untouched
