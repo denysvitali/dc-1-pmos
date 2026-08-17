@@ -27,8 +27,11 @@
 #      5555 (DC1-INSTALL-V1 protocol; see installer/src/receive.sh). The
 #      device verifies the hash before the filesystem becomes mountable,
 #      resizes, provisions, and reboots into LK fastboot.
-#   5. (--boot-image) flash the real boot image and reboot into the
-#      installed system.
+#   5. (--boot-image) flash the real kernel boot image and the vendor_boot
+#      (our mainline DTB, required for the kernel to see the right device
+#      tree) to both A/B slots, then reboot into the installed system.
+#      jagar-vendor-boot.img is auto-detected next to --boot-image if
+#      present; both images must come from the same release.
 #
 # Needs: fastboot (for steps 1/5), zstd (if the rootfs is .zst), ip, nc,
 # sha256sum, and one of mkpasswd / openssl / busybox for password hashing.
@@ -151,22 +154,24 @@ fi
 ROOTFS=""
 INSTALLER_BOOT=""
 BOOT_IMAGE=""
+VENDOR_BOOT_IMAGE=""
 ANSWERS_IN=""
 SKIP_PROVISION=""
 usage() {
-	sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
 	exit 2
 }
 while [ $# -gt 0 ]; do
 	case "$1" in
-		--rootfs)         ROOTFS=${2:?}; shift 2 ;;
-		--installer-boot) INSTALLER_BOOT=${2:?}; shift 2 ;;
-		--boot-image)     BOOT_IMAGE=${2:?}; shift 2 ;;
-		--answers)        ANSWERS_IN=${2:?}; shift 2 ;;
-		--skip-provision) SKIP_PROVISION=1; shift ;;
-		--device-ip)      DEVICE_IP=${2:?}; shift 2 ;;
-		--host-ip)        HOST_IP=${2:?}; shift 2 ;;
-		-h|--help)        usage ;;
+		--rootfs)              ROOTFS=${2:?}; shift 2 ;;
+		--installer-boot)      INSTALLER_BOOT=${2:?}; shift 2 ;;
+		--boot-image)          BOOT_IMAGE=${2:?}; shift 2 ;;
+		--vendor-boot-image)   VENDOR_BOOT_IMAGE=${2:?}; shift 2 ;;
+		--answers)             ANSWERS_IN=${2:?}; shift 2 ;;
+		--skip-provision)      SKIP_PROVISION=1; shift ;;
+		--device-ip)           DEVICE_IP=${2:?}; shift 2 ;;
+		--host-ip)             HOST_IP=${2:?}; shift 2 ;;
+		-h|--help)             usage ;;
 		*) die "unknown argument: $1 (try --help)" ;;
 	esac
 done
@@ -176,6 +181,8 @@ done
 	die "installer boot image missing: $INSTALLER_BOOT"
 [ -z "$BOOT_IMAGE" ] || [ -f "$BOOT_IMAGE" ] || \
 	die "boot image missing: $BOOT_IMAGE"
+[ -z "$VENDOR_BOOT_IMAGE" ] || [ -f "$VENDOR_BOOT_IMAGE" ] || \
+	die "vendor_boot image missing: $VENDOR_BOOT_IMAGE"
 command -v nc >/dev/null || die "need nc"
 command -v sha256sum >/dev/null || die "need sha256sum"
 
@@ -310,6 +317,15 @@ msg "device reports install OK; it is rebooting into LK fastboot"
 # ------------------------------------------------- 5. real boot image
 if [ -n "$BOOT_IMAGE" ]; then
 	command -v fastboot >/dev/null || die "need fastboot for --boot-image"
+
+	# Auto-detect vendor_boot alongside the boot image if not given explicitly.
+	# Both images must be from the same release: the kernel DTB they carry is
+	# compiled together and dc1-boot-sync keeps them in sync on upgrades.
+	if [ -z "$VENDOR_BOOT_IMAGE" ]; then
+		vbpath="$(dirname "$BOOT_IMAGE")/jagar-vendor-boot.img"
+		[ -f "$vbpath" ] && VENDOR_BOOT_IMAGE="$vbpath"
+	fi
+
 	msg "waiting for fastboot (device rebooting)..."
 	n=0
 	while ! fastboot devices | grep -q .; do
@@ -319,9 +335,24 @@ if [ -n "$BOOT_IMAGE" ]; then
 	done
 	msg "flashing real boot image to boot_a"
 	fastboot flash boot_a "$BOOT_IMAGE"
+	if [ -n "$VENDOR_BOOT_IMAGE" ]; then
+		# Flash the mainline DTB to both slots so whichever slot boots next
+		# has the right device tree. vendor_boot_b keeps the fallback slot
+		# consistent; dc1-boot-sync will keep both in sync on kernel upgrades.
+		msg "flashing mainline DTB (vendor_boot) to vendor_boot_a and vendor_boot_b"
+		fastboot flash vendor_boot_a "$VENDOR_BOOT_IMAGE"
+		fastboot flash vendor_boot_b "$VENDOR_BOOT_IMAGE"
+	else
+		msg "warning: jagar-vendor-boot.img not found; stock device tree will be used"
+		msg "  (download it from the same release as jagar-boot.img and re-run with"
+		msg "   --vendor-boot-image jagar-vendor-boot.img, or flash it manually)"
+	fi
 	fastboot reboot
 	msg "done -- the DC-1 is booting the installed system."
 else
-	msg "done -- now flash the real boot image over the installer:"
-	msg "    fastboot flash boot_a jagar-boot.img && fastboot reboot"
+	msg "done -- now flash the real boot image and mainline DTB over the installer:"
+	msg "    fastboot flash boot_a jagar-boot.img"
+	msg "    fastboot flash vendor_boot_a jagar-vendor-boot.img"
+	msg "    fastboot flash vendor_boot_b jagar-vendor-boot.img"
+	msg "    fastboot reboot"
 fi

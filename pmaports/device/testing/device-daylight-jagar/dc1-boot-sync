@@ -83,6 +83,35 @@ resolve_boot() {
 	echo "/dev/$found"
 }
 
+# resolve_vendor_boot a|b -> /dev/<node>. Same size window as boot_a/b;
+# the vendor_boot partitions are the same 64 MiB as the boot slots and carry
+# the DTB that LK actually passes to the kernel.
+resolve_vendor_boot() {
+	name="vendor_boot_$1"
+	sysblock=${DC1_SYSBLOCK:-/sys/class/block}
+	found=""
+	count=0
+	for u in "$sysblock"/*/uevent; do
+		[ -f "$u" ] || continue
+		grep -q "^PARTNAME=$name\$" "$u" || continue
+		count=$((count + 1))
+		found=${u%/uevent}
+		found=${found##*/}
+	done
+	[ "$count" -eq 1 ] || {
+		log "expected exactly 1 PARTNAME=$name, found $count"
+		return 1
+	}
+	sectors=$(cat "$sysblock/$found/size" 2>/dev/null || echo 0)
+	case "$sectors" in ''|*[!0-9]*) sectors=0 ;; esac
+	if [ "$sectors" -lt "$BOOT_MIN_SECTORS" ] || \
+	   [ "$sectors" -gt "$BOOT_MAX_SECTORS" ]; then
+		log "$name is $sectors sectors; refusing (mapping moved?)"
+		return 1
+	fi
+	echo "/dev/$found"
+}
+
 # active_slot -> a|b, from dc1-slotctl's own priority-based get_suffix decode.
 active_slot() {
 	dc1-slotctl status | sed -n 's/.*active=\([ab]\).*/\1/p'
@@ -103,6 +132,10 @@ kernel_sha() {
 
 # deploy INSTALLED_SHA -- download, verify, flash the INACTIVE slot, arm it.
 # Sets the loop-guard marker. Returns 0 on success. Does NOT reboot.
+#
+# Both jagar-boot.img (kernel + initramfs) and jagar-vendor-boot.img (our
+# mainline DTB) are downloaded and verified BEFORE any partition is touched,
+# so a failed download never leaves a slot with a mismatched kernel/DT pair.
 deploy() {
 	installed=$1
 	log "deploying boot image (kernel sha256 $installed) to the inactive slot"
@@ -124,17 +157,39 @@ deploy() {
 	got=$(sha256sum jagar-boot.img | cut -d' ' -f1)
 	[ "$got" = "$want" ] || { log "jagar-boot.img sha256 mismatch"; return 1; }
 
+	# Download and verify the vendor_boot image (our mainline DTB). LK reads
+	# the DTB from vendor_boot, not boot.img, so boot and vendor_boot must
+	# always be updated together from the same release.
+	want_vb=$(awk -v n=jagar-vendor-boot.img '{ f=$2; sub(/^\*/,"",f); if (f==n) print $1 }' SHA256SUMS)
+	[ -n "$want_vb" ] || { log "no jagar-vendor-boot.img entry in SHA256SUMS"; return 1; }
+	log "downloading jagar-vendor-boot.img"
+	curl -fsSL --retry 3 --retry-delay 3 -o jagar-vendor-boot.img \
+		"$URL_BASE/jagar-vendor-boot.img" \
+		|| { log "cannot fetch jagar-vendor-boot.img"; return 1; }
+	got_vb=$(sha256sum jagar-vendor-boot.img | cut -d' ' -f1)
+	[ "$got_vb" = "$want_vb" ] || { log "jagar-vendor-boot.img sha256 mismatch"; return 1; }
+
 	active=$(active_slot) || { log "cannot determine the active slot"; return 1; }
 	[ -z "$active" ] && { log "cannot determine the active slot"; return 1; }
 	inactive=$([ "$active" = a ] && echo b || echo a)
 	boot_dev=$(resolve_boot "$inactive") || return 1
+	vendor_boot_dev=$(resolve_vendor_boot "$inactive") || return 1
+
+	sysblock=${DC1_SYSBLOCK:-/sys/class/block}
 
 	img_bytes=$(wc -c < jagar-boot.img | tr -d ' ')
-	sysblock=${DC1_SYSBLOCK:-/sys/class/block}
 	bsectors=$(cat "$sysblock/${boot_dev##*/}/size" 2>/dev/null || echo 0)
 	case "$bsectors" in ''|*[!0-9]*) bsectors=0 ;; esac
 	if [ "$img_bytes" -gt $((bsectors * 512)) ]; then
 		log "jagar-boot.img ($img_bytes bytes) larger than $boot_dev"
+		return 1
+	fi
+
+	vb_bytes=$(wc -c < jagar-vendor-boot.img | tr -d ' ')
+	vb_sectors=$(cat "$sysblock/${vendor_boot_dev##*/}/size" 2>/dev/null || echo 0)
+	case "$vb_sectors" in ''|*[!0-9]*) vb_sectors=0 ;; esac
+	if [ "$vb_bytes" -gt $((vb_sectors * 512)) ]; then
+		log "jagar-vendor-boot.img ($vb_bytes bytes) larger than $vendor_boot_dev"
 		return 1
 	fi
 
@@ -145,6 +200,14 @@ deploy() {
 	readback=$(head -c "$img_bytes" "$boot_dev" | sha256sum | cut -d' ' -f1)
 	[ "$readback" = "$got" ] || { log "boot image read-back mismatch"; return 1; }
 	log "boot image verified on $boot_dev"
+
+	log "writing jagar-vendor-boot.img ($vb_bytes bytes) to $vendor_boot_dev (inactive slot $inactive)"
+	dd if=jagar-vendor-boot.img of="$vendor_boot_dev" bs=1M conv=fsync 2>/dev/null \
+		|| { log "vendor_boot image write failed"; return 1; }
+	sync
+	readback_vb=$(head -c "$vb_bytes" "$vendor_boot_dev" | sha256sum | cut -d' ' -f1)
+	[ "$readback_vb" = "$got_vb" ] || { log "vendor_boot image read-back mismatch"; return 1; }
+	log "vendor_boot image verified on $vendor_boot_dev"
 
 	# Arm the inactive slot for one try: priority 15/tries 1/successful 0, the
 	# other (proven) slot dropped to 14. On a failed boot the preloader
@@ -158,8 +221,8 @@ deploy() {
 	return 0
 }
 
-# Library mode for the offline tests: source this file to get resolve_boot and
-# active_slot without running the sync.
+# Library mode for the offline tests: source this file to get resolve_boot,
+# resolve_vendor_boot, and active_slot without running the sync.
 if [ -n "${DC1_BOOT_SYNC_LIB:-}" ]; then
 	return 0 2>/dev/null || exit 0
 fi
