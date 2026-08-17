@@ -79,12 +79,29 @@ Everything committed here is world-readable. Non-negotiable rules:
 - Kernel config must keep `CONFIG_BINFMT_SCRIPT`, `CONFIG_EPOLL`,
   `CONFIG_SIGNALFD`, `CONFIG_TIMERFD`, `CONFIG_EVENTFD` (udhcpc hook + BlueZ
   need them; failures are silent).
-- Sensors are SCP-attached, not AP-attached. The accelerometer (mCube
-  MC3416) and ambient-light/proximity (Memsic MN29xxx) hang off the sensor
-  co-processor and are driven by the closed `scp_a.img` firmware. There is
-  no gyro or magnetometer, and mainline has no mt6789 SCP/sensorhub driver,
-  so no DTS node or defconfig entry can expose them. The hall switch
-  (magnetic lid, GPIO) is the only directly-AP-wired motion-adjacent sensor.
+- Sensors sit on the SCP's two I2C buses, but that does **not** put them out
+  of the AP's reach — the earlier claim that "no DTS node or defconfig entry
+  can expose them" is retracted. Both bus pin pairs are dual-function, so
+  muxing them to their AP function hands the bus to an ordinary
+  `i2c-mt65xx` controller:
+  - GPIO142/143 — func 2 `SCP_SCL1/SDA1`, func 1 `SCL6/SDA6` (i2c6
+    @1101a000): mCube **MC3416 accelerometer @0x4c**, driven by
+    `drivers/iio/accel/mc3230.c` (`mcube,mc3416`).
+  - GPIO132/133 — func 2 `SCP_SCL0/SDA0`, func 1 `SCL1/SDA1` (i2c1
+    @11e01000): ambient-light/proximity part **@0x49**, no mainline driver
+    yet, so still undeclared.
+  This is only safe while nothing drives the SCP: no mainline driver binds
+  `mediatek,mt6789-tinysys-scp`, and the accelerometer was found in its
+  power-on STANDBY state, so the firmware had never initialised it. An
+  mt6789 sensorhub driver and these nodes cannot both own the pins.
+- There is still no gyro or magnetometer. The hall switch (magnetic lid,
+  GPIO) is directly AP-wired and still not in the DTS.
+- The panel's scanout is 180° from the glass and jagar ships **no panel
+  node**, so DRM exposes no `panel orientation` property for the compositor
+  to compensate with. The accelerometer's `mount-matrix` therefore carries
+  that 180° itself, on top of the chip's physical mounting. If a panel node
+  with `rotation = <180>` is ever added, take the 180° back out of the
+  matrix or the screen will rotate the wrong way round.
 
 ## CI
 
