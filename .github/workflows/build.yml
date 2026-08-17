@@ -301,7 +301,7 @@ jobs:
           # deployed together from the same release. mkboot is not cached from
           # the verify job (separate job), so rebuild it here; Go is already
           # on PATH from the setup-go step above.
-          go build -o "$RUNNER_TEMP/mkboot" ./boot/mkboot
+          go build -C boot/mkboot -o "$RUNNER_TEMP/mkboot" .
           "$RUNNER_TEMP/mkboot" packvendor \
             -dtb out/boot/mt8781-daylight-jagar.dtb \
             -o release/jagar-vendor-boot.img
