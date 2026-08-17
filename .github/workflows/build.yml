@@ -181,7 +181,10 @@ jobs:
           done
 
       # The kernel toolchain (clang-20/LLVM, per the APKBUILD) lives inside
-      # the build chroot; the runner only needs the host-side tools.
+      # the build chroot; the runner only needs the host-side tools. pigz is
+      # host-side on purpose: make-rootfs-archive.py pipes the rootfs tar
+      # through it, which is the difference between one core and all of them
+      # on the longest step of the export.
       # No busybox-static here on purpose: Ubuntu's busybox lacks blkid (it
       # failed installer/build.sh's applet check on a live run). The build
       # script fetches Alpine's pinned busybox-static apk instead, which is
@@ -190,7 +193,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            e2fsprogs zstd lz4 cpio file kpartx xz-utils binutils openssl
+            e2fsprogs zstd lz4 cpio file kpartx xz-utils binutils openssl pigz
           echo /usr/sbin >> "$GITHUB_PATH"
           echo /sbin >> "$GITHUB_PATH"
 

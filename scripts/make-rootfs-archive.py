@@ -8,7 +8,9 @@ import gzip
 import hashlib
 import os
 from pathlib import Path
+import shutil
 import stat
+import subprocess
 import tarfile
 
 
@@ -67,13 +69,18 @@ def verify_safe(root: Path, paths: list[Path]) -> None:
             raise SystemExit(f"credential-like path in rootfs: {relative}")
         mode = path.lstat().st_mode
         if stat.S_ISREG(mode) and path.stat().st_size <= 16 * 1024 * 1024:
-            data = path.read_bytes()
-            # Packaged binaries legitimately embed PEM banners: ELF
-            # format-string constants (ssh-keygen, libcrypto), file(1)'s
-            # magic database, and the like. A leaked key is a text file,
-            # so binary content is out of scope; names are checked above.
-            if data[:4] == b"\x7fELF" or b"\x00" in data[:8192]:
-                continue
+            # Read the head first and stop there for binaries: most of a
+            # rootfs by volume is ELF, so reading the rest of those files
+            # only to discard them is the bulk of this pass.
+            with path.open("rb") as stream:
+                head = stream.read(8192)
+                # Packaged binaries legitimately embed PEM banners: ELF
+                # format-string constants (ssh-keygen, libcrypto), file(1)'s
+                # magic database, and the like. A leaked key is a text file,
+                # so binary content is out of scope; names are checked above.
+                if head[:4] == b"\x7fELF" or b"\x00" in head:
+                    continue
+                data = head + stream.read()
             if any(marker in data for marker in PRIVATE_MARKERS):
                 raise SystemExit(f"private-key marker in rootfs: {relative}")
 
@@ -109,6 +116,26 @@ def tar_info(path: Path, root: Path, epoch: int) -> tarfile.TarInfo:
     else:
         raise SystemExit(f"unsupported rootfs file type: {relative}")
     return info
+
+
+def open_gzip_writer(raw):
+    """Return (writable stream, pigz process or None) writing gzip to `raw`.
+
+    Compressing a ~1.4 GiB rootfs with zlib level 9 on one core is the single
+    longest step of the export, so hand it to pigz when it is installed.
+    pigz cuts the input into fixed blocks and compresses each one
+    independently, so its output depends on the level and the block size but
+    NOT on the thread count -- the archive stays reproducible on a runner
+    with any number of cores. Level and block size are pinned here for that
+    reason; -n suppresses the name and timestamp, matching the mtime=0 the
+    fallback writer sets.
+    """
+    pigz = shutil.which("pigz")
+    if pigz is None:
+        return gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0), None
+    process = subprocess.Popen(
+        [pigz, "-9", "-n", "-b", "128"], stdin=subprocess.PIPE, stdout=raw)
+    return process.stdin, process
 
 
 def main() -> None:
@@ -147,7 +174,8 @@ def main() -> None:
             )
 
     with args.archive.open("xb") as raw:
-        with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
+        compressed, pigz = open_gzip_writer(raw)
+        try:
             with tarfile.open(fileobj=compressed, mode="w|", format=tarfile.PAX_FORMAT) as archive:
                 for path in paths:
                     info = tar_info(path, root, args.epoch)
@@ -156,6 +184,10 @@ def main() -> None:
                             archive.addfile(info, stream)
                     else:
                         archive.addfile(info)
+        finally:
+            compressed.close()
+            if pigz is not None and pigz.wait() != 0:
+                raise SystemExit(f"pigz failed with status {pigz.returncode}")
 
 
 if __name__ == "__main__":
