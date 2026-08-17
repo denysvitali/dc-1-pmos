@@ -43,7 +43,9 @@ No Wi-Fi, or want the image from your computer instead? Use the host script
 (`installer/host/dc1-install.sh`) over USB — the advanced / fallback path.
 The full, explained procedure is in
 [docs/installation.md](docs/installation.md); current hardware support is
-in [docs/status.md](docs/status.md).
+in [docs/status.md](docs/status.md). If a device ends up bootlooping before
+it reaches `fastboot`, see
+[docs/preloader-recovery.md](docs/preloader-recovery.md).
 
 ## What CI builds
 
@@ -77,7 +79,7 @@ rootfs over Wi-Fi).
   `dc1-install.sh`.
 - `boot/` — Android boot-image v4 tooling (`mkboot`, `repack-boot.sh`) that
   owns this device's boot-image invariants.
-- `docs/` — installation guide and hardware status.
+- `docs/` — installation guide, hardware status, and preloader recovery.
 - `.github/workflows/` — CI.
 
 Sources are pinned by commit in `scripts/versions.env`. The kernel is

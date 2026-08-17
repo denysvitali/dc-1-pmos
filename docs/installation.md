@@ -228,10 +228,14 @@ is streamed over USB).
 
 ## Recovery notes
 
-- **There is no recovery channel without a working kernel.** The DC-1's
-  authenticated preloader does not accept a download agent for storage
-  writes. If the partitions LK itself depends on are damaged, the device
-  cannot be recovered over USB. For this reason, **never flash `preloader`,
+- **There is no general recovery channel without a working kernel.** The DC-1's
+  authenticated preloader does not accept an arbitrary download agent for
+  storage writes. The one exception is the vendor's *signed* download agent,
+  with the matching auth blob — proprietary files this repository does not and
+  will not ship, but which do open a USB channel if you have them; see
+  [Recovering a bootlooping device](preloader-recovery.md). Short of that, if
+  the partitions LK itself depends on are damaged, the device cannot be
+  recovered over USB. For this reason, **never flash `preloader`,
   `lk`, `dtbo`, or the UFS boot LUNs.** The documented flow never writes
   them, and the device-side installer refuses to touch them by construction
   (it resolves its target strictly by the GPT partition name `userdata`, and

@@ -65,10 +65,15 @@ Everything committed here is world-readable. Non-negotiable rules:
 ## Hardware invariants (cost boot cycles to learn; do not re-derive)
 
 - The DC-1 boots via MediaTek LK with A/B slots. `fastboot` is available from
-  LK. There is **no recovery channel without a running kernel**: the
-  authenticated preloader does not accept a download agent for storage
-  writes. Never instruct users to write `preloader`, `lk`, `dtbo`,
-  `vendor_boot`, or UFS boot LUNs in the normal install path.
+  LK. There is **no general recovery channel without a running kernel**: the
+  authenticated preloader does not accept an *arbitrary* download agent for
+  storage writes. It does accept the vendor's **signed** agent plus its auth
+  blob — proprietary files that are never committed or published here, and
+  the only reason `docs/preloader-recovery.md` (repair the `misc` BCB over
+  USB) exists. Never instruct users to write `preloader`, `lk`, `dtbo`,
+  `vendor_boot`, or UFS boot LUNs in the normal install path — the signed
+  agent does not change that; it is what those partitions being intact buys
+  you.
 - Boot images are Android header **v4**, gzip kernel, legacy-frame LZ4
   ramdisk, with a non-zero AVB0 signature page. `pmbootstrap flasher` and
   generic pmOS boot deployment do not reproduce this;
