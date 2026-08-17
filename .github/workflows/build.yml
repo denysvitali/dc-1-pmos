@@ -148,17 +148,28 @@ jobs:
             /opt/ghc /usr/local/.ghcup
           df -h /
 
-      # Persistence across ephemeral runners. Only the kernel ccache and the
-      # downloaded source tarballs — never chroots or built packages: a stale
-      # package cache is exactly what export-artifacts.sh guards against.
-      # The run_id suffix makes every run save an updated ccache; restore
-      # falls back to the newest cache for the same (then any) source pins.
+      # Persistence across ephemeral runners. Cached:
+      #   cache_ccache*   — compiler cache (ccache_size = 2G in pmb.cfg)
+      #   cache_distfiles — kernel source tarballs
+      #   cache_apk_aarch64 — upstream Alpine/pmaports binary packages
+      # Never cached: chroots or our own built packages (device/kernel apks).
+      # export-artifacts.sh requires those by exact pkgver-pkgrel and fails if
+      # they are absent, which forces a fresh pmb build when the version bumps.
+      #
+      # cache_apk_aarch64 is safe to cache because apk always fetches a fresh
+      # APKINDEX from the mirror and verifies every cached file against it;
+      # any stale or mismatched package is silently re-downloaded. Caching it
+      # avoids re-downloading ~1.3 GB of gnome-mobile packages every run.
+      #
+      # The run_id suffix makes every run save an updated cache; restore
+      # falls back to the newest entry for the same (then any) source pins.
       - name: Restore pmbootstrap ccache and source caches
         uses: actions/cache@v4
         with:
           path: |
             work/postmarketos/pmbootstrap-work/cache_ccache*
             work/postmarketos/pmbootstrap-work/cache_distfiles
+            work/postmarketos/pmbootstrap-work/cache_apk_aarch64
           key: pmb-${{ hashFiles('scripts/versions.env') }}-${{ github.run_id }}
           restore-keys: |
             pmb-${{ hashFiles('scripts/versions.env') }}-
@@ -323,8 +334,13 @@ jobs:
           (cd release && sha256sum --check --strict SHA256SUMS)
           ls -l release/APKINDEX.tar.gz
 
-      # PR runs stop here: artifact yes, release no.
+      # PR runs: upload a workflow artifact so reviewers can download the
+      # outputs. Main-branch push and workflow_dispatch runs publish a GitHub
+      # release below (rolling `latest` or a tagged version), which is the
+      # canonical copy of the same files; skip the redundant upload there
+      # (~24 s) and avoid a second 500 MB+ upload of the same bytes.
       - name: Upload workflow artifact
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: dc1-pmos-${{ github.sha }}
