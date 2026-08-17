@@ -24,28 +24,42 @@ start() {
 			|| { echo "configfs mount failed" >&2; return 1; }
 	fi
 
-	stop
-	mkdir -p "$G" || { echo "configfs usb_gadget unavailable" >&2; return 1; }
-	write "$G/idVendor" 0x18d1
-	write "$G/idProduct" 0x4ee7
-	mkdir -p "$G/strings/0x409"
-	write "$G/strings/0x409/manufacturer" daylight
-	write "$G/strings/0x409/product" dc1-pmos
-	write "$G/strings/0x409/serialnumber" dc1-pmos
-
-	mkdir -p "$G/configs/c.1/strings/0x409"
-	write "$G/configs/c.1/strings/0x409/configuration" "acm+ecm"
-	mkdir -p "$G/functions/acm.0" "$G/functions/acm.1" "$G/functions/ecm.0"
-	write "$G/functions/ecm.0/dev_addr" 02:1a:11:00:00:02
-	write "$G/functions/ecm.0/host_addr" 02:1a:11:00:00:01
-	ln -sf "$G/functions/acm.0" "$G/configs/c.1/acm.0"
-	ln -sf "$G/functions/acm.1" "$G/configs/c.1/acm.1"
-	ln -sf "$G/functions/ecm.0" "$G/configs/c.1/ecm.0"
-
-	# Bind to the UDC the MUSB driver registered.
 	UDC=$(ls /sys/class/udc 2>/dev/null | head -1)
 	[ -n "$UDC" ] || { echo "no UDC (MUSB not registered?)" >&2; return 1; }
-	echo "$UDC" >"$G/UDC" 2>/dev/null || { echo "UDC bind failed" >&2; return 1; }
+
+	# The initramfs builds an identical gadget, binds the UDC, then unbinds
+	# it before switch_root but leaves the configfs tree intact.  Trying to
+	# rmdir USB function objects in that state blocks the kernel indefinitely:
+	# the gadget framework holds a reference on each function that is only
+	# released after a userspace bind→unbind cycle.  Detect this handoff via
+	# /sys/class/udc/ (sysfs, always safe) -- function is empty when no
+	# gadget driver is bound -- and skip teardown; just rebind.
+	if [ -d "$G" ] && \
+	   [ -z "$(cat "/sys/class/udc/$UDC/function" 2>/dev/null)" ]; then
+		echo "$UDC" >"$G/UDC" 2>/dev/null \
+			|| { echo "UDC bind failed" >&2; return 1; }
+	else
+		stop
+		mkdir -p "$G" || { echo "configfs usb_gadget unavailable" >&2; return 1; }
+		write "$G/idVendor" 0x18d1
+		write "$G/idProduct" 0x4ee7
+		mkdir -p "$G/strings/0x409"
+		write "$G/strings/0x409/manufacturer" daylight
+		write "$G/strings/0x409/product" dc1-pmos
+		write "$G/strings/0x409/serialnumber" dc1-pmos
+
+		mkdir -p "$G/configs/c.1/strings/0x409"
+		write "$G/configs/c.1/strings/0x409/configuration" "acm+ecm"
+		mkdir -p "$G/functions/acm.0" "$G/functions/acm.1" "$G/functions/ecm.0"
+		write "$G/functions/ecm.0/dev_addr" 02:1a:11:00:00:02
+		write "$G/functions/ecm.0/host_addr" 02:1a:11:00:00:01
+		ln -sf "$G/functions/acm.0" "$G/configs/c.1/acm.0"
+		ln -sf "$G/functions/acm.1" "$G/configs/c.1/acm.1"
+		ln -sf "$G/functions/ecm.0" "$G/configs/c.1/ecm.0"
+
+		echo "$UDC" >"$G/UDC" 2>/dev/null \
+			|| { echo "UDC bind failed" >&2; return 1; }
+	fi
 
 	# usb0 appears shortly after the UDC bind; address it statically so the
 	# host always finds the same address (matches the installer). NetworkManager
