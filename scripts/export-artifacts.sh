@@ -152,7 +152,12 @@ cp "$sources_file" "$output_dir/SOURCES"
 	cd "$output_dir"
 	find . -type f ! -name SHA256SUMS -exec sha256sum {} + |
 		LC_ALL=C sort >SHA256SUMS
-	sha256sum --check --strict SHA256SUMS >/dev/null
+	# -c, not --check --strict: busybox coreutils have neither long option,
+	# so the GNU spelling made this (and scripts/verify.sh with it) fail on
+	# any Alpine host -- including the device itself, where verify.sh is the
+	# obvious thing to run. --strict only guards against a malformed manifest,
+	# which cannot happen here: sha256sum generated it one line earlier.
+	sha256sum -c SHA256SUMS >/dev/null
 ) || fail "the manifest does not describe the files that were written"
 
 echo "exported non-deployable postmarketOS artifacts to $output_dir"

@@ -63,7 +63,9 @@ done
 
 zstd -t "$out/jagar-rootfs.ext4.zst" >/dev/null 2>&1 ||
 	fail "published filesystem image does not decompress"
-(cd "$out" && sha256sum --check --strict SHA256SUMS >/dev/null) ||
+# -c, not --check --strict: busybox has neither long option, so this test
+# could not run on an Alpine host. See export-artifacts.sh.
+(cd "$out" && sha256sum -c SHA256SUMS >/dev/null) ||
 	fail "SHA256SUMS does not describe the published files"
 
 for line in flash_method=none boot_image_included=false \
