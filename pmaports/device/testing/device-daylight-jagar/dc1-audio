@@ -22,3 +22,23 @@ while ! grep -q mt6789-mt6366 /proc/asound/cards 2>/dev/null && [ "$n" -lt 10 ];
 done
 grep -q mt6789-mt6366 /proc/asound/cards 2>/dev/null \
 	|| { echo "the mt6789-mt6366 card did not appear" >&2; exit 1; }
+
+# Wire the speaker path. Without a UCM profile PipeWire leaves the DAPM
+# selectors at their reset values ("Open" for HPL/HPR Mux) and the RT9101
+# amp switch off, so nothing reaches the speakers. Set them once at startup;
+# they persist until the card is removed.
+#   DL1 PCM → ADDA_DL CH1/CH2 → HPL/HPR (LoudSPK Playback)
+#           → Ext_Speaker_Amp → RT9101 → speakers
+# Volumes are set to full scale (Headphone 18/18, ADDA_DL_GAIN 100%): the
+# codec's digital path is the right knob; amp gain is fixed in hardware.
+_set_speaker_path() {
+	local c="amixer -c mt6789mt6366 -q"
+	$c sset 'ADDA_DL_CH1 DL1_CH1' on \
+	&& $c sset 'ADDA_DL_CH2 DL1_CH2' on \
+	&& $c sset 'HPL Mux' 'LoudSPK Playback' \
+	&& $c sset 'HPR Mux' 'LoudSPK Playback' \
+	&& $c sset 'Ext_Speaker_Amp' on \
+	&& $c sset 'Headphone' 18 \
+	&& $c sset 'ADDA_DL_GAIN' 100%
+}
+_set_speaker_path || echo "dc1-audio: speaker path amixer commands failed" >&2
