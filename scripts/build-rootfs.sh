@@ -59,12 +59,16 @@ case "$work_version" in
 esac
 printf '%s\n' "$work_version" >"$pmb_work/version"
 
+# ccache_size is 2G, not 5G: CI carries this cache between runs as a single
+# archive, and restoring/saving the extra gigabytes costs more wall clock than
+# the extra hits buy. One kernel build's objects are a few hundred MB, so 2G
+# still holds several generations and ccache's LRU keeps the newest.
 cat >"$pmb_config" <<EOF
 [pmbootstrap]
 aports = $pmaports_dir
 boot_size = 512
 build_default_device_arch = True
-ccache_size = 5G
+ccache_size = 2G
 device = daylight-jagar
 extra_packages = e2fsprogs-extra,mesa-dri-gallium,font-dejavu
 is_default_channel = False

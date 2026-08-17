@@ -23,8 +23,13 @@ prepare_checkout() {
 	url=$2
 	commit=$3
 	allow_overlay=${4:-no}
+	# Only the pinned commit is ever checked out, so never fetch the history
+	# that leads to it: init an empty repository and let the depth-1 fetch
+	# below bring in that one commit. A blobless clone of pmaports still
+	# walks every commit and tree it ever had, which is most of this step.
 	if [ ! -d "$directory/.git" ]; then
-		git clone --filter=blob:none "$url" "$directory"
+		git init -q "$directory"
+		git -C "$directory" remote add origin "$url"
 	fi
 	actual_url=$(git -C "$directory" remote get-url origin)
 	[ "$actual_url" = "$url" ] || {
