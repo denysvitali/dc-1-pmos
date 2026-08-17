@@ -262,8 +262,20 @@ wr_finalize() {
 	if command -v resize2fs >/dev/null 2>&1; then
 		# -f: see boot.sh -- the freshly-written fs has EXT2_VALID_FS unset and
 		# resize2fs otherwise refuses to grow it until a full e2fsck -f.
-		wr_resize_err=$(resize2fs -f "$WR_DEV" 2>&1)
-		if [ $? -eq 0 ]; then
+		# The assignment must BE the condition. As `wr_resize_err=$(...)` on
+		# its own line followed by `if [ $? -eq 0 ]`, a failing resize2fs is a
+		# failing simple command, and finalize.sh runs this under `set -eu`
+		# (line 13) -- so the script died right here and the else branch below
+		# could never run. Worse, resize2fs's own message was captured into
+		# the variable by 2>&1 and thrown away with it, so the USB install
+		# just reported FAIL with nothing logged, after the image had already
+		# been written, verified and provisioned. The touch/network path
+		# (netinstall.sh, no set -e) ran the same function correctly, so the
+		# two transports disagreed. Checked in busybox ash: as written the
+		# script aborts with rc=1 and prints nothing; in this form the else
+		# branch runs and execution continues, which is what "best-effort"
+		# above has always claimed. Same shape as system/boot.sh:75-79.
+		if wr_resize_err=$(resize2fs -f "$WR_DEV" 2>&1); then
 			WR_RESIZE_NOTE="RESIZED"
 			say "RESIZED ROOT FILESYSTEM"
 		else

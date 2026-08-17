@@ -318,13 +318,11 @@ msg "device reports install OK; it is rebooting into LK fastboot"
 if [ -n "$BOOT_IMAGE" ]; then
 	command -v fastboot >/dev/null || die "need fastboot for --boot-image"
 
-	# Auto-detect vendor_boot alongside the boot image if not given explicitly.
-	# Both images must be from the same release: the kernel DTB they carry is
-	# compiled together and dc1-boot-sync keeps them in sync on upgrades.
-	if [ -z "$VENDOR_BOOT_IMAGE" ]; then
-		vbpath="$(dirname "$BOOT_IMAGE")/jagar-vendor-boot.img"
-		[ -f "$vbpath" ] && VENDOR_BOOT_IMAGE="$vbpath"
-	fi
+	# vendor_boot is NOT auto-detected. It used to be picked up from beside
+	# the boot image and flashed to both slots, which meant that simply
+	# unpacking a release and running this script replaced the device tree on
+	# both slots with one that disables dsi0 -- a device with no display and
+	# no fallback. It is now opt-in via --vendor-boot-image only.
 
 	msg "waiting for fastboot (device rebooting)..."
 	n=0
@@ -336,23 +334,30 @@ if [ -n "$BOOT_IMAGE" ]; then
 	msg "flashing real boot image to boot_a"
 	fastboot flash boot_a "$BOOT_IMAGE"
 	if [ -n "$VENDOR_BOOT_IMAGE" ]; then
-		# Flash the mainline DTB to both slots so whichever slot boots next
-		# has the right device tree. vendor_boot_b keeps the fallback slot
-		# consistent; dc1-boot-sync will keep both in sync on kernel upgrades.
-		msg "flashing mainline DTB (vendor_boot) to vendor_boot_a and vendor_boot_b"
+		# Only vendor_boot_a, never both. The DTB in vendor_boot is what LK
+		# hands the kernel, so writing both slots at once removes the only
+		# fallback -- and this DTB is not safe to land blind: the mainline
+		# board DTS carries no panel node (the Sharp NT36523N timings are
+		# inside a proprietary Android .ko) and so sets
+		# `&dsi0 { status = "disabled"; }`, which means no display at all.
+		# Verified 2026-08-17 against the built image: model "Daylight
+		# Computer DC-1", dsi@14013000 disabled, zero panel nodes. Leaving
+		# vendor_boot_b on the stock tree keeps one bootable, visible slot.
+		msg "flashing mainline DTB (vendor_boot) to vendor_boot_a only"
+		msg "  WARNING: this DTB disables dsi0 -- the display will not come up."
+		msg "  It exists to reach the accelerometer and LVTS thermal, which the"
+		msg "  stock tree cannot express. Keep serial or SSH access to recover,"
+		msg "  and leave vendor_boot_b alone as the fallback."
 		fastboot flash vendor_boot_a "$VENDOR_BOOT_IMAGE"
-		fastboot flash vendor_boot_b "$VENDOR_BOOT_IMAGE"
-	else
-		msg "warning: jagar-vendor-boot.img not found; stock device tree will be used"
-		msg "  (download it from the same release as jagar-boot.img and re-run with"
-		msg "   --vendor-boot-image jagar-vendor-boot.img, or flash it manually)"
 	fi
 	fastboot reboot
 	msg "done -- the DC-1 is booting the installed system."
 else
-	msg "done -- now flash the real boot image and mainline DTB over the installer:"
+	msg "done -- now flash the real boot image over the installer:"
 	msg "    fastboot flash boot_a jagar-boot.img"
-	msg "    fastboot flash vendor_boot_a jagar-vendor-boot.img"
-	msg "    fastboot flash vendor_boot_b jagar-vendor-boot.img"
 	msg "    fastboot reboot"
+	msg ""
+	msg "Do NOT flash jagar-vendor-boot.img unless you know you want it: our"
+	msg "mainline DTB has no panel node and disables dsi0, so the display will"
+	msg "not come up. It exists to reach the accelerometer and LVTS thermal."
 fi

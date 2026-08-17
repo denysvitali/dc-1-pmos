@@ -5,12 +5,23 @@
 # linked on fresh installs only and apk upgrade stays broken forever.
 [ -x /usr/libexec/dc1-link-apk-keys ] && /usr/libexec/dc1-link-apk-keys
 
+# Keep this list identical to the one in the post-install hook, runlevels and
+# all. It drifted: dc1-audio, dc1-usb-gadget and dc1-debug-shell were added to
+# post-install after this file was written and never added here, so an OpenRC
+# device installed before those commits and upgraded since has no sound card,
+# no USB ethernet, and no debug shells (which `need dc1-usb-gadget`) in any
+# runlevel. Every line is `2>/dev/null || true`, so the omission is completely
+# silent -- the same failure shape dc1-link-apk-keys above was extracted to
+# avoid.
 rc-update add dc1-display-gate boot 2>/dev/null || true
 rc-update add dc1-gpu boot 2>/dev/null || true
+rc-update add dc1-usb-gadget boot 2>/dev/null || true
+rc-update add dc1-audio default 2>/dev/null || true
+rc-update add dc1-bluetooth default 2>/dev/null || true
 rc-update add dc1-frontlight default 2>/dev/null || true
 rc-update add dc1-screen-backlight default 2>/dev/null || true
 rc-update add dc1-rtcsync default 2>/dev/null || true
-rc-update add dc1-bluetooth default 2>/dev/null || true
+rc-update add dc1-debug-shell default 2>/dev/null || true
 if [ -x /etc/init.d/sshd ]; then
 	rc-update add sshd default 2>/dev/null || true
 fi

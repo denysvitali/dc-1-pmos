@@ -157,17 +157,38 @@ deploy() {
 	got=$(sha256sum jagar-boot.img | cut -d' ' -f1)
 	[ "$got" = "$want" ] || { log "jagar-boot.img sha256 mismatch"; return 1; }
 
-	# Download and verify the vendor_boot image (our mainline DTB). LK reads
-	# the DTB from vendor_boot, not boot.img, so boot and vendor_boot must
-	# always be updated together from the same release.
-	want_vb=$(awk -v n=jagar-vendor-boot.img '{ f=$2; sub(/^\*/,"",f); if (f==n) print $1 }' SHA256SUMS)
-	[ -n "$want_vb" ] || { log "no jagar-vendor-boot.img entry in SHA256SUMS"; return 1; }
-	log "downloading jagar-vendor-boot.img"
-	curl -fsSL --retry 3 --retry-delay 3 -o jagar-vendor-boot.img \
-		"$URL_BASE/jagar-vendor-boot.img" \
-		|| { log "cannot fetch jagar-vendor-boot.img"; return 1; }
-	got_vb=$(sha256sum jagar-vendor-boot.img | cut -d' ' -f1)
-	[ "$got_vb" = "$want_vb" ] || { log "jagar-vendor-boot.img sha256 mismatch"; return 1; }
+	# Our mainline DTB, and it is NOT deployed by default -- see below.
+	#
+	# LK reads the DTB from vendor_boot, not boot.img, so shipping our own
+	# tree means writing vendor_boot. That was switched on unconditionally,
+	# and it is not safe yet: the mainline board DTS deliberately carries no
+	# panel node (the Sharp NT36523N timings live inside a proprietary Android
+	# .ko and cannot be written) and therefore disables dsi0 outright --
+	# `&dsi0 { status = "disabled"; }`. Verified 2026-08-17 by decompiling the
+	# very image this function had just written: model "Daylight Computer
+	# DC-1", `dsi@14013000 { status = "disabled" }`, and zero panel nodes,
+	# against a stock DT that has dsi0 `okay` and a panel1@0. Booting it gives
+	# a device with no display at all. The stock DT is what every display
+	# workaround in this repo (dc1-display-gate, the live GPU/audio overlays,
+	# the ldo_vibr of_node fallback) is written against.
+	#
+	# So this is opt-in until the mainline DTS can drive the panel. Set
+	# DC1_DEPLOY_VENDOR_BOOT=1 to get it -- worth doing to reach the
+	# accelerometer and LVTS thermal, which the stock DT cannot express, but
+	# only with a serial console or SSH to recover through.
+	if [ "${DC1_DEPLOY_VENDOR_BOOT:-0}" = 1 ]; then
+		want_vb=$(awk -v n=jagar-vendor-boot.img '{ f=$2; sub(/^\*/,"",f); if (f==n) print $1 }' SHA256SUMS)
+		[ -n "$want_vb" ] || { log "no jagar-vendor-boot.img entry in SHA256SUMS"; return 1; }
+		log "downloading jagar-vendor-boot.img (DC1_DEPLOY_VENDOR_BOOT=1)"
+		curl -fsSL --retry 3 --retry-delay 3 -o jagar-vendor-boot.img \
+			"$URL_BASE/jagar-vendor-boot.img" \
+			|| { log "cannot fetch jagar-vendor-boot.img"; return 1; }
+		got_vb=$(sha256sum jagar-vendor-boot.img | cut -d' ' -f1)
+		[ "$got_vb" = "$want_vb" ] || { log "jagar-vendor-boot.img sha256 mismatch"; return 1; }
+	else
+		log "not deploying vendor_boot (mainline DTB disables dsi0 -- no display);"
+		log "  set DC1_DEPLOY_VENDOR_BOOT=1 to override"
+	fi
 
 	active=$(active_slot) || { log "cannot determine the active slot"; return 1; }
 	[ -z "$active" ] && { log "cannot determine the active slot"; return 1; }
@@ -185,12 +206,14 @@ deploy() {
 		return 1
 	fi
 
-	vb_bytes=$(wc -c < jagar-vendor-boot.img | tr -d ' ')
-	vb_sectors=$(cat "$sysblock/${vendor_boot_dev##*/}/size" 2>/dev/null || echo 0)
-	case "$vb_sectors" in ''|*[!0-9]*) vb_sectors=0 ;; esac
-	if [ "$vb_bytes" -gt $((vb_sectors * 512)) ]; then
-		log "jagar-vendor-boot.img ($vb_bytes bytes) larger than $vendor_boot_dev"
-		return 1
+	if [ -f jagar-vendor-boot.img ]; then
+		vb_bytes=$(wc -c < jagar-vendor-boot.img | tr -d ' ')
+		vb_sectors=$(cat "$sysblock/${vendor_boot_dev##*/}/size" 2>/dev/null || echo 0)
+		case "$vb_sectors" in ''|*[!0-9]*) vb_sectors=0 ;; esac
+		if [ "$vb_bytes" -gt $((vb_sectors * 512)) ]; then
+			log "jagar-vendor-boot.img ($vb_bytes bytes) larger than $vendor_boot_dev"
+			return 1
+		fi
 	fi
 
 	log "writing jagar-boot.img ($img_bytes bytes) to $boot_dev (inactive slot $inactive)"
@@ -201,13 +224,15 @@ deploy() {
 	[ "$readback" = "$got" ] || { log "boot image read-back mismatch"; return 1; }
 	log "boot image verified on $boot_dev"
 
-	log "writing jagar-vendor-boot.img ($vb_bytes bytes) to $vendor_boot_dev (inactive slot $inactive)"
-	dd if=jagar-vendor-boot.img of="$vendor_boot_dev" bs=1M conv=fsync 2>/dev/null \
-		|| { log "vendor_boot image write failed"; return 1; }
-	sync
-	readback_vb=$(head -c "$vb_bytes" "$vendor_boot_dev" | sha256sum | cut -d' ' -f1)
-	[ "$readback_vb" = "$got_vb" ] || { log "vendor_boot image read-back mismatch"; return 1; }
-	log "vendor_boot image verified on $vendor_boot_dev"
+	if [ -f jagar-vendor-boot.img ]; then
+		log "writing jagar-vendor-boot.img ($vb_bytes bytes) to $vendor_boot_dev (inactive slot $inactive)"
+		dd if=jagar-vendor-boot.img of="$vendor_boot_dev" bs=1M conv=fsync 2>/dev/null \
+			|| { log "vendor_boot image write failed"; return 1; }
+		sync
+		readback_vb=$(head -c "$vb_bytes" "$vendor_boot_dev" | sha256sum | cut -d' ' -f1)
+		[ "$readback_vb" = "$got_vb" ] || { log "vendor_boot image read-back mismatch"; return 1; }
+		log "vendor_boot image verified on $vendor_boot_dev"
+	fi
 
 	# Arm the inactive slot for one try: priority 15/tries 1/successful 0, the
 	# other (proven) slot dropped to 14. On a failed boot the preloader
