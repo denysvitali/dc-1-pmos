@@ -45,11 +45,15 @@ stub_entry:
 	adrp	x20, _start
 	add	x20, x20, :lo12:_start		/* our load address */
 
-	/* Small stack just past the image; nothing else is live up there. */
-	adrp	x1, _end
-	add	x1, x1, :lo12:_end
-	add	x1, x1, #0x1000
-	and	x1, x1, #~0xf
+	/*
+	 * Stack. It MUST live inside this stub's own image: pack.sh appends
+	 * the dtb and the kernel immediately after _end, so anything "just
+	 * past the image" grows straight down through the payload. An earlier
+	 * version put sp at _end+0x1000 and the C frame quietly scribbled over
+	 * the device tree we were about to hand the kernel.
+	 */
+	adrp	x1, stack_top
+	add	x1, x1, :lo12:stack_top
 	mov	sp, x1
 
 	mov	x0, x19				/* lk_fdt */
@@ -76,3 +80,10 @@ stub_entry:
 	.align	3
 jump_target:
 	.quad	0
+
+	/* Inside .data, so it is part of the image pack.sh measures. */
+	.section .data
+	.align	4
+stack_bottom:
+	.space	4096
+stack_top:

@@ -51,6 +51,25 @@ extern unsigned long jump_target;
  * is free, and it is 2 MiB aligned as the arm64 boot protocol wants. */
 #define KERNEL_RELOC_PA	0x44000000UL
 
+/*
+ * Trace word, so a failed swap can be diagnosed without a console.
+ *
+ * The framebuffer reservation is 0x173e000 bytes but only 1216*1600*4 is
+ * scanned out, so this sits ~8 MiB in: past anything visible, inside a range
+ * that is reserved (nothing else allocates it) yet not "no-map" (so Linux can
+ * still read it afterwards via /dev/mem). Written as a magic plus the last
+ * step reached.
+ */
+#define TRACE_PA	0xff0c1000UL
+#define TRACE_MAGIC	0x44544253u	/* "DTBS" */
+
+static void trace(u32 step)
+{
+	volatile u32 *t = (volatile u32 *)TRACE_PA;
+	t[0] = TRACE_MAGIC;
+	t[1] = step;
+}
+
 static u32 be32(const void *p)
 {
 	const u8 *b = p;
@@ -81,7 +100,7 @@ static void *fdt_find(void *fdt, const char *node, const char *prop, u32 *len)
 	u8 *p = base + be32(&h->off_dt_struct);
 	u8 *end = p + be32(&h->size_dt_struct);
 	const char *strs = (const char *)(base + be32(&h->off_dt_strings));
-	int depth = 0, in = 0;
+	int depth = 0, in = 0;	/* root is itself a node, so top level is depth 2 */
 
 	while (p < end) {
 		u32 tag = be32(p); p += 4;
@@ -93,19 +112,19 @@ static void *fdt_find(void *fdt, const char *node, const char *prop, u32 *len)
 			p += (l + 4) & ~3UL;
 			depth++;
 			/* Match "memory" against "memory@40000000" too. */
-			if (depth == 1) {
+			if (depth == 2) {
 				const char *a = name, *b = node;
 				while (*b && *a == *b) { a++; b++; }
 				in = (!*b && (!*a || *a == '@'));
 			}
 		} else if (tag == FDT_END_NODE) {
-			if (depth == 1) in = 0;
+			if (depth == 2) in = 0;
 			depth--;
 		} else if (tag == FDT_PROP) {
 			u32 plen = be32(p), noff = be32(p + 4);
 			u8 *data = p + 8;
 			p = data + ((plen + 3) & ~3U);
-			if (in && depth == 1 && streq(strs + noff, prop)) {
+			if (in && depth == 2 && streq(strs + noff, prop)) {
 				*len = plen;
 				return data;
 			}
@@ -118,8 +137,27 @@ static void *fdt_find(void *fdt, const char *node, const char *prop, u32 *len)
 	return 0;
 }
 
-/* Copy one property across. Ours must be at least as large as LK's. */
-static int copy_prop(void *dst, void *src, const char *node, const char *prop)
+/*
+ * Copy a fixed-size property. The length must match exactly: LK writes
+ * linux,initrd-start/end as 4-byte cells here, and dropping 4 bytes into an
+ * 8-byte big-endian slot would leave the value in the high half -- a silently
+ * wrong address rather than a failure. If the sizes ever disagree we would
+ * rather fall back and boot stock.
+ */
+static int copy_exact(void *dst, void *src, const char *node, const char *prop)
+{
+	u32 slen = 0, dlen = 0;
+	void *s = fdt_find(src, node, prop, &slen);
+	void *d = fdt_find(dst, node, prop, &dlen);
+
+	if (!s || !d || slen != dlen)
+		return -1;
+	memcpy_(d, s, slen);
+	return 0;
+}
+
+/* Copy a string property; ours is padded, so any slack is NUL-filled. */
+static int copy_str(void *dst, void *src, const char *node, const char *prop)
 {
 	u32 slen = 0, dlen = 0;
 	void *s = fdt_find(src, node, prop, &slen);
@@ -128,7 +166,6 @@ static int copy_prop(void *dst, void *src, const char *node, const char *prop)
 	if (!s || !d || slen > dlen)
 		return -1;
 	memcpy_(d, s, slen);
-	/* Pad the remainder so a shorter string stays NUL-terminated. */
 	for (u32 i = slen; i < dlen; i++)
 		((u8 *)d)[i] = 0;
 	return 0;
@@ -141,20 +178,31 @@ unsigned long dtbswap_main(unsigned long lk_fdt, unsigned long base)
 	void *kern_src = (void *)(base + payload.kern_off);
 	void *kern_dst = (void *)KERNEL_RELOC_PA;
 
+	trace(1);
 	/* The kernel moves either way; only the fdt choice is conditional. */
 	memcpy_(kern_dst, kern_src, payload.kern_len);
 	jump_target = KERNEL_RELOC_PA;
+	trace(2);
 
 	if (!lk || be32(lk) != FDT_MAGIC)
 		return lk_fdt;			/* nothing sane to copy from */
+	trace(3);
 	if (be32(our) != FDT_MAGIC)
 		return lk_fdt;			/* our payload is broken */
+	trace(4);
 
-	if (copy_prop(our, lk, "chosen", "bootargs") ||
-	    copy_prop(our, lk, "chosen", "linux,initrd-start") ||
-	    copy_prop(our, lk, "chosen", "linux,initrd-end") ||
-	    copy_prop(our, lk, "memory", "reg"))
-		return lk_fdt;			/* boot stock rather than guess */
+	if (copy_str(our, lk, "chosen", "bootargs"))
+		return lk_fdt;
+	trace(5);
+	if (copy_exact(our, lk, "chosen", "linux,initrd-start"))
+		return lk_fdt;
+	trace(6);
+	if (copy_exact(our, lk, "chosen", "linux,initrd-end"))
+		return lk_fdt;
+	trace(7);
+	if (copy_exact(our, lk, "memory", "reg"))
+		return lk_fdt;
+	trace(8);
 
 	return (unsigned long)our;
 }

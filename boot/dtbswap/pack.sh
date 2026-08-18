@@ -31,9 +31,10 @@ cp "$DTB" "$WORK/dtb"
 fdtput -t s "$WORK/dtb" /chosen bootargs "$(printf '%1023s' '')" ||
 	die "cannot pad /chosen/bootargs"
 
-# initrd addresses: 8 bytes each, matching what LK writes.
-fdtput -t x "$WORK/dtb" /chosen linux,initrd-start 0 0 || die "cannot add linux,initrd-start"
-fdtput -t x "$WORK/dtb" /chosen linux,initrd-end   0 0 || die "cannot add linux,initrd-end"
+# initrd addresses: 4-byte cells, matching what LK writes on this device.
+# copy_exact refuses a size mismatch rather than mis-place a big-endian value.
+fdtput -t x "$WORK/dtb" /chosen linux,initrd-start 0 || die "cannot add linux,initrd-start"
+fdtput -t x "$WORK/dtb" /chosen linux,initrd-end   0 || die "cannot add linux,initrd-end"
 
 # /memory must already exist -- the stub only overwrites its reg, and a dtb
 # with no memory node is a build mistake, not something to paper over.
