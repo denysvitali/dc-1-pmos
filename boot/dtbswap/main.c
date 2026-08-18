@@ -209,10 +209,18 @@ static int copy_exact(void *dst, void *src, const char *node, const char *prop)
  * mmsys unprobed -- silently, no log line -- and with no mmsys there is no
  * clk-mt6789-mm, so SMI, mutex, the disp blocks and DSI all sit at -110.
  * Stage 4 is the plain upstream probe path.
+ *
+ * The panel driver carries a gate of the same shape, defaulting to 0, which
+ * returns -EPROBE_DEFER before it even asks for VDDI -- so the panel would
+ * stay deferred even once mmsys and DSI come up. Stage 3 is its full path.
+ *
+ * Both are builtin (=y), so the parameter prefix is the object basename with
+ * dashes turned into underscores.
  */
 static const char extra_args[] =
 	" pd_ignore_unused clk_ignore_unused regulator_ignore_unused"
-	" mtk_cmdq_mailbox.jagar_mt6789_probe_stage=4";
+	" mtk_cmdq_mailbox.jagar_mt6789_probe_stage=4"
+	" panel_novatek_nt36523.jagar_probe_stage=3";
 
 /* Copy LK's cmdline, then append the flags above. Needs the padding pack.sh
  * puts on /chosen/bootargs; refuses rather than truncate. */
