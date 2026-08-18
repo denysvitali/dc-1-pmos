@@ -63,6 +63,41 @@ extern unsigned long jump_target;
 #define TRACE_PA	0xff0c1000UL
 #define TRACE_MAGIC	0x44544253u	/* "DTBS" */
 
+/*
+ * Report the outcome as a COUNT OF BARS on LK's live scanout.
+ *
+ * The DC-1 panel is monochrome, so colour carries no information -- every hue
+ * lands on a similar grey. Count and position do survive: this clears a strip
+ * to white and draws N black bars, so the result is read by counting them.
+ * Drawn within milliseconds of getting control, using only the buffer LK is
+ * already scanning out. Geometry matches jagar_fbcon.
+ */
+#define FB_PA		0xfe8c1000UL
+#define FB_STRIDE	4864U
+#define FB_W		1200U
+#define BAR_H		30U
+#define BAR_GAP		20U
+#define STRIP_H		((BAR_H + BAR_GAP) * 9U)
+
+#define WHITE		0xffffffffu
+#define BLACK		0xff000000u
+
+static void fill_rows(u32 y0, u32 rows, u32 argb)
+{
+	volatile u32 *fb = (volatile u32 *)FB_PA;
+	for (u32 y = y0; y < y0 + rows; y++)
+		for (u32 x = 0; x < FB_W; x++)
+			fb[(y * FB_STRIDE) / 4 + x] = argb;
+}
+
+/* n bars = the step reached; 8 bars means the swap succeeded. */
+static void report(u32 n)
+{
+	fill_rows(0, STRIP_H, WHITE);
+	for (u32 i = 0; i < n && i < 9; i++)
+		fill_rows(BAR_GAP + i * (BAR_H + BAR_GAP), BAR_H, BLACK);
+}
+
 static void trace(u32 step)
 {
 	volatile u32 *t = (volatile u32 *)TRACE_PA;
@@ -156,18 +191,39 @@ static int copy_exact(void *dst, void *src, const char *node, const char *prop)
 	return 0;
 }
 
-/* Copy a string property; ours is padded, so any slack is NUL-filled. */
-static int copy_str(void *dst, void *src, const char *node, const char *prop)
-{
-	u32 slen = 0, dlen = 0;
-	void *s = fdt_find(src, node, prop, &slen);
-	void *d = fdt_find(dst, node, prop, &dlen);
+/*
+ * Flags our tree needs that LK's command line will never carry.
+ *
+ * LK builds the whole cmdline itself and we copy it verbatim, which means the
+ * DTS bootargs are discarded -- including pd_ignore_unused. Without it genpd
+ * powers the DISP domain off at ~4.8s ("PM: genpd: Disabling unused power
+ * domains") before mtk-smi has claimed it, so every SMI probe defers and dies
+ * at the 16s timeout, taking the whole display pipeline with it. LK leaves
+ * that domain on for its own scanout; we just have to stop Linux turning it
+ * off before the drivers arrive.
+ */
+static const char extra_args[] =
+	" pd_ignore_unused clk_ignore_unused regulator_ignore_unused";
 
-	if (!s || !d || slen > dlen)
+/* Copy LK's cmdline, then append the flags above. Needs the padding pack.sh
+ * puts on /chosen/bootargs; refuses rather than truncate. */
+static int copy_bootargs(void *dst, void *src)
+{
+	u32 slen = 0, dlen = 0, n = 0;
+	u8 *s = fdt_find(src, "chosen", "bootargs", &slen);
+	u8 *d = fdt_find(dst, "chosen", "bootargs", &dlen);
+
+	if (!s || !d)
 		return -1;
-	memcpy_(d, s, slen);
-	for (u32 i = slen; i < dlen; i++)
-		((u8 *)d)[i] = 0;
+	while (n < slen && s[n])		/* LK's string, without its NUL */
+		n++;
+	u32 extra = sizeof(extra_args) - 1;
+	if (n + extra + 1 > dlen)
+		return -1;
+	memcpy_(d, s, n);
+	memcpy_(d + n, extra_args, extra);
+	for (u32 i = n + extra; i < dlen; i++)
+		d[i] = 0;
 	return 0;
 }
 
@@ -184,25 +240,38 @@ unsigned long dtbswap_main(unsigned long lk_fdt, unsigned long base)
 	jump_target = KERNEL_RELOC_PA;
 	trace(2);
 
-	if (!lk || be32(lk) != FDT_MAGIC)
-		return lk_fdt;			/* nothing sane to copy from */
+	if (!lk || be32(lk) != FDT_MAGIC) {
+		report(2);			/* 2 bars: LK handed us no usable fdt */
+		return lk_fdt;
+	}
 	trace(3);
-	if (be32(our) != FDT_MAGIC)
-		return lk_fdt;			/* our payload is broken */
+	if (be32(our) != FDT_MAGIC) {
+		report(3);			/* 3 bars: our payload is not an fdt */
+		return lk_fdt;
+	}
 	trace(4);
 
-	if (copy_str(our, lk, "chosen", "bootargs"))
+	if (copy_bootargs(our, lk)) {
+		report(4);			/* 4 bars: bootargs copy failed */
 		return lk_fdt;
+	}
 	trace(5);
-	if (copy_exact(our, lk, "chosen", "linux,initrd-start"))
+	if (copy_exact(our, lk, "chosen", "linux,initrd-start")) {
+		report(5);			/* 5 bars: initrd-start failed */
 		return lk_fdt;
+	}
 	trace(6);
-	if (copy_exact(our, lk, "chosen", "linux,initrd-end"))
+	if (copy_exact(our, lk, "chosen", "linux,initrd-end")) {
+		report(6);			/* 6 bars: initrd-end failed */
 		return lk_fdt;
+	}
 	trace(7);
-	if (copy_exact(our, lk, "memory", "reg"))
+	if (copy_exact(our, lk, "memory", "reg")) {
+		report(7);			/* 7 bars: /memory reg failed */
 		return lk_fdt;
+	}
 	trace(8);
 
+	report(8);				/* 8 bars: swapped, booting our dtb */
 	return (unsigned long)our;
 }

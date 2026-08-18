@@ -41,6 +41,20 @@ payload:
 	.long	0				/* kernel length */
 
 stub_entry:
+	/*
+	 * Trace from assembly, before the stack exists and before any C runs.
+	 * This is what distinguishes "LK never jumped to us" (trace stays 0)
+	 * from "we got control but the C side died" (trace reads 0xa1).
+	 * 0xff0c1000, magic "DTBS".
+	 */
+	movz	x2, #0x1000
+	movk	x2, #0xff0c, lsl #16
+	movz	w3, #0x4253
+	movk	w3, #0x4454, lsl #16
+	str	w3, [x2]
+	mov	w3, #0xa1
+	str	w3, [x2, #4]
+
 	mov	x19, x0				/* keep LK's fdt */
 	adrp	x20, _start
 	add	x20, x20, :lo12:_start		/* our load address */
@@ -54,7 +68,12 @@ stub_entry:
 	 */
 	adrp	x1, stack_top
 	add	x1, x1, :lo12:stack_top
+	and	x1, x1, #~0xf			/* SP must be 16-byte aligned */
 	mov	sp, x1
+
+	/* Reached the stack setup. */
+	mov	w3, #0xa2
+	str	w3, [x2, #4]
 
 	mov	x0, x19				/* lk_fdt */
 	mov	x1, x20				/* base */
