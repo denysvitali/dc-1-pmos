@@ -202,8 +202,17 @@ static int copy_exact(void *dst, void *src, const char *node, const char *prop)
  * that domain on for its own scanout; we just have to stop Linux turning it
  * off before the drivers arrive.
  */
+/*
+ * jagar_mt6789_probe_stage: the GCE (CMDQ mailbox) driver carries a bringup
+ * staging gate that defaults to 0, which makes gce0 probe return -ENODEV
+ * forever. mmsys names gce0 in mediatek,gce-client-reg, so fw_devlink holds
+ * mmsys unprobed -- silently, no log line -- and with no mmsys there is no
+ * clk-mt6789-mm, so SMI, mutex, the disp blocks and DSI all sit at -110.
+ * Stage 4 is the plain upstream probe path.
+ */
 static const char extra_args[] =
-	" pd_ignore_unused clk_ignore_unused regulator_ignore_unused";
+	" pd_ignore_unused clk_ignore_unused regulator_ignore_unused"
+	" mtk_cmdq_mailbox.jagar_mt6789_probe_stage=4";
 
 /* Copy LK's cmdline, then append the flags above. Needs the padding pack.sh
  * puts on /chosen/bootargs; refuses rather than truncate. */
