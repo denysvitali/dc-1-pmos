@@ -25,7 +25,10 @@ wait_for() {
 }
 
 panel=/sys/module/panel_novatek_nt36523/parameters
+# The GCE node is 10228000.gce on the stock tree and 10228000.mailbox on the
+# mainline one; take whichever exists.
 gce=/sys/bus/platform/devices/10228000.gce
+[ -e "$gce" ] || gce=/sys/bus/platform/devices/10228000.mailbox
 
 [ -d "$panel" ] || { echo "panel driver not present (wrong kernel?)" >&2; exit 1; }
 
@@ -36,7 +39,7 @@ write_sysfs /sys/module/mediatek_drm/parameters/jagar_skip_drm_client Y || exit 
 # Bind GCE/CMDQ first (opening the panel first can wedge the interconnect).
 if [ ! -L "$gce/driver" ]; then
 	write_sysfs /sys/module/mtk_cmdq_mailbox/parameters/jagar_mt6789_probe_stage 4 || exit 1
-	printf '10228000.gce\n' > /sys/bus/platform/drivers_probe \
+	printf '%s\n' "${gce##*/}" > /sys/bus/platform/drivers_probe \
 		|| { echo "GCE drivers_probe write" >&2; exit 1; }
 	wait_for "$gce/driver" 5 || { echo "GCE did not bind" >&2; exit 1; }
 fi
