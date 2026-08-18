@@ -221,9 +221,19 @@ static int copy_exact(void *dst, void *src, const char *node, const char *prop)
  * Builtin (=y), so the parameter prefix is the object basename with dashes
  * turned into underscores.
  */
+/*
+ * cma=256M@0-4G: the display path has no IOMMU on this tree, so every
+ * framebuffer is a physically contiguous CMA allocation by a device with
+ * the default 32-bit DMA mask -- and the kernel's default placement puts
+ * the CMA pool at 0x100000000, entirely above 4G. Every CREATE_DUMB then
+ * fails with ENOMEM and the compositor can never post a frame. Pin the
+ * pool below 4G and size it for triple-buffered 1200x1600 ARGB with room
+ * to spare.
+ */
 static const char extra_args[] =
 	" pd_ignore_unused clk_ignore_unused regulator_ignore_unused"
-	" mtk_cmdq_mailbox.jagar_mt6789_probe_stage=4";
+	" mtk_cmdq_mailbox.jagar_mt6789_probe_stage=4"
+	" cma=256M@0-4G";
 
 /* Copy LK's cmdline, then append the flags above. Needs the padding pack.sh
  * puts on /chosen/bootargs; refuses rather than truncate. */
