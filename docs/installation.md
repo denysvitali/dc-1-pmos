@@ -241,29 +241,21 @@ is streamed over USB).
   (it resolves its target strictly by the GPT partition name `userdata`, and
   writes a boot image only to the GPT partition named `boot_a` — the slot you
   already flashed — after verifying the image against `SHA256SUMS`).
-- **`vendor_boot` — and with it `dtbo` — is a special case, not a blanket
-  prohibition.** LK reads the device tree from `vendor_boot`, so it is the only
-  way our mainline tree can ship, and the repo does write it — but never by
-  default. `dc1-boot-sync` needs `DC1_DEPLOY_VENDOR_BOOT=1`; `dc1-install.sh`
-  needs an explicit `--vendor-boot-image`. Both write `vendor_boot_a` only, so
-  `vendor_boot_b` keeps the stock tree and one slot stays known-good. Do not
-  write both. Note the mainline tree has not been booted on hardware yet.
-- **The mainline tree also requires replacing `dtbo_a`.** LK merges
-  `dtbo_<slot>` onto the DTB from `vendor_boot_<slot>`, and the stock overlay
-  is written against the *stock* tree: its `__fixups__` bind symbols (`pio`,
-  `mt6358_vrf18_reg`, …) that a kernel-built DTB does not export, because
-  kernel dtbs carry no `__symbols__` node. Merged onto the mainline base
-  anyway, it grafts stock nodes into mainline ones — reported from hardware as
-  a mainline `pinctrl@10005000` holding stock pin state and a stock
-  `panel1@0` under `dsi@14013000`, which is `pinctrl` failing to probe with
-  `invalid resource (null)` and then no display, no USB, and LK falling back to
-  slot B. So writing the mainline `vendor_boot_a` **without** neutralising
-  `dtbo_a` reliably produces a logo → blank → reset loop. Both tools now write
-  an inert overlay (a `dt_table` with exactly one fragment-free entry --
-  zero entries is an LK error path, not "no overlay") to `dtbo_a` in the same
-  operation; this is the one sanctioned `dtbo` write, it is slot A only, and
-  `dtbo_b` stays paired with the stock `vendor_boot_b`. Do not flash a
-  mainline `vendor_boot` by hand without doing the same.
+- **Writing `vendor_boot` does not change the device tree.** LK takes the
+  kernel's DT from `lk_main_dtb` (a signed image inside the `lk` partition)
+  merged with the signed `dtbo`; the DTB inside `vendor_boot` never reaches
+  the kernel. This was measured from LK's own log on 2026-08-18 and corrects
+  what earlier revisions of this page said. `dc1-boot-sync`'s
+  `DC1_DEPLOY_VENDOR_BOOT=1` and `dc1-install.sh --vendor-boot-image` still
+  exist, but they cannot ship a device tree — treat them as no-ops for that
+  purpose.
+- **Never write `dtbo`.** LK authenticates it (`img_auth_required = 1`,
+  `sbc_en = 1`, `dtbo cert chain vfy pass`). An unsigned overlay fails that
+  check and LK marks the slot dead before the kernel runs — no log, no
+  display, no USB. Both slots on the development device were lost this way.
+  Shipping a mainline tree would require a signed `lk`/`dtbo`, which this
+  project cannot produce; a runtime DT overlay applied by Linux on the stock
+  tree is the supported route.
 - The device has A/B slots; this flow only uses `boot_a`.
 - If a flashed boot image fails to boot, the watchdog resets the device
   back into LK fastboot, so you can reflash `boot_a` and try again. A

@@ -110,38 +110,49 @@ Everything committed here is world-readable. Non-negotiable rules:
   carries that 180° itself, on top of the chip's physical mounting. If
   `rotation = <180>` is ever added, take the 180° back out of the matrix in
   the same change or the screen will rotate the wrong way round.
-- LK takes the DTB from **`vendor_boot`**, not `boot.img`. Writing it is
-  therefore how a device tree ships — and it is gated: `dc1-boot-sync`
-  needs `DC1_DEPLOY_VENDOR_BOOT=1`, `dc1-install.sh` needs an explicit
-  `--vendor-boot-image` and writes `vendor_boot_a` only. Never write both
-  slots: that leaves no fallback, and a tree that fails to light the panel
-  is only recoverable through fastboot. The mainline DTB has not been booted
-  on hardware yet.
-- LK also **merges `dtbo_<slot>` onto that DTB**, so shipping the mainline
-  tree means neutralising the stock overlay on the same slot. The stock
-  `dtbo` is written against the stock tree — its `__fixups__` bind symbols
-  (`pio`, `mt6358_vrf18_reg`, …) that a kernel-built DTB never exports,
-  since kernel dtbs are not built with `-@` and carry no `__symbols__`.
-  Merged onto the mainline base it grafts stock nodes into mainline ones:
-  reported from hardware as a mainline `pinctrl@10005000` holding stock pin
-  state and a stock `panel1@0` under `dsi@14013000`, i.e. pinctrl failing to
-  probe (`invalid resource (null)`, -22), no display, no UDC, and LK
-  exhausting the slot's retries. This is the **one** sanctioned exception to
-  "never write `dtbo`": both writers replace `dtbo_a` with a `dt_table`
-  holding one inert overlay whenever they write the mainline
-  `vendor_boot_a`, slot A only, leaving `vendor_boot_b`/`dtbo_b` a matched
-  stock pair. It must be **one** entry, not zero: LK's own strings show a
-  zero-entry table takes the `dtbo_entry_idx >= num_of_dtbo` path and then
-  loads entry 0 of an empty table (`load_dtbo fail`, `DT overlay fail`), and
-  a zero-entry stub was tried on hardware and did not boot. The rule elsewhere still holds — nothing in the normal install
-  path writes `dtbo`.
-- `Machine model: MT8781V/NA` in the kernel log says **nothing** about which
-  DT loaded. LK carries a chip-variant string table (`MT6789(ENG)`,
-  `MT6789V/CD`, `MT8781V/CA`, `MT8781V/NA`) and patches `model` from the
-  fuses before handing the tree over; a device running the stock tree whose
-  `vendor_boot` DTB reads `model = MT6789` still reports `MT8781V/NA`. Do
-  not use it to diagnose DT substitution — check for node names unique to
-  one tree instead.
+- **The kernel's device tree does NOT come from `vendor_boot`.** It is
+  `lk_main_dtb` — a *signed* image inside the **`lk`** partition — merged
+  with the *signed* **`dtbo`**. Read straight out of LK's own log
+  (2026-08-18):
+
+      lk_main_dtb image name found
+      mkimg hdr detected (178773)
+      Load 'lk_b' partition to 0x... (178773 bytes in 10 ms)
+      Load 'dtbo_b' partition to 0x... (43240 bytes)
+      dtbo_size=43176
+      after overlay, fdt size(221949)
+
+  and 178773 + 43176 = 221949 exactly. The DTB inside `vendor_boot` is a
+  *different* blob (178385 bytes) that never reaches the kernel. This
+  retracts the earlier "LK takes the DTB from `vendor_boot`" invariant,
+  which was wrong and cost at least six boot cycles: every `vendor_boot`
+  write left the device tree completely unchanged, which is why `model`
+  never moved off the stock value no matter what was flashed.
+- **`lk` and `dtbo` are authenticated; `boot`/`vendor_boot` are not.** For
+  the DT images LK logs `img_auth_required = 1`, `[SBC] sbc_en = 1`,
+  `[SEC] dtbo cert chain vfy pass`, `[SEC] image dtbo auth pass`; for
+  vendor_boot it logs `[AVB] img_auth_required = 0`. So an unsigned `dtbo`
+  fails authentication and LK kills the slot **before the kernel starts** —
+  no kernel log, no pstore record, just a slot marked dead. Both slots were
+  lost that way on 2026-08-18 to a hand-built 136-byte overlay. We cannot
+  sign these images, so **shipping a mainline device tree through `lk` or
+  `dtbo` is not possible**; the only route left is a runtime DT overlay
+  applied by Linux on top of the stock tree (the mechanism the
+  `*-live-*-probe.dtbo` files already use).
+- **LK's own log is readable at runtime, and is the diagnostic channel of
+  record.** `CONFIG_STRICT_DEVMEM` is off, so:
+
+      dd if=/dev/mem bs=4096 skip=$((0x7ffbf000/4096)) count=64   # mblock-7-log_store
+
+  gives LK's log for the boot that just happened (LK **resets** before
+  falling back, so the ring only ever holds the slot that succeeded). A
+  copy is persisted in the **`expdb`** partition — that is where to look
+  for a *failed* slot's log. Prefer this over guessing from silence: three
+  hypotheses in a row (`/memory` path, "pstore is stale", boot.img cmdline
+  markers) were wrong and each cost a boot.
+- LK does **not** propagate the boot.img header `cmdline` field to the
+  kernel; it builds the whole command line itself. Do not use it to tag a
+  slot.
 
 ## CI
 

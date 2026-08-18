@@ -27,12 +27,11 @@
 #      5555 (DC1-INSTALL-V1 protocol; see installer/src/receive.sh). The
 #      device verifies the hash before the filesystem becomes mountable,
 #      resizes, provisions, and reboots into LK fastboot.
-#   5. (--boot-image) flash the real kernel boot image to boot_a, then reboot
-#      into the installed system. --vendor-boot-image additionally writes our
-#      mainline DTB to vendor_boot_a and replaces dtbo_a with an empty
-#      overlay, because LK merges dtbo onto the vendor_boot DTB and the stock
-#      overlay corrupts a mainline base. Slot A only, both times: the B slot
-#      keeps its matched stock vendor_boot/dtbo pair as the fallback.
+#   5. (--boot-image) flash the real kernel boot image and the vendor_boot
+#      (our mainline DTB, required for the kernel to see the right device
+#      tree) to both A/B slots, then reboot into the installed system.
+#      jagar-vendor-boot.img is auto-detected next to --boot-image if
+#      present; both images must come from the same release.
 #
 # Needs: fastboot (for steps 1/5), zstd (if the rootfs is .zst), ip, nc,
 # sha256sum, and one of mkpasswd / openssl / busybox for password hashing.
@@ -50,40 +49,6 @@ die() { echo "dc1-install: ERROR: $*" >&2; exit 1; }
 
 maybe_sudo() {
 	if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi
-}
-
-# write_dtbo_stub FILE -- a dt_table holding one overlay that does nothing.
-#
-# LK merges dtbo_<slot> onto the DTB it takes from vendor_boot_<slot>, so the
-# stock overlay and our mainline DTB cannot coexist. The stock overlay's
-# __fixups__ bind symbols (`pio`, `mt6358_vrf18_reg`, ...) that the mainline
-# DTB does not export -- kernel dtbs are not built with `-@`, so they carry no
-# __symbols__ node. Merged anyway, it grafts stock nodes into mainline ones:
-# observed on hardware as a mainline `pinctrl@10005000` carrying stock pin
-# state and a stock `panel1@0` under `dsi@14013000`, which is pinctrl failing
-# to probe ("invalid resource (null)", -22), then no display, no UDC, and LK
-# exhausting the slot's retries.
-#
-# This carries ONE entry rather than zero. An empty table looks like the
-# obvious "nothing to merge", but it is an error path in this LK, whose own
-# strings are:
-#
-#   Set dtbo_entry_idx to 0: dtbo_entry_idx %d >= num_of_dtbo %d.
-#   load_dtbo fail, fdt size(%d)
-#   ufdt_apply_overlay() failed!
-#   DT overlay fail (%d)
-#
-# With num_of_dtbo = 0 the index clamps to 0 and LK loads entry 0 of a table
-# that has none. A zero-entry stub was tried on hardware and did not boot.
-#
-# So: one entry, pointing at a valid FDT whose root is empty and which declares
-# no fragments. LK finds a well-formed overlay, applies it, changes nothing.
-# Bytes are dt_table_header (magic, total_size 136, header_size 32,
-# dt_entry_size 32, dt_entry_count 1, dt_entries_offset 32, page_size 2048,
-# version 0), then one dt_table_entry (size 72, offset 64), then the 72-byte
-# overlay -- `/dts-v1/; /plugin/; / { };` as built by dtc.
-write_dtbo_stub() {
-	printf '\327\267\253\036\000\000\000\210\000\000\000\040\000\000\000\040\000\000\000\001\000\000\000\040\000\000\010\000\000\000\000\000\000\000\000\110\000\000\000\100\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\320\015\376\355\000\000\000\110\000\000\000\070\000\000\000\110\000\000\000\050\000\000\000\021\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\002\000\000\000\011' > "$1"
 }
 
 # --------------------------------------------------------------- validation
@@ -383,17 +348,6 @@ if [ -n "$BOOT_IMAGE" ]; then
 		msg "  on hardware -- keep serial or SSH access to recover, and leave"
 		msg "  vendor_boot_b alone as the fallback."
 		fastboot flash vendor_boot_a "$VENDOR_BOOT_IMAGE"
-
-		# LK merges dtbo_a onto the vendor_boot_a DTB, and the stock overlay
-		# mangles a mainline base (see write_dtbo_stub). Leaving it in place is
-		# what produced the logo -> blank -> reset loop reported against this
-		# path. Slot A only: vendor_boot_b/dtbo_b stay a matched stock pair, so
-		# LK still has somewhere to fall back to.
-		msg "replacing dtbo_a with an inert overlay (required by the above)"
-		msg "  The stock overlay is written against the stock tree and corrupts"
-		msg "  the mainline one. dtbo_b is untouched."
-		write_dtbo_stub "$TMPDIR_INSTALL/dtbo-empty.img"
-		fastboot flash dtbo_a "$TMPDIR_INSTALL/dtbo-empty.img"
 	fi
 	fastboot reboot
 	msg "done -- the DC-1 is booting the installed system."
@@ -404,10 +358,6 @@ else
 	msg ""
 	msg "jagar-vendor-boot.img (our mainline DTB) is deliberately not part of"
 	msg "that. It is what reaches the accelerometer and LVTS thermal, but it"
-	msg "has not been booted on hardware yet. If you take it, re-run with"
-	msg "--vendor-boot-image rather than flashing it by hand: LK merges dtbo"
-	msg "onto the vendor_boot DTB, so the mainline tree also needs dtbo_a"
-	msg "replaced with an inert overlay in the same step. Flashing"
-	msg "vendor_boot_a alone leaves the stock overlay to corrupt it, which"
-	msg "boots to a blank screen and no USB. Slot A only, either way."
+	msg "has not been booted on hardware yet. If you take it, flash"
+	msg "vendor_boot_a only and leave vendor_boot_b on the stock tree."
 fi

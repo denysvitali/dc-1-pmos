@@ -13,43 +13,38 @@ kernel pkgrel=24 / device pkgrel=38**, which is the current pin: built-in
 speakers produce audio, and the AFE survives multiple play cycles without
 entering PM error state.
 
-The device still boots the **stock LK device tree** rather than our mainline
-DTB out of `vendor_boot`, and that is what blocks the accelerometer and LVTS
-thermal. LK takes the DTB from `vendor_boot`, so switching means writing that
-partition — and until 2026-08-17 doing so produced a device with **no display
-at all**: the board DTS shipped no panel node and set
-`&dsi0 { status = "disabled"; }`. That was verified by decompiling the image
-the build actually produces (`model = "Daylight Computer DC-1"`,
-`dsi@14013000` disabled, zero panel nodes) after an `apk upgrade` had already
-written it to `vendor_boot_a` and armed the slot.
+The device boots the **stock device tree**, and as of 2026-08-18 we know it
+cannot be replaced. LK takes the kernel's DT from `lk_main_dtb` — a *signed*
+image inside the **`lk`** partition — merged with the *signed* **`dtbo`**.
+Its own log shows `mkimg hdr detected (178773)` for `lk_main_dtb`,
+`dtbo_size=43176`, and `after overlay, fdt size(221949)`; 178773 + 43176 =
+221949 exactly. The DTB inside `vendor_boot` is a different 178385-byte blob
+that never reaches the kernel.
 
-The DTS now describes the panel (kernel `a3a633ef9`). Both premises behind the
-old node-less tree had expired: the Sharp NT36523N timings and init sequence
-were recovered from the vendor module and live in
-`panel-novatek-nt36523.c` under the same `sharp,nt36523n,vdo,120hz` compatible
-the stock tree uses — that driver is already bound on hardware today — and the
-staged probe gates (`jagar_probe_stage`, `jagar_mt6789_probe_stage`, both
-raised by `dc1-display-gate`) are what now stop `mtk_drm` from reprogramming
-LK's live scanout, which is why the stock tree runs with dsi0 `okay`. The node
-is cross-checked property by property against the stock `panel1@0` read back
-from `/proc/device-tree`, and the DTB builds with no dtc warnings.
+That retracts the previous claim on this page that writing `vendor_boot`
+ships our tree. It does not. Six boot attempts (three reported, three on the
+development device) changed nothing about the running DT, which is why
+`Machine model` never budged — LK patches that string from its own
+chip-variant table anyway, so it was never evidence either way.
 
-It is still **opt-in and unbooted**: `dc1-boot-sync` needs
-`DC1_DEPLOY_VENDOR_BOOT=1`, and `dc1-install.sh` needs an explicit
-`--vendor-boot-image` and writes `vendor_boot_a` only so the other slot stays
-visible. Keep it that way until a boot on the mainline DTB is observed to light
-the panel; that boot is the gate for the accelerometer, LVTS thermal, and this
-whole row set.
+Both DT images are authenticated (`img_auth_required = 1`, `sbc_en = 1`,
+`dtbo cert chain vfy pass`), while `boot`/`vendor_boot` are not
+(`[AVB] img_auth_required = 0`). An unsigned `dtbo` therefore fails
+authentication and LK kills the slot before the kernel starts — no kernel
+log at all. Both slots of the development device were lost that way and had
+to be restored from backups.
 
-Both writers now also replace `dtbo_a` with a one-entry, inert `dt_table` in the same
-operation, because LK merges the slot's overlay onto the `vendor_boot` DTB and
-the stock overlay corrupts a mainline base — reported from hardware
-(2026-08-17) as a mainline `pinctrl@10005000` carrying stock pin state and a
-stock `panel1@0` under `dsi@14013000`, giving `pinctrl` probe failure
-(`invalid resource (null)`), a blank panel, no UDC, and an LK fallback to slot
-B. The first attempts at booting the mainline DTB hit exactly this, so those
-runs did **not** test the tree itself; it remains unbooted rather than
-disproven. See [installation.md](installation.md) for the full rule.
+**Consequence for the accelerometer and LVTS thermal rows:** they are not
+gated on "boot the mainline DTB" any more, because that is not reachable.
+The route is a **runtime DT overlay** applied by Linux on top of the stock
+tree — the same mechanism the `mt8781-daylight-jagar-live-*-probe.dtbo`
+files already use. The stock tree exports 416 `__symbols__`, including
+`i2c6 -> /soc/i2c@1101a000` (the MC3416 bus) and `pio -> /soc/pinctrl`, so
+the nodes can be attached by symbol reference.
+
+The board NTC thermal zones and the hall switch were added to the mainline
+DTS anyway (kernel `3d3de59a5`) since they are correct descriptions of the
+hardware, but they only take effect if that tree ever runs.
 
 **What the switch would cost, audited 2026-08-17.** Every device with a driver
 bound on the running (stock) tree was mapped back to its DT node and checked

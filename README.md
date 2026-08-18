@@ -16,10 +16,7 @@ MediaTek MT8781/MT6789). This repository does two things:
 > channel without a working kernel**: if you write the wrong partition, there
 > is no download mode to save you. The flow below only ever writes `boot_a`
 > and `userdata`; never flash `preloader`, `lk`, `dtbo`, `vendor_boot`, or
-> the UFS boot LUNs. (Shipping the *mainline* device tree is the one
-> exception, and it must write `vendor_boot_a` and `dtbo_a` together — see
-> [docs/installation.md](docs/installation.md). It is opt-in, unbooted, and
-> not part of this quickstart.) Flashing is entirely at your own risk.
+> the UFS boot LUNs. Flashing is entirely at your own risk.
 
 ## Quickstart
 
