@@ -1,0 +1,78 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * dtbswap -- arm64 stub that sits where the kernel goes in boot.img.
+ *
+ * LK hands control over using the Linux arm64 boot protocol: MMU and caches
+ * off, x0 = physical address of the device tree it built (signed lk_main_dtb
+ * merged with the signed dtbo), x1..x3 = 0. Since boot.img is the one image
+ * on this device LK does not authenticate, this is the only place we can get
+ * our own device tree in front of the kernel.
+ *
+ * The image is laid out by pack.sh as:
+ *
+ *     [ this stub | our dtb | real kernel Image ]
+ *
+ * with the offsets patched into the header below. LK gunzips the whole thing
+ * to one address and jumps to offset 0, so everything is found PC-relative.
+ */
+
+	.section .head.text, "ax"
+	.globl _start
+_start:
+	/* arm64 Image header -- makes LK treat us as a kernel. */
+	nop					/* code0 (must be a valid insn) */
+	b	stub_entry			/* code1 */
+	.quad	0				/* text_offset */
+	.quad	_end - _start			/* image_size */
+	.quad	0				/* flags: LE, 4K, any placement */
+	.quad	0, 0, 0				/* res2..res4 */
+	.ascii	"ARM\x64"			/* magic */
+	.long	0				/* res5 */
+
+	/*
+	 * Payload table, patched by pack.sh. Kept right after the header so
+	 * the packer can find it at a fixed file offset (0x40).
+	 */
+	.globl payload
+payload:
+	.long	0				/* dtb offset from _start */
+	.long	0				/* dtb length */
+	.long	0				/* kernel offset from _start */
+	.long	0				/* kernel length */
+
+stub_entry:
+	mov	x19, x0				/* keep LK's fdt */
+	adrp	x20, _start
+	add	x20, x20, :lo12:_start		/* our load address */
+
+	/* Small stack just past the image; nothing else is live up there. */
+	adrp	x1, _end
+	add	x1, x1, :lo12:_end
+	add	x1, x1, #0x1000
+	and	x1, x1, #~0xf
+	mov	sp, x1
+
+	mov	x0, x19				/* lk_fdt */
+	mov	x1, x20				/* base */
+	bl	dtbswap_main			/* -> x0 = fdt to boot with */
+
+	mov	x19, x0				/* chosen fdt (ours, or LK's) */
+
+	/*
+	 * Where to jump, published by dtbswap_main. Held in x5: x0..x3 must
+	 * be fdt,0,0,0 at kernel entry, so the target cannot live in x2.
+	 */
+	adrp	x5, jump_target
+	add	x5, x5, :lo12:jump_target
+	ldr	x5, [x5]
+
+	mov	x0, x19
+	mov	x1, xzr
+	mov	x2, xzr
+	mov	x3, xzr
+	br	x5
+
+	.globl jump_target
+	.align	3
+jump_target:
+	.quad	0
