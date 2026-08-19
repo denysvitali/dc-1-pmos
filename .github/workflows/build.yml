@@ -66,14 +66,25 @@ jobs:
       - name: Install verification dependencies
         timeout-minutes: 12
         run: |
-          for attempt in 1 2; do
-            timeout 300 sudo apt-get update && \
-            timeout 300 sudo apt-get install -y --no-install-recommends \
-              e2fsprogs zstd && break
-            echo "apt attempt $attempt failed or hung; retrying" >&2
-            [ "$attempt" = 2 ] && exit 1
-            sleep 10
-          done
+          # Both tools ship preinstalled on ubuntu-24.04 runners; apt is only
+          # a guard against image changes. Today's mirror weather has now
+          # failed this step two ways (silent 30-min hang, then bounded
+          # double failure), so: skip apt entirely when the binaries already
+          # exist, and only hard-fail when they are genuinely missing AND
+          # apt cannot deliver them.
+          if command -v mkfs.ext4 >/dev/null && command -v zstd >/dev/null \
+             || [ -x /usr/sbin/mkfs.ext4 ] && command -v zstd >/dev/null; then
+            echo "e2fsprogs + zstd already present; skipping apt"
+          else
+            for attempt in 1 2; do
+              timeout 300 sudo apt-get update && \
+              timeout 300 sudo apt-get install -y --no-install-recommends \
+                e2fsprogs zstd && break
+              echo "apt attempt $attempt failed or hung; retrying" >&2
+              [ "$attempt" = 2 ] && exit 1
+              sleep 10
+            done
+          fi
           echo /usr/sbin >> "$GITHUB_PATH"
           echo /sbin >> "$GITHUB_PATH"
 
@@ -309,13 +320,22 @@ jobs:
       - name: Install dtbswap stub toolchain
         timeout-minutes: 12
         run: |
-          for attempt in 1 2; do
-            timeout 300 sudo apt-get install -y --no-install-recommends \
-              clang lld llvm device-tree-compiler python3 && break
-            echo "apt attempt $attempt failed or hung; retrying" >&2
-            [ "$attempt" = 2 ] && exit 1
-            sleep 10
-          done
+          # Same mirror-weather tolerance as the verify job's apt step:
+          # skip apt when everything is already on the image.
+          if command -v clang >/dev/null && command -v ld.lld >/dev/null \
+             && command -v llvm-objcopy >/dev/null && command -v dtc >/dev/null \
+             && command -v python3 >/dev/null; then
+            echo "stub toolchain already present; skipping apt"
+          else
+            for attempt in 1 2; do
+              timeout 300 sudo apt-get update && \
+              timeout 300 sudo apt-get install -y --no-install-recommends \
+                clang lld llvm device-tree-compiler python3 && break
+              echo "apt attempt $attempt failed or hung; retrying" >&2
+              [ "$attempt" = 2 ] && exit 1
+              sleep 10
+            done
+          fi
 
       - name: Build installer and system boot images
         run: |
