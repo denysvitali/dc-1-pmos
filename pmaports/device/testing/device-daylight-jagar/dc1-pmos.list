@@ -1,5 +1,6 @@
 # dc-1-pmos rolling package repository, served from the GitHub release. The
 # URL ends in APKINDEX.tar.gz so apk treats it as an index-file URL and
 # resolves packages to <dir>/<name>-<version>.apk (the flat release layout).
-# The index is signed with dc1-apk.rsa.pub (installed in /etc/apk/keys).
+# The index is signed with dc1-apk.rsa.pub (shipped in /usr/share/apk/keys,
+# linked into /etc/apk/keys at boot by dc1-link-apk-keys).
 https://github.com/denysvitali/dc-1-pmos/releases/download/latest/APKINDEX.tar.gz

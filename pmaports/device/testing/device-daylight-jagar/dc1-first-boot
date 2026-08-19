@@ -21,11 +21,24 @@ mkdir -p /var/lib/dc1
 # service ran). apk add is idempotent, so retry the whole thing with a backoff
 # and let the marker (written only on success) catch a still-cold network on
 # the next boot.
+#
+# Output goes to the journal on purpose. The first version silenced apk
+# entirely (`>/dev/null 2>&1`) and gated `apk add` on `apk update` exiting 0
+# -- but apk update returns nonzero if ANY repository failed, so one broken
+# repo (ours, when its signing key was missing) aborted every attempt with
+# no diagnostic anywhere. apk update refreshes the reachable indexes even
+# when it fails, so log the failure and let apk add decide what resolves.
 for attempt in 1 2 3 4 5 6 7 8; do
-	if apk update >/dev/null 2>&1 && apk add $APPS; then
+	apk update ||
+		echo "dc1-first-boot: apk update failed (attempt $attempt/8);" \
+			"trying apk add with the indexes that did refresh" >&2
+	if apk add $APPS; then
 		touch "$MARK"
 		exit 0
 	fi
+	echo "dc1-first-boot: apk add failed (attempt $attempt/8), retrying in 15s" >&2
 	sleep 15
 done
+echo "dc1-first-boot: giving up after 8 attempts; no marker written," \
+	"will retry on the next boot" >&2
 exit 1

@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=44
+pkgrel=45
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -244,11 +244,16 @@ package() {
 	# verify our APKINDEX (built and signed by CI with the matching private
 	# key, held in the DC1_APK_PRIVATE_KEY secret), and the repo line makes
 	# `apk update`/`apk upgrade` pull device/kernel updates from the GitHub
-	# release over the network instead of re-flashing. Installed straight to
-	# /etc/apk/keys: dc1-link-apk-keys only links the Alpine/postmarketOS
-	# key set in /usr/share/apk/keys, not this repo-specific key.
+	# release over the network instead of re-flashing. Installed to
+	# /usr/share/apk/keys (the alpine-keys layout), NOT /etc/apk/keys:
+	# pmbootstrap bind-mounts its own key store over /etc/apk/keys in every
+	# chroot, so a file packaged there lands in the host work directory and
+	# the exported rootfs ships without it (that broke self-update once).
+	# dc1-link-apk-keys links everything in /usr/share/apk/keys into
+	# /etc/apk/keys at boot and on install/upgrade, which restores this key
+	# on real devices where no bind mount is in the way.
 	install -Dm644 "$srcdir"/dc1-apk.rsa.pub \
-		"$pkgdir"/etc/apk/keys/dc1-apk.rsa.pub
+		"$pkgdir"/usr/share/apk/keys/dc1-apk.rsa.pub
 	install -Dm644 "$srcdir"/dc1-pmos.list \
 		"$pkgdir"/etc/apk/repositories.d/dc1-pmos.list
 
@@ -306,7 +311,7 @@ fef7de2bf3ca96f628a30bca8f9226d8a2be9b2bc1d3e19ae28e1eb0012bd142cafa2b00ed57debd
 027a2e22b4c535e152c2444bb875e800d3ed90c5b841204de17d24424bdd53676fac71960f49d34520fa1b6c85012af8dfc8409660d4d75be9dcc04df620b24c  dc1-boot-sync
 efd2b7c4bce2380cc36706b0deefc6e2d901ee856165ea0e89f2faa2d38010125a9048ce73ee23a104d03e2d6e94054746de88486bac8e503174765d45cebb6f  dc1-boot-sync.service
 cb13bde7764d827402f55d5642e1078d2494be6c985740b8da287fe4226f4181922304017e9fe108b1cf81566899bc9202dfd0031efd43a70a5eb3231ffb82e8  device-daylight-jagar.trigger
-5a9537f7bb98a69f73be28e15e4e54e2e68afa53a80e8c52c44eba8bde21c3d4696e0580c958807486b7cd2f805fafc14f1c4352bef599570c0f84d0cb639493  dc1-link-apk-keys
+f6587b81d91c2947020f0ab8426d9dc3e191ecbc604cc299c9b1debcdb51aac9ac20efc8553a7696607fa767181480bf6ee46b7a8f3502e23035fe2fca8c8623  dc1-link-apk-keys
 fdf8d6f958474554e27d62c9a9b9330a2ea3fec9591e50fc863de5cbb27bfbb1ff440ab14f8631cfc72cc3b86a37bef2e509231d9cc6ae190cc92781564b5b8b  dc1-usb-gadget
 ef0b3a6abeb2f201071f8cf136aa147e818e672d2c1ef313252269aca6670e55897912cb965c5f9cd1939f0def0571a116c4651598104d18ce4e4de2773c5ec7  dc1-usb-gadget.service
 20ea802bd872e644b2ffd27d75094a304302b59f86427c62a21872ddd3e0050883c9891ff7fddf779255f8f73a52b3dfaf381a4917dd6a321acbc082aad57d2b  dc1-debug-shell
@@ -335,10 +340,10 @@ b65e984555cef4027fe40070fa90f08d915b1b852be8a7343908de2348a287e24945cfec704af61c
 90979c3b358c57256eed9a577b159725c2711e94f20e38e76528f8d527aece42c8ea2cb38ec2c3bda00e08682908e8b499453394d36ba176a9ec10f8274bc27c  dc1-warmth-metadata.json
 587d05a11510765e4ede06306f7362396d3812075ce24cdd0dd936f2ca02bfbf2201ab619030f134f12b50e4d1227e398b6bd50dc3b543aae6cae418cea5267b  org.gnome.shell.extensions.dc1-warmth.gschema.xml
 a5f6eac3097cd87c93b44334716c27b1110e9ebdd548abaa66c4afd63ba3c62ad4375859819a85254b69da0432d5279e81cb0f07453e00054efa9d7499b44aa0  dc1-link-apk-keys.service
-384d9b9721b22588147f11713aa17c53d90986d2fdadba3922e383cd62a1812e9995c2fc3e0834044ea73c0fef5a21d13e9fa8ca264c8acc6803610d8ced5901  dc1-first-boot
+b3f2c3dd4ff5de3a98038661a95b12572ce6e68a4f5b895c951d1be9cf0f2da20a88039d34c707d4ebf39d359347bb3a759e5d9ab44e3c35c09ce718612a847a  dc1-first-boot
 128fecc2dc6a293971c8e3694505895e2a4a76be6d1866f78c37ba0f472aa3e01d01298f3d7dada6efd291149a41dfc3d4efd686b70d756c346ca95a44349b3d  dc1-first-boot.service
 db4d369e81942ec05a3843b02f2c029a6ce585c5b5e6e5d2036e5f99344b31c2b056729fcf3cd84acd679e2556bac7513aa80e7bc36c2c012b9c1e09631ea655  dc1-apk.rsa.pub
-5f8530cb599e2c6a4ad70ec1b27bc6e9ba99a56a4b8f5918c482f6dcb2865a2cc65fbee8196550129dcdd07d26365f0d0756f0e0cbae0d65980a455f1ea9422a  dc1-pmos.list
+f3e3ef43fe119e376ce3462d69cabd5ce6b4907b5135736c99792b2d35c4be5136f7f8d170e17c09ed094924cba217314c8a66a653715433b8a540c3a6e325f0  dc1-pmos.list
 353598a3b9f8225bea0a7f091d43d7301789ba0323f5cb4b8f9d26783c039c0bf5b0293cd1dae0bcdd3da50f647ca6160f448f3cfc00565bdef0bba4477939c6  gdm-custom.conf
 21e1d1a5b412890feb45066e8e4cf48b00fcc1cd0ae32e970ef0b841853f7b6d24079b975d2bcfd27561d1a6adde9f475b39952164c5d8dc1d80c4f1c87718e0  monitors.xml
 "

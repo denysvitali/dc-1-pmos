@@ -7,6 +7,12 @@
 # ends in "no such package" -- on a device whose only other update route is
 # reflashing the whole rootfs over fastboot.
 #
+# The same link pass also delivers the DC-1 repository key: the device
+# package ships dc1-apk.rsa.pub in /usr/share/apk/keys because a file packaged
+# into /etc/apk/keys never survives the rootfs build (pmbootstrap bind-mounts
+# its own key store over /etc/apk/keys in every chroot, so the file lands in
+# the host work directory and the exported tree ships without it).
+#
 # This lives in its own file because BOTH the post-install and the
 # post-upgrade hook have to do it, and having it in only one is exactly the
 # bug this replaces: the keys were linked on a fresh install and never on an
