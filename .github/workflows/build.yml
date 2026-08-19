@@ -289,7 +289,7 @@ jobs:
         run: |
           for attempt in 1 2; do
             timeout 300 sudo apt-get install -y --no-install-recommends \
-              clang lld device-tree-compiler python3 && break
+              clang lld llvm device-tree-compiler python3 && break
             echo "apt attempt $attempt failed or hung; retrying" >&2
             [ "$attempt" = 2 ] && exit 1
             sleep 10
