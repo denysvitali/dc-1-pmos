@@ -54,10 +54,13 @@ reprogrammed the display.
 
 ## Status
 
-Builds and packs; **never executed on hardware**. The kernel relocation target
-(`KERNEL_RELOC_PA`, 0x44000000) is chosen because DRAM starts at 0x40000000 and
-the first reserved carve-out is at 0x48080000, but that has not been proven by
-a boot.
+**Boots on hardware.** The appended kernel flags were confirmed reaching the
+kernel on 2026-08-18 (`d6463dd`), and by `aa436ce` (2026-08-19) a mainline-DT
+boot brought the display all the way up: DRM bound OVL/RDMA/DSI, card0 formed
+with the DSI-1 connector, and gnome-shell ran with atomic modesetting. The
+kernel relocation target (`KERNEL_RELOC_PA`, 0x44000000) is therefore
+boot-proven. Not everything the stock tree described is in the mainline DTS
+yet — Wi-Fi in particular does not come up on a dtbswap boot.
 
 ## Build
 
