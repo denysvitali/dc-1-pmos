@@ -431,6 +431,20 @@ install -m 0644 "$SRC/partlib.sh" "$s/etc/partlib.sh"
 install -m 0755 "$OUT/dc1tools" "$s/bin/dc1tools"
 ln -sf dc1tools "$s/bin/dc1-reboot-fastboot"
 
+# MT7902 firmware + regulatory.db, same pinned set as the installer image.
+# The Wi-Fi driver is built in and its firmware request fires at ~2.8s --
+# while THIS initramfs is still the root filesystem, seconds before
+# jagar-root is mounted -- so the blobs must exist here or the request
+# fails -2 nine times and mt7921s gives up with "hardware init failed"
+# (measured 2026-08-19 on the first mainline-DT boot with a working SDIO
+# host; a manual driver rebind after boot then succeeded from the rootfs
+# copy). The kernel's zstd loader accepts them; ~500 KB well spent.
+mkdir -p "$s/lib/firmware/mediatek"
+install -m 0644 "$DL/firmware/$WIFI_RAM_NAME" "$s/lib/firmware/mediatek/$WIFI_RAM_NAME"
+install -m 0644 "$DL/firmware/$WIFI_PATCH_NAME" "$s/lib/firmware/mediatek/$WIFI_PATCH_NAME"
+install -m 0644 "$DL/firmware/regulatory.db" "$s/lib/firmware/regulatory.db"
+install -m 0644 "$DL/firmware/regulatory.db.p7s" "$s/lib/firmware/regulatory.db.p7s"
+
 # The reachability watchdog for the INSTALLED system. boot.sh copies these
 # into the verified rootfs on every boot (self-heal): the boot image is the
 # only artifact fastboot can update without a running system, so the
