@@ -10,11 +10,12 @@ built by this repository's CI. Read the whole page once before starting.
 > running. It never touches anything else — and neither should you (see
 > [Recovery notes](#recovery-notes)).
 >
-> One partition is deliberately left out of the default flow: `vendor_boot`,
-> which is where LK reads the device tree from. Writing it is how our mainline
-> device tree would ship, and it is opt-in precisely because a tree that fails
-> to light the panel leaves a device you can only reach over fastboot. It is
-> not part of any step below.
+> One partition is deliberately left out of the default flow: `vendor_boot`.
+> Earlier revisions of this page believed LK reads the device tree from it;
+> that was measured false (see Recovery notes). The mainline device tree ships
+> *inside* `jagar-boot.img` itself since 2026-08-19 — a small stub in the
+> kernel slot swaps it in at boot — so the normal flow below already installs
+> it, and `vendor_boot` stays untouched.
 
 ## Choose an install path
 
@@ -253,9 +254,12 @@ is streamed over USB).
   `sbc_en = 1`, `dtbo cert chain vfy pass`). An unsigned overlay fails that
   check and LK marks the slot dead before the kernel runs — no log, no
   display, no USB. Both slots on the development device were lost this way.
-  Shipping a mainline tree would require a signed `lk`/`dtbo`, which this
-  project cannot produce; a runtime DT overlay applied by Linux on the stock
-  tree is the supported route.
+  Shipping a mainline tree through `lk`/`dtbo` would require signing them,
+  which this project cannot do. The supported route (since 2026-08-19,
+  hardware-verified) is the `boot/dtbswap` stub inside `jagar-boot.img`: LK
+  boots the unauthenticated boot image as usual, and the stub hands the
+  kernel our device tree instead of LK's merged one. No signed partition is
+  ever written.
 - The device has A/B slots; this flow only uses `boot_a`.
 - If a flashed boot image fails to boot, the watchdog resets the device
   back into LK fastboot, so you can reflash `boot_a` and try again. A
