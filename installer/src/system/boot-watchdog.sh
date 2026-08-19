@@ -59,9 +59,12 @@ PAT_FILE="$RUNDIR/dc1-boot-watchdog.pat"
 LASTOK_FILE="$RUNDIR/dc1-boot-watchdog.last-ok"
 BOOT_OK="$VARDIR/boot-ok"
 
+# stderr is silenced BEFORE the kmsg redirection is attempted (left-to-right),
+# and the status never propagates: without the trailing ':', a non-root run
+# (the offline tests) would exit 1 from any code path that ends in a log call.
 log() {
 	echo "dc1-boot-watchdog: $*"
-	echo "dc1-boot-watchdog: $*" > /dev/kmsg 2>/dev/null
+	{ echo "dc1-boot-watchdog: $*" > /dev/kmsg; } 2>/dev/null || :
 }
 
 now() { if [ -n "$DC1_NOW" ]; then echo "$DC1_NOW"; else date +%s; fi; }
