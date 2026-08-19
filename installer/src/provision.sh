@@ -228,11 +228,10 @@ apply_display_orientation() {
 	# deliberately carries no rotation property, so DRM reports no panel
 	# orientation and GNOME comes up upside-down. Compensate where mutter
 	# actually looks: monitors.xml in the provisioned user's home (the
-	# session) and in gdm's (the greeter). The scale is the one mutter
-	# itself computes for this mode; if mutter ever rejects the file it
-	# falls back to its defaults, so the failure mode is only the rotation
-	# coming back, never a broken session. No-op unless gdm is present
-	# (same signal apply_gdm_autologin keys on).
+	# session) and in gdm's (the greeter). If mutter ever rejects the file
+	# it falls back to its defaults, so the failure mode is only the
+	# rotation coming back, never a broken session. No-op unless gdm is
+	# present (same signal apply_gdm_autologin keys on).
 	[ -f "$ROOT/etc/gdm/custom.conf" ] || return 0
 	_mon_user_uid=$(awk -F: -v u="$A_USER" '$1 == u { print $3 }' "$ROOT/etc/passwd")
 	_mon_gdm_uid=$(awk -F: '$1 == "gdm" { print $3 }' "$ROOT/etc/passwd")
@@ -248,7 +247,7 @@ apply_display_orientation() {
     <logicalmonitor>
       <x>0</x>
       <y>0</y>
-      <scale>1.4981273412704468</scale>
+      <scale>1.25</scale>
       <primary>yes</primary>
       <transform>
         <rotation>upside_down</rotation>
