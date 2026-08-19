@@ -13,38 +13,39 @@ kernel pkgrel=24 / device pkgrel=38**, which is the current pin: built-in
 speakers produce audio, and the AFE survives multiple play cycles without
 entering PM error state.
 
-The device boots the **stock device tree**, and as of 2026-08-18 we know it
-cannot be replaced. LK takes the kernel's DT from `lk_main_dtb` — a *signed*
-image inside the **`lk`** partition — merged with the *signed* **`dtbo`**.
-Its own log shows `mkimg hdr detected (178773)` for `lk_main_dtb`,
-`dtbo_size=43176`, and `after overlay, fdt size(221949)`; 178773 + 43176 =
-221949 exactly. The DTB inside `vendor_boot` is a different 178385-byte blob
-that never reaches the kernel.
+**As of 2026-08-19 the device boots the mainline device tree**, via the
+`boot/dtbswap` stub: LK still builds its merged tree from the *signed*
+`lk_main_dtb` + `dtbo` (neither replaceable — an unsigned `dtbo` fails
+authentication and kills the slot before the kernel starts; both slots of
+the development device were lost that way once), but `boot.img` is
+unauthenticated, so a stub in its kernel slot receives LK's handoff and
+jumps to the real kernel with our DTB, copying LK's runtime-patched
+`bootargs`, initrd addresses and `/memory` from the merged tree.
+Hardware-verified 2026-08-19: `/proc/device-tree/model` reads
+`Daylight Computer DC-1`, DRM binds OVL/RDMA/DSI, and GNOME runs with
+atomic modesetting. `vendor_boot` remains a no-op for the DT (its blob
+never reaches the kernel — measured from LK's log on 2026-08-18).
 
-That retracts the previous claim on this page that writing `vendor_boot`
-ships our tree. It does not. Six boot attempts (three reported, three on the
-development device) changed nothing about the running DT, which is why
-`Machine model` never budged — LK patches that string from its own
-chip-variant table anyway, so it was never evidence either way.
+**Losing the dtbo cuts both ways.** The signed dtbo was also the only thing
+that *enabled* some hardware: the MT7902's SDIO host (`mmc@11240000`) exists
+only through it, so mainline-DT boots have an empty `/sys/bus/mmc/devices`
+and **no Wi-Fi** (measured 2026-08-19). Kernel `231fa88` transcribes the
+dtbo's description into the board DTS; hardware verification pending.
 
-Both DT images are authenticated (`img_auth_required = 1`, `sbc_en = 1`,
-`dtbo cert chain vfy pass`), while `boot`/`vendor_boot` are not
-(`[AVB] img_auth_required = 0`). An unsigned `dtbo` therefore fails
-authentication and LK kills the slot before the kernel starts — no kernel
-log at all. Both slots of the development device were lost that way and had
-to be restored from backups.
-
-**Consequence for the accelerometer and LVTS thermal rows:** they are not
-gated on "boot the mainline DTB" any more, because that is not reachable.
-The route is a **runtime DT overlay** applied by Linux on top of the stock
-tree — the same mechanism the `mt8781-daylight-jagar-live-*-probe.dtbo`
-files already use. The stock tree exports 416 `__symbols__`, including
-`i2c6 -> /soc/i2c@1101a000` (the MC3416 bus) and `pio -> /soc/pinctrl`, so
-the nodes can be attached by symbol reference.
+**Reachability watchdog (hardware-verified 2026-08-19).** A boot the
+network cannot reach used to be unrecoverable without a key combo. The boot
+image now self-deploys `dc1-boot-watchdog` into the installed system: while
+an inbound shell connection exists — or a shell port listens and a probe
+peer (USB host `172.16.42.2` or the Wi-Fi gateway) answers — it stays
+quiet; after 10 unreachable minutes it reboots into LK fastboot via the
+`WDT_NONRST_REG2` nibble (both the tool and the full unattended fire were
+observed landing the device in fastboot). An initramfs deadman (15 min)
+backstops the case where systemd never starts the service, and the rescue
+path's deadman lease covers pre-switch_root failures. Opt out with
+`touch /etc/dc1/boot-watchdog.disabled`.
 
 The board NTC thermal zones and the hall switch were added to the mainline
-DTS anyway (kernel `3d3de59a5`) since they are correct descriptions of the
-hardware, but they only take effect if that tree ever runs.
+DTS (kernel `3d3de59a5`) and now take effect on every dtbswap boot.
 
 **What the switch would cost, audited 2026-08-17.** Every device with a driver
 bound on the running (stock) tree was mapped back to its DT node and checked
@@ -77,7 +78,7 @@ regression on those two.
 | On-device UI | ✅ Works | Installer: touch UI (`dc1-ask`) drawn by PID 1, hardware-verified to boot and serve its menu. Desktop: GNOME Mobile on the panel, hardware-accelerated via Panfrost — no Flutter shell, no first-boot onboarding. |
 | Frontlight | ✅ Works | Dual RT4539 backlight drivers: `lcd-backlight` (white, i2c-5) and `lcd-backlight-amber` (amber, i2c-2). GNOME binds exactly one backlight device to the internal display — `gsd-power` takes the first `firmware` > `platform` > `raw` match, which is always the white one — so its Settings slider drives white alone. The amber channel gets its own quick-settings slider from the `dc1-warmth@denv.it` shell extension shipped in the device package: it holds amber at a chosen share of the white level, so it behaves as a colour temperature and the tint survives brightness changes. Writes go through logind's `Session.SetBrightness`, no root needed. |
 | Power key | ✅ Works | Opens GNOME's power menu (restart / power off). It does **not** blank: gnome-shell-mobile grabs the key as a mutter keybinding — so logind's `HandlePowerKey=ignore` never applies — and its `powerManager.js` maps `power-button-action='nothing'` onto `'blank'`, so `'interactive'` is the only value that avoids a screen-off. Blanking itself is recoverable (press again), but the shell re-blanks a woken screen after a hardcoded 10 s whenever the screen shield is up, which is why `lock-enabled` is shipped false. |
-| Wi-Fi | ✅ Works | MT7902 via mainline mt7921s. Confirmed on device 2026-08-15: firmware loads, `wlan0` appears, and a scan returns a dozen networks. Needs `CONFIG_FW_LOADER_COMPRESS_ZSTD` — linux-firmware ships the three MT7902 blobs `.zst`-compressed, and without it the loader reports `-2` for a file that is present, `hardware init failed`, and no `wlan0`. Carried by the pinned kernel since `ea54394`. |
+| Wi-Fi | 🚧 In progress | MT7902 via mainline mt7921s — **works on the stock tree, not yet on the mainline tree the device now boots.** Confirmed on device 2026-08-15 (stock DT): firmware loads, `wlan0` appears, and a scan returns a dozen networks. On a dtbswap boot the SDIO host was only ever enabled by the signed dtbo, which the swap discards, so `/sys/bus/mmc/devices` is empty and no `wlan0` exists (measured 2026-08-19). Kernel `231fa88` moves the dtbo's MSDC1 + Wi-Fi power description into the board DTS; hardware verification pending. Needs `CONFIG_FW_LOADER_COMPRESS_ZSTD` — linux-firmware ships the three MT7902 blobs `.zst`-compressed, and without it the loader reports `-2` for a file that is present, `hardware init failed`, and no `wlan0`. Carried by the pinned kernel since `ea54394`. |
 | Bluetooth | 🚧 In progress | MT7902, same upstream firmware — but it did **not** work on any real boot, and the earlier "Works" here was wrong. `btmtksdio` is built in (`=y`), so it probes as soon as the SDIO function is enumerated, measured at t=1.75 s: before the root filesystem carrying `/lib/firmware` exists. `mediatek/BT_RAM_CODE_MT7902_1_1_hdr.bin` comes back `-2`, btmtk gives up with `Failed to setup 79xx firmware (-2)`, and `hci0` stays registered but never completes setup. Nothing looks broken — `/sys/class/bluetooth/hci0` and the rfkill switch are both present — while `bluetoothctl` answers `No default controller available`. The Wi-Fi half of the same chip survives the identical race only because mt7921s retries the load itself; btmtksdio makes one attempt. Confirmed by hand on 2026-08-17: one unbind/bind of `mmc1:0001:2` completed setup in 2.75 s and brought the controller up as `Daylight DC-1`. `dc1-bluetooth` (device pkgrel=34) does exactly that, ordered before bluetoothd. **Cold-boot verified 2026-08-17** at kernel pkgrel=24 / device pkgrel=38: the unit entered active 13 s into a boot that reached `graphical.target` at 17.9 s, and `bluetoothctl show` reports the controller up as `Daylight DC-1` with no manual intervention. Left In progress only because pairing and an audio profile (A2DP over the new sound card) have not been exercised. |
 | USB gadget | 🚧 In progress | Serial console works (`/dev/ttyGS0`, `ttyGS1`); USB ethernet and SSH over USB did **not**, and the earlier "Works" here was wrong. `dc1-usb-gadget` reused the gadget the initramfs leaves behind on the assumption that it is "identical" to the one it builds. It is not: on a plain (non-installer) boot the handed-off `g1` carried `acm.0` and `acm.1` and no `ecm.0` at all (observed 2026-08-17), so rebinding the UDC produced the two ACM ttys and never a `usb0`. The service still reported success, because the wait for `usb0` ran in a background subshell that `exit 0`-ed when the interface was missing. Both are fixed in device pkgrel=34: the existing tree is completed in place (`ensure_ecm`) before the bind, and the `usb0` wait is in the foreground and fatal. Verified on device by reproducing the handoff state (UDC unbound, ACM-only tree) and running the new script: `ecm.0` was added and `usb0` came up at 172.16.42.1/24. It must be the **only** UDC owner: `usb-signaller` (from `postmarketos-usb-moded`) starts afterwards, cannot classify our functions, tries to switch the UDC to its own gadget, and wedges in configfs; the device package masks it and its three mode units. **Teardown is gone**, deliberately — see the next row. |
 | configfs teardown | ✅ Resolved | The gadget teardown used to unbind the UDC, unlink the functions, then `rmdir` bottom-up, on the theory that the uninterruptible hangs came from removals arriving out of order. They do not. Measured on hardware 2026-08-17: with the UDC cleanly unbound, every function unlinked from `c.1`, the configs already removed, and **no process holding `/dev/ttyGS0` or `ttyGS1` open**, `rmdir functions/acm.0` still entered D state and stayed there. It cannot be signalled (`SIGKILL` was ignored), so the mount is wedged for the rest of the boot, and because it holds the parent directory's lock every later configfs access blocks behind it — a plain `find` over `usb_gadget/` hung immediately. That is the same wedge previously blamed on `usb-signaller`'s removal order, and it is what fails the suspend freezer, since a D-state task can never be frozen. So nothing removes gadget objects any more: `stop` unbinds the UDC and leaves the tree standing, and `start` reuses and completes it. Rebuilding the tree, if it is ever actually needed, means a reboot. |

@@ -182,10 +182,10 @@ static int lease_is_fresh(void)
 /* Set the boot mode nibble LK reads on the way up so the pending watchdog
  * reset lands in fastboot, not the same slot. The hardware reset itself can
  * run no code, so this MUST happen before the petter stops petting. It is the
- * same write the dc1-reboot-fastboot tool performs (LK's side of it is
- * verified by disassembly of the shipped lk_a.img; the Linux-side write has
- * not yet been observed to land a device in fastboot -- the earlier
- * "hardware-verified" label here overstated commit a844f3a) --
+ * same write the dc1-reboot-fastboot tool performs (LK's side verified by
+ * disassembly of the shipped lk_a.img; the Linux-side write hardware-verified
+ * 2026-08-19: the tool and the unattended watchdog fire both landed the
+ * device in LK fastboot) --
  * low nibble of WDT_NONRST_REG2 (0x10007000 + 0x24) == 3 == fastboot -- kept
  * inline because this is a forked child whose exec path is not trustworthy
  * after switch_root. Best-effort: a plain reset is the safe failure mode. */
