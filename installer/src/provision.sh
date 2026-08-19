@@ -224,6 +224,60 @@ apply_gdm_autologin() {
 	fi
 }
 
+apply_gdm_wayland_only() {
+	# gdm's fallback for any failed Wayland session is an X11 greeter, and
+	# this image ships no Xorg server and no X11 session files -- so the
+	# fallback aborts (SIGABRT) until gdm hits its start limit and the
+	# display manager gives up. Pin gdm to Wayland and disable the Xorg
+	# path outright. Edited in place so the packaged autologin block in
+	# custom.conf survives. Part of the shim set hardware-verified
+	# 2026-08-19 (docs/status.md, "GNOME on fresh installs").
+	conf="$ROOT/etc/gdm/custom.conf"
+	[ -f "$conf" ] || return 0
+	for _kv in WaylandEnable=true XorgEnable=false; do
+		_k=${_kv%%=*}
+		if grep -q "^$_k=" "$conf"; then
+			sed -i "s/^$_k=.*/$_kv/" "$conf"
+		else
+			sed -i "/^\[daemon\]/a $_kv" "$conf"
+		fi
+	done
+}
+
+apply_libelogind_shim() {
+	# Alpine's gdm links libelogind.so.0, but this is a systemd image: the
+	# real elogind library cannot parse systemd's cgroup layout, so gdm
+	# never matches a session to a display ("Session never registered")
+	# and GNOME never starts. libsystemd carries the same ABI surface gdm
+	# needs, so shadow libelogind with a symlink to it. musl's built-in
+	# search order tries /lib and /usr/lib around /usr/local/lib in an
+	# order that lets the real library win, so an explicit ld path file
+	# puts the shim directory first. Both halves are one mechanism: the
+	# symlink without the path file is dead code. Hardware-verified
+	# 2026-08-19 as the decisive fix for GNOME on a fresh install; remove
+	# once the pmOS systemd repo ships a gdm linked against libsystemd.
+	# No-op unless the image has both gdm and libsystemd. The verified
+	# target is /lib/libsystemd.so.0; fall back to /usr/lib if a future
+	# image drops the merged-usr /lib path, rather than shipping a
+	# dangling symlink.
+	[ -f "$ROOT/etc/gdm/custom.conf" ] || return 0
+	if [ -e "$ROOT/lib/libsystemd.so.0" ]; then
+		_shim_target=/lib/libsystemd.so.0
+	elif [ -e "$ROOT/usr/lib/libsystemd.so.0" ]; then
+		_shim_target=/usr/lib/libsystemd.so.0
+	else
+		return 0
+	fi
+	mkdir -p "$ROOT/usr/local/lib"
+	ln -sf "$_shim_target" "$ROOT/usr/local/lib/libelogind.so.0"
+	cat > "$ROOT/etc/ld-musl-aarch64.path" <<'EOF'
+/usr/local/lib
+/lib
+/usr/lib
+EOF
+	echo "gdm: libelogind -> libsystemd shim installed"
+}
+
 apply_display_orientation() {
 	# The panel scans out 180 degrees from the glass, and the device tree
 	# deliberately carries no rotation property, so DRM reports no panel
@@ -408,6 +462,8 @@ apply_hostname
 apply_timezone
 apply_user
 apply_gdm_autologin
+apply_gdm_wayland_only
+apply_libelogind_shim
 apply_display_orientation
 apply_wifi
 apply_sshd

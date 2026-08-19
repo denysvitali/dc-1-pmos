@@ -63,6 +63,20 @@ printf '%s\n' "$work_version" >"$pmb_work/version"
 # archive, and restoring/saving the extra gigabytes costs more wall clock than
 # the extra hits buy. One kernel build's objects are a few hundred MB, so 2G
 # still holds several generations and ccache's LRU keeps the newest.
+#
+# accountsservice<999 / libaccountsservice<999: TEMPORARY pin. The pmOS
+# systemd repo's accountsservice fork (999923.13.9) ships a typelib that
+# references libaccountsservice.so.0 while the gdm/gnome-shell-mobile
+# consumers link .so.1, so gnome-shell's JS init throws on a fresh install.
+# Alpine edge's accountsservice (26.27.3) is the hardware-verified fix
+# (2026-08-19). apk always prefers the highest version across repos, and the
+# fork's 9999-prefixed version outranks Alpine's, so an unpinned world would
+# silently take the fork; the <999 constraint excludes every 9999-fork
+# version while letting Alpine's own upgrades through. pmbootstrap passes
+# extra_packages verbatim to `apk add` inside the rootfs chroot, and apk
+# writes the constraint string into /etc/apk/world, where it also survives
+# on-device `apk upgrade` (world constraints are sticky). Drop both entries
+# once the pmOS fork ships a typelib matching its library soname.
 cat >"$pmb_config" <<EOF
 [pmbootstrap]
 aports = $pmaports_dir
@@ -70,7 +84,7 @@ boot_size = 512
 build_default_device_arch = True
 ccache_size = 2G
 device = daylight-jagar
-extra_packages = e2fsprogs-extra,mesa-dri-gallium,font-dejavu
+extra_packages = e2fsprogs-extra,mesa-dri-gallium,font-dejavu,accountsservice<999,libaccountsservice<999
 is_default_channel = False
 jobs = 4
 kernel = edge

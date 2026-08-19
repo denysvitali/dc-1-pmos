@@ -144,6 +144,14 @@ grep -q '^127\.0\.1\.1	mydc1$' "$R/etc/hosts" && ok "hosts updated" \
 grep -q '^ssid=Home Net$' "$R/var/lib/dc1-installer/wifi.pending" \
 	&& ok "parked ssid correct" || bad "parked ssid wrong"
 
+# gdm-keyed provisioning must all no-op on a rootfs without gdm.
+[ -e "$R/etc/ld-musl-aarch64.path" ] \
+	&& bad "ld-musl path written on gdm-less rootfs" \
+	|| ok "no ld-musl path on gdm-less rootfs"
+[ -e "$R/usr/local/lib/libelogind.so.0" ] \
+	&& bad "libelogind shim installed on gdm-less rootfs" \
+	|| ok "no libelogind shim on gdm-less rootfs"
+
 # ------------------------------------------------- apply: NM keyfile
 echo "== apply: NetworkManager keyfile =="
 R="$TMP/root2"
@@ -194,6 +202,44 @@ sh "$PROV" "$R" "$TMP/ans3" >/dev/null || bad "provision run failed"
 grep -q '^AutomaticLogin=alice$' "$R/etc/gdm/custom.conf" \
 	&& ok "gdm autologin rewritten to the renamed user" \
 	|| bad "gdm autologin not rewritten (still: $(tr '\n' ' ' < "$R/etc/gdm/custom.conf"))"
+# Wayland-only keys are added even here, but the libelogind shim is not:
+# this rootfs carries no /lib/libsystemd.so.0 (e.g. an elogind image).
+grep -q '^WaylandEnable=true$' "$R/etc/gdm/custom.conf" \
+	&& ok "WaylandEnable=true added" || bad "WaylandEnable missing"
+grep -q '^XorgEnable=false$' "$R/etc/gdm/custom.conf" \
+	&& ok "XorgEnable=false added" || bad "XorgEnable missing"
+[ -e "$R/usr/local/lib/libelogind.so.0" ] \
+	&& bad "libelogind shim installed without libsystemd in rootfs" \
+	|| ok "no libelogind shim without libsystemd"
+[ -e "$R/etc/ld-musl-aarch64.path" ] \
+	&& bad "ld-musl path written without libsystemd in rootfs" \
+	|| ok "no ld-musl path without libsystemd"
+
+# ----------------------------------------- apply: gdm wayland + libelogind
+echo "== apply: gdm wayland pin + libelogind shim =="
+R="$TMP/rootgdm"
+make_rootfs "$R"
+mkdir -p "$R/etc/gdm" "$R/lib"
+# WaylandEnable=false simulates a stray packaged value: it must be
+# rewritten in place, not duplicated, and the autologin block must survive.
+printf '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=dc1\nWaylandEnable=false\n' \
+	> "$R/etc/gdm/custom.conf"
+touch "$R/lib/libsystemd.so.0"
+sh "$PROV" "$R" "$TMP/ans3" >/dev/null || bad "provision run failed"
+grep -q '^WaylandEnable=true$' "$R/etc/gdm/custom.conf" \
+	&& ok "WaylandEnable=false rewritten to true" || bad "WaylandEnable wrong"
+[ "$(grep -c '^WaylandEnable=' "$R/etc/gdm/custom.conf")" = 1 ] \
+	&& ok "WaylandEnable not duplicated" || bad "WaylandEnable duplicated"
+grep -q '^XorgEnable=false$' "$R/etc/gdm/custom.conf" \
+	&& ok "XorgEnable=false added under [daemon]" || bad "XorgEnable missing"
+grep -q '^AutomaticLoginEnable=True$' "$R/etc/gdm/custom.conf" \
+	&& ok "packaged autologin block preserved" || bad "autologin block lost"
+[ "$(readlink "$R/usr/local/lib/libelogind.so.0")" = "/lib/libsystemd.so.0" ] \
+	&& ok "libelogind shim points at libsystemd" || bad "libelogind shim wrong"
+printf '/usr/local/lib\n/lib\n/usr/lib\n' \
+	| cmp -s - "$R/etc/ld-musl-aarch64.path" \
+	&& ok "ld-musl path: exactly /usr/local/lib, /lib, /usr/lib" \
+	|| bad "ld-musl path content wrong"
 
 # ------------------------------------------------- apply: sshd fallbacks
 echo "== apply: sshd on an OpenRC-only rootfs =="

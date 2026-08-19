@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=45
+pkgrel=46
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -262,6 +262,13 @@ package() {
 	# is upside-down relative to the glass); mutter applies it from a
 	# system-wide monitors.xml that both the greeter and the user session
 	# read. sway still gets the equivalent from dc1-sway.conf.
+	# monitors.xml must carry an explicit <layoutmode>: without it, mutter
+	# 48 (meta-monitor-config-store.c, STATE_CONFIGURATION) takes its
+	# layout-mode detection path, flags the file as needing migration
+	# ("System monitor configuration file needs updating"), and when that
+	# conversion fails the config is dropped -- zero logical monitors, and
+	# gnome-shell crashes ("this.primaryMonitor is null"). Observed on
+	# hardware 2026-08-19 with the previous layoutmode-less file.
 	install -Dm644 "$srcdir"/gdm-custom.conf "$pkgdir"/etc/gdm/custom.conf
 	install -Dm644 "$srcdir"/monitors.xml "$pkgdir"/etc/xdg/monitors.xml
 
@@ -345,5 +352,5 @@ b3f2c3dd4ff5de3a98038661a95b12572ce6e68a4f5b895c951d1be9cf0f2da20a88039d34c707d4
 db4d369e81942ec05a3843b02f2c029a6ce585c5b5e6e5d2036e5f99344b31c2b056729fcf3cd84acd679e2556bac7513aa80e7bc36c2c012b9c1e09631ea655  dc1-apk.rsa.pub
 f3e3ef43fe119e376ce3462d69cabd5ce6b4907b5135736c99792b2d35c4be5136f7f8d170e17c09ed094924cba217314c8a66a653715433b8a540c3a6e325f0  dc1-pmos.list
 353598a3b9f8225bea0a7f091d43d7301789ba0323f5cb4b8f9d26783c039c0bf5b0293cd1dae0bcdd3da50f647ca6160f448f3cfc00565bdef0bba4477939c6  gdm-custom.conf
-21e1d1a5b412890feb45066e8e4cf48b00fcc1cd0ae32e970ef0b841853f7b6d24079b975d2bcfd27561d1a6adde9f475b39952164c5d8dc1d80c4f1c87718e0  monitors.xml
+5338f18f3da087ce2a3f03642abce7aa491b58242ecdebcbcddd4c1213973cbc58c81f2a6c5c9e15d72071755c80bb5478b46b1c009292144b647e5e66e06436  monitors.xml
 "

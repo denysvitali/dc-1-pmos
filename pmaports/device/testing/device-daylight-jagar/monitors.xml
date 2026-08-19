@@ -1,9 +1,15 @@
 <monitors version="2">
   <configuration>
+    <layoutmode>logical</layoutmode>
     <logicalmonitor>
       <x>0</x>
       <y>0</y>
-      <scale>1</scale>
+      <scale>1.25</scale>
+      <primary>yes</primary>
+      <transform>
+        <rotation>upside_down</rotation>
+        <flipped>no</flipped>
+      </transform>
       <monitor>
         <monitorspec>
           <connector>DSI-1</connector>
@@ -14,14 +20,9 @@
         <mode>
           <width>1200</width>
           <height>1600</height>
-          <rate>60.000000</rate>
+          <rate>60.000</rate>
         </mode>
       </monitor>
-      <transform>
-        <rotation>upside_down</rotation>
-        <flipped>no</flipped>
-      </transform>
-      <primary>yes</primary>
     </logicalmonitor>
   </configuration>
 </monitors>

@@ -54,6 +54,58 @@ path's deadman lease covers pre-switch_root failures. Opt out with
 The board NTC thermal zones and the hall switch were added to the mainline
 DTS (kernel `3d3de59a5`) and now take effect on every dtbswap boot.
 
+## GNOME on fresh installs: the verified-minimal shim set (2026-08-19)
+
+A fresh install of this image could not start GNOME: the pmOS systemd
+repository is mid-way through its GNOME 50 migration, so the image mixes
+Alpine's gdm 48.0-r7 with pmOS's gnome-shell-mobile 999948.0-r4 and the pmOS
+accountsservice fork. An on-device session established the exact minimal fix
+set — GNOME up, clean reboot, zero failed units — and this repository now
+codifies all five pieces so every fresh install gets them:
+
+1. **libelogind → libsystemd shim** (installer provisioning,
+   `apply_libelogind_shim`). Alpine's gdm links `libelogind.so.0`, and real
+   elogind 255.24's session parser fails on systemd cgroups — gdm logs
+   "Session never registered" and no session ever reaches the display.
+   `/usr/local/lib/libelogind.so.0` is a symlink to `/lib/libsystemd.so.0`.
+2. **musl loader path** (same function). `/etc/ld-musl-aarch64.path` lists
+   `/usr/local/lib` before `/lib` and `/usr/lib`; without it the dynamic
+   linker's default search order finds the real libelogind first and the
+   shim never wins.
+3. **Wayland-only gdm** (installer provisioning, `apply_gdm_wayland_only`).
+   `WaylandEnable=true` + `XorgEnable=false` in `/etc/gdm/custom.conf`,
+   with the packaged autologin block preserved. Otherwise any session
+   failure falls back to an X11 greeter on an image that ships no Xorg and
+   no X11 session files — SIGABRT until start-limit-hit.
+4. **monitors.xml with an explicit `<layoutmode>`** (device package,
+   pkgrel 46). The previous `/etc/xdg/monitors.xml` carried none, so mutter
+   48 took its layout-mode detection path, warned "System monitor
+   configuration file needs updating", and when that conversion failed
+   dropped the config — zero logical monitors, gnome-shell crashing with
+   `this.primaryMonitor is null`. The rewritten file keeps
+   `<rotation>upside_down</rotation>`: that 180° is the load-bearing
+   glass-vs-scanout compensation no device tree provides (see the Display
+   row), so the file must never simply be deleted.
+5. **accountsservice pin** (rootfs build, `scripts/build-rootfs.sh`). The
+   pmOS fork `accountsservice-999923.13.9` ships a typelib referencing
+   `libaccountsservice.so.0` while the installed gdm/gnome-shell link
+   `.so.1`, so the shell's JS init throws. The build writes
+   `accountsservice<999` + `libaccountsservice<999` into `/etc/apk/world`,
+   which selects Alpine edge (26.27.3, the hardware-verified version) and —
+   because world constraints are sticky — survives on-device `apk upgrade`.
+   Temporary until the fork's typelib matches its library soname.
+
+The shims themselves are hardware-verified; their delivery through the
+installer and the rootfs build has not yet been exercised end-to-end on a
+device. Two known risks:
+
+- the gdm greeter path (the `gdm` user's own Wayland session) was observed
+  once aborting with "no session desktop files installed" — after a user
+  rename or a logout the greeter may still be broken even with the set
+  above applied;
+- screen orientation with the rewritten monitors.xml is verified only as
+  config intent, not yet by physically looking at the glass.
+
 **What the switch would cost, audited 2026-08-17.** Every device with a driver
 bound on the running (stock) tree was mapped back to its DT node and checked
 against the built `mt8781-daylight-jagar.dtb`. Most of the 341 compatible
@@ -82,7 +134,7 @@ regression on those two.
 | Display | ✅ Works | DSI panel; Wayland sessions (Sway, GNOME) run. Blank/unblank works: a DPMS off stops the pipeline at the proven boundary and a DPMS on replays the handoff (`production power sequence complete` → `first DSI frame complete`) in ~0.6 s, verified on device 2026-08-16. The frontlight is not the panel's DRM backlight — our mainline DT has no panel node, so DRM exposes no `panel orientation` property and no backlight phandle — so `dc1-screen-backlight` mirrors the connector's DPMS state onto both RT4539 `bl_power` files; without it a blanked panel stays evenly lit and reads as a wedged display. |
 | GPU | ✅ Works | Mali-G57 MC2 via Panfrost, **now native on the mainline DT** (verified 2026-08-19): kernel `981870b` enables the dtsi `gpu` node at the proven 390 MHz / 850 mV point, panfrost binds at t=6.8 s from cold boot with no overlay and no probe poke, `renderD128` exists before the session starts, and gnome-shell logs `Created gbm renderer` (no llvmpipe). Still no GPU cooling device — no thermal zone to bind to; see Thermal. The overlay path below remains for stock-tree boots. `dc1-gpu` used to report failure while the GPU worked anyway: applying the runtime overlay only edits the live tree, and the platform device for the newly-enabled `mali` node is registered after that, so the `drivers_probe` poke issued straight after `modprobe` hit an empty platform bus and got `ENODEV` (measured 2026-08-17 at t=4.98 s; panfrost then bound at t=15.17 s off the kernel's own deferred-probe timeout). A red unit costs the ordering guarantee that gdm → mutter starts with a render node, so the poke is now retried until `renderD128` appears. No GPU cooling device: panfrost logs `Failed to register cooling device` because there is no thermal zone to bind to — see Thermal. |
 | Touchscreen | ✅ Works | ILI2910, 10-point multitouch. |
-| On-device UI | 🟡 Works, with local shims | Installer: touch UI (`dc1-ask`) drawn by PID 1, hardware-verified to boot and serve its menu. Desktop: GNOME Mobile on the panel, hardware-accelerated via Panfrost. **Currently held together by device-local shims** (restored 2026-08-19 after a day-long outage): the decisive one redirects `libelogind.so.0` to `libsystemd.so.0` — Alpine's gdm links elogind's client library, whose session parser returns garbage on a systemd cgroup layout, so gdm could never match a session to a display. Around it: a 48-era gjs/mozjs/ICU shadow stack under `/usr/local/lib` (edge's gjs 1.88 segfaults the 948 mobile shell), a pinned gnome-session 48, a hand-supplied `org.gnome.Shell.target` user unit, Wayland-only gdm (`XorgEnable=false`; no Xorg exists to fall back to), a gdm drop-in that waits for a DRM connector (gdm races mediatek-drm at boot; the card0/card1 order flips between boots and mutter's builtin-panel heuristic copes), and display-manager restart caps (a 1s-restart session crash-loop once starved the whole machine). Full inventory + removal conditions live in the private bench HANDOFF; all of it comes off once pmOS's systemd repo ships a coherent GNOME-50 mobile set (mid-migration as of 2026-08-19: session 999950 + shell 999948 + an uninstallable gdm 999950). None of these shims is packaged — fresh installs from today's repos will hit the same skew until upstream heals. |
+| On-device UI | 🟡 Works, with local shims | Installer: touch UI (`dc1-ask`) drawn by PID 1, hardware-verified to boot and serve its menu. Desktop: GNOME Mobile on the panel, hardware-accelerated via Panfrost. **Currently held together by device-local shims** (restored 2026-08-19 after a day-long outage): the decisive one redirects `libelogind.so.0` to `libsystemd.so.0` — Alpine's gdm links elogind's client library, whose session parser returns garbage on a systemd cgroup layout, so gdm could never match a session to a display. Around it: a 48-era gjs/mozjs/ICU shadow stack under `/usr/local/lib` (edge's gjs 1.88 segfaults the 948 mobile shell), a pinned gnome-session 48, a hand-supplied `org.gnome.Shell.target` user unit, Wayland-only gdm (`XorgEnable=false`; no Xorg exists to fall back to), a gdm drop-in that waits for a DRM connector (gdm races mediatek-drm at boot; the card0/card1 order flips between boots and mutter's builtin-panel heuristic copes), and display-manager restart caps (a 1s-restart session crash-loop once starved the whole machine). Full inventory + removal conditions live in the private bench HANDOFF; all of it comes off once pmOS's systemd repo ships a coherent GNOME-50 mobile set (mid-migration as of 2026-08-19: session 999950 + shell 999948 + an uninstallable gdm 999950). The verified-minimal subset is now codified for fresh installs — see "GNOME on fresh installs" above. |
 | Frontlight | ✅ Works | Dual RT4539 backlight drivers: `lcd-backlight` (white, i2c-5) and `lcd-backlight-amber` (amber, i2c-2). GNOME binds exactly one backlight device to the internal display — `gsd-power` takes the first `firmware` > `platform` > `raw` match, which is always the white one — so its Settings slider drives white alone. The amber channel gets its own quick-settings slider from the `dc1-warmth@denv.it` shell extension shipped in the device package: it holds amber at a chosen share of the white level, so it behaves as a colour temperature and the tint survives brightness changes. Writes go through logind's `Session.SetBrightness`, no root needed. |
 | Power key | ✅ Works | Opens GNOME's power menu (restart / power off). It does **not** blank: gnome-shell-mobile grabs the key as a mutter keybinding — so logind's `HandlePowerKey=ignore` never applies — and its `powerManager.js` maps `power-button-action='nothing'` onto `'blank'`, so `'interactive'` is the only value that avoids a screen-off. Blanking itself is recoverable (press again), but the shell re-blanks a woken screen after a hardcoded 10 s whenever the screen shield is up, which is why `lock-enabled` is shipped false. |
 | Wi-Fi | ✅ Works | MT7902 via mainline mt7921s, **on the mainline device tree**, cold-boot verified 2026-08-19: `mmc1` enumerates the chip at SDR104 at t=2.7 s, firmware loads from the system initramfs, `wlan0` associates at t=14 s with the provisioned credentials, and Tailscale comes up. Three fixes got it there after the dtbswap switch dropped the signed dtbo that used to enable it: the host node itself (kernel `231fa88`), the MSDC1 pad rails VCN18/VMC that vendor `vioa/viob-supply` powered and mainline mtk-sd does not (kernel `0c26bee` — with them off, pads muxed and card powered still read all-low), and the boot-time firmware race (pmos `0f63c60`, blobs staged in the initramfs the built-in driver reads at ~2.8 s). | Needs `CONFIG_FW_LOADER_COMPRESS_ZSTD` — linux-firmware ships the three MT7902 blobs `.zst`-compressed, and without it the loader reports `-2` for a file that is present, `hardware init failed`, and no `wlan0`. Carried by the pinned kernel since `ea54394`. |
