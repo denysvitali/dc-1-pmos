@@ -60,6 +60,7 @@ Everything committed here is world-readable. Non-negotiable rules:
   script owning the LK invariants (gzip kernel, legacy-frame LZ4 ramdisk,
   non-zero 4096-byte AVB0 signature page).
 - `docs/` — user-facing installation and status documentation.
+- `tools/` — hardware probe tools kept for re-measurement (`i2cbb`).
 - `.github/workflows/` — CI.
 
 ## Hardware invariants (cost boot cycles to learn; do not re-derive)

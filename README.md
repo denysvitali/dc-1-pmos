@@ -80,6 +80,7 @@ rootfs over Wi-Fi).
 - `boot/` — Android boot-image v4 tooling (`mkboot`, `repack-boot.sh`) that
   owns this device's boot-image invariants.
 - `docs/` — installation guide, hardware status, and preloader recovery.
+- `tools/` — hardware probe tools kept for re-measurement (`i2cbb`).
 - `.github/workflows/` — CI.
 
 Sources are pinned by commit in `scripts/versions.env`. The kernel is
