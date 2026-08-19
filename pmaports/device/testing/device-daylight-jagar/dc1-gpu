@@ -3,10 +3,17 @@
 # Systemd helper; the OpenRC path is dc1-gpu.initd, which carries the same
 # sequence and its hardware rationale.
 
+# On a mainline-DT boot (dtbswap) the tree declares the GPU itself
+# (13000000.gpu, status okay), so panfrost binds as soon as it loads and the
+# stock-tree overlay correctly refuses to apply (-19). Only the stock tree
+# needs the overlay + re-probe dance for its 13000000.mali node.
+#
 # The braces are load-bearing: `a || b; return 1` parses as `(a || b); return 1`,
 # so the return fires whether or not modprobe succeeded. See dc1-gpu.initd.
-modprobe mt6789-live-gpu-overlay 2>/dev/null \
-	|| { echo "could not load the GPU overlay module" >&2; exit 1; }
+if [ ! -e /sys/bus/platform/devices/13000000.gpu ]; then
+	modprobe mt6789-live-gpu-overlay 2>/dev/null \
+		|| { echo "could not load the GPU overlay module" >&2; exit 1; }
+fi
 modprobe panfrost 2>/dev/null \
 	|| { echo "could not load panfrost" >&2; exit 1; }
 

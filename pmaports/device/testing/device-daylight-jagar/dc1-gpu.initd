@@ -38,8 +38,12 @@ start() {
 	# the shell fell back to llvmpipe on a device with a perfectly good
 	# Mali-G57. The drivers_probe check below always had its braces, which is
 	# why only these two lines were wrong.
-	modprobe mt6789-live-gpu-overlay 2>/dev/null \
-		|| { eend 1 "could not load the GPU overlay module"; return 1; }
+	# On a mainline-DT boot (dtbswap) the tree declares the GPU itself
+	# (13000000.gpu, status okay); only the stock tree needs the overlay.
+	if [ ! -e /sys/bus/platform/devices/13000000.gpu ]; then
+		modprobe mt6789-live-gpu-overlay 2>/dev/null \
+			|| { eend 1 "could not load the GPU overlay module"; return 1; }
+	fi
 	modprobe panfrost 2>/dev/null \
 		|| { eend 1 "could not load panfrost"; return 1; }
 

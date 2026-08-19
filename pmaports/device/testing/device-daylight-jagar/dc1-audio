@@ -2,16 +2,22 @@
 # dc1-audio -- give the device an ALSA card. Systemd helper; the OpenRC path is
 # dc1-audio.initd, which carries the same sequence and its rationale.
 
-# The braces are load-bearing: `a || b; exit 1` parses as `(a || b); exit 1`,
-# so the exit fires whether or not modprobe succeeded (see dc1-gpu.initd).
-modprobe mt6789-live-audio-overlay 2>/dev/null \
-	|| { echo "could not load the audio overlay module" >&2; exit 1; }
+# On a mainline-DT boot (dtbswap) the tree wires the AFE itself: the card is
+# up before this unit runs and the stock-tree overlay correctly refuses to
+# apply (-19). Only the stock tree needs the overlay + re-probe dance.
+if ! grep -q mt6789-mt6366 /proc/asound/cards 2>/dev/null; then
+	# The braces are load-bearing: `a || b; exit 1` parses as
+	# `(a || b); exit 1`, so the exit fires whether or not modprobe
+	# succeeded (see dc1-gpu.initd).
+	modprobe mt6789-live-audio-overlay 2>/dev/null \
+		|| { echo "could not load the audio overlay module" >&2; exit 1; }
 
-# Re-probe the AFE. Its boot probe gave up (-110) waiting for an AUDIO power
-# domain that had no provider; the overlay adds one, but the deferred probe is
-# long over, so the device must be poked to retry.
-printf '11210000.mt6789-afe-pcm\n' > /sys/bus/platform/drivers_probe 2>/dev/null \
-	|| { echo "drivers_probe write failed" >&2; exit 1; }
+	# Re-probe the AFE. Its boot probe gave up (-110) waiting for an AUDIO
+	# power domain that had no provider; the overlay adds one, but the
+	# deferred probe is long over, so the device must be poked to retry.
+	printf '11210000.mt6789-afe-pcm\n' > /sys/bus/platform/drivers_probe 2>/dev/null \
+		|| { echo "drivers_probe write failed" >&2; exit 1; }
+fi
 
 # The machine card binds only once the AFE component registers, so wait for the
 # card itself rather than for the AFE device: that is what userspace needs. Match

@@ -29,11 +29,15 @@ depend() {
 start() {
 	ebegin "Bringing up audio"
 
-	modprobe mt6789-live-audio-overlay 2>/dev/null \
-		|| { eend 1 "could not load the audio overlay module"; return 1; }
+	# On a mainline-DT boot (dtbswap) the tree wires the AFE itself and the
+	# card is already up; only the stock tree needs the overlay + re-probe.
+	if ! grep -q mt6789-mt6366 /proc/asound/cards 2>/dev/null; then
+		modprobe mt6789-live-audio-overlay 2>/dev/null \
+			|| { eend 1 "could not load the audio overlay module"; return 1; }
 
-	printf '11210000.mt6789-afe-pcm\n' > /sys/bus/platform/drivers_probe 2>/dev/null \
-		|| { eend 1 "drivers_probe write failed"; return 1; }
+		printf '11210000.mt6789-afe-pcm\n' > /sys/bus/platform/drivers_probe 2>/dev/null \
+			|| { eend 1 "drivers_probe write failed"; return 1; }
+	fi
 
 	# The machine card binds only once the AFE component registers, so wait
 	# for the card itself: that is what userspace needs. Match it by name --
