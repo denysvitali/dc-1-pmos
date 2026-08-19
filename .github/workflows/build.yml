@@ -234,6 +234,16 @@ jobs:
               sudo chown -R 12345:12345 "$d"
             fi
           done
+          # Every run signs with a fresh ephemeral abuild key, so the cached
+          # repo's APKINDEX is UNTRUSTED to this run and abuild refuses to
+          # update it ("Failed to create index", first hit on run 32270706758).
+          # Deleting only the index is safe and sufficient: this run
+          # regenerates and signs it over the cached .apk files (which is the
+          # whole point of the cache -- byte-identical apks at an unchanged
+          # pkgver-pkgrel), and the published index is re-signed with the
+          # repo's own key at release time anyway.
+          sudo find work/postmarketos/pmbootstrap-work/packages \
+            -name 'APKINDEX*.tar.gz' -delete 2>/dev/null || true
 
       # The kernel toolchain (clang-20/LLVM, per the APKBUILD) lives inside
       # the build chroot; the runner only needs the host-side tools. pigz is
