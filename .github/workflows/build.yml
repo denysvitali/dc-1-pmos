@@ -58,10 +58,22 @@ jobs:
       # mkfs.ext4 / e2fsck / dumpe2fs / debugfs live in /usr/sbin, which is
       # not on the default non-root PATH; the offline ext4 test needs them
       # without sudo.
+      # timeout-minutes + a bounded retry: on 2026-08-19 this step -- which
+      # takes ~1 minute healthy -- hung three separate runs until the job's
+      # 30-minute ceiling (GitHub-side apt/mirror weather; runs in between
+      # passed unchanged). Better to fail one apt attempt in 5 minutes and
+      # retry than to burn the whole job budget in one silent hang.
       - name: Install verification dependencies
+        timeout-minutes: 12
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends e2fsprogs zstd
+          for attempt in 1 2; do
+            timeout 300 sudo apt-get update && \
+            timeout 300 sudo apt-get install -y --no-install-recommends \
+              e2fsprogs zstd && break
+            echo "apt attempt $attempt failed or hung; retrying" >&2
+            [ "$attempt" = 2 ] && exit 1
+            sleep 10
+          done
           echo /usr/sbin >> "$GITHUB_PATH"
           echo /sbin >> "$GITHUB_PATH"
 
