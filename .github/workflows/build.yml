@@ -164,9 +164,16 @@ jobs:
       #   cache_ccache*   — compiler cache (ccache_size = 2G in pmb.cfg)
       #   cache_distfiles — kernel source tarballs
       #   cache_apk_aarch64 — upstream Alpine/pmaports binary packages
-      # Never cached: chroots or our own built packages (device/kernel apks).
-      # export-artifacts.sh requires those by exact pkgver-pkgrel and fails if
-      # they are absent, which forces a fresh pmb build when the version bumps.
+      #   packages        — OUR built apks (see below)
+      # Never cached: chroots.
+      #
+      # An earlier revision deliberately did NOT cache our built packages, so
+      # that export-artifacts.sh's exact pkgver-pkgrel requirement would force
+      # a fresh build. That property survives caching: a version bump is
+      # absent from the cached repo and builds fresh; only an UNCHANGED
+      # pkgver-pkgrel is reused — which is the documented contract ("bump
+      # pkgrel when you change a build recipe") and, since dc1-boot-sync,
+      # a correctness requirement, not a shortcut (see the next comment).
       #
       # cache_apk_aarch64 is safe to cache because apk always fetches a fresh
       # APKINDEX from the mirror and verifies every cached file against it;
@@ -175,13 +182,26 @@ jobs:
       #
       # The run_id suffix makes every run save an updated cache; restore
       # falls back to the newest entry for the same (then any) source pins.
-      - name: Restore pmbootstrap ccache and source caches
+      #
+      # The BUILT-packages repo is cached too, and it is not an optimization:
+      # pmbootstrap only skips a rebuild when the same pkgver-pkgrel apk is
+      # already in the local repo, and that repo used to start empty every
+      # run. So every push relinked the kernel, the GNU build-id note changed
+      # (~32 bytes; everything else byte-identical), and the rolling release
+      # replaced the kernel apk AND jagar-boot.img with a pair that only
+      # matches ITSELF -- a device that installed the apk from run N and the
+      # image from run N+1 fails dc1-boot-sync's kernel comparison forever
+      # (measured on hardware 2026-08-19: "it did not stick"). With the repo
+      # cached, an unchanged pkgver-pkgrel keeps byte-identical artifacts
+      # across runs, which is the property the whole sync design assumes.
+      - name: Restore pmbootstrap ccache, source and package caches
         uses: actions/cache@v4
         with:
           path: |
             work/postmarketos/pmbootstrap-work/cache_ccache*
             work/postmarketos/pmbootstrap-work/cache_distfiles
             work/postmarketos/pmbootstrap-work/cache_apk_aarch64
+            work/postmarketos/pmbootstrap-work/packages
           key: pmb-${{ hashFiles('scripts/versions.env') }}-${{ github.run_id }}
           restore-keys: |
             pmb-${{ hashFiles('scripts/versions.env') }}-
@@ -197,7 +217,8 @@ jobs:
       - name: Reclaim restored cache ownership (pre-build)
         run: |
           for d in work/postmarketos/pmbootstrap-work/cache_ccache* \
-                   work/postmarketos/pmbootstrap-work/cache_distfiles; do
+                   work/postmarketos/pmbootstrap-work/cache_distfiles \
+                   work/postmarketos/pmbootstrap-work/packages; do
             if [ -e "$d" ]; then
               sudo chown -R 12345:12345 "$d"
             fi
@@ -267,7 +288,8 @@ jobs:
         if: always()
         run: |
           for d in work/postmarketos/pmbootstrap-work/cache_ccache* \
-                   work/postmarketos/pmbootstrap-work/cache_distfiles; do
+                   work/postmarketos/pmbootstrap-work/cache_distfiles \
+                   work/postmarketos/pmbootstrap-work/packages; do
             if [ -e "$d" ]; then
               sudo chown -R 12345:12345 "$d"
             fi
