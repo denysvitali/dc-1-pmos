@@ -261,3 +261,18 @@ is streamed over USB).
   back into LK fastboot, so you can reflash `boot_a` and try again. A
   failed boot is annoying, not fatal — as long as you only ever wrote
   `boot_a` and `userdata`.
+- **Reachability watchdog.** A boot that *succeeds* but cannot be reached is
+  the worst failure mode on a device with no serial header: the system pets
+  the hardware watchdog forever while you cannot get in. The boot image
+  therefore deploys `dc1-boot-watchdog` into the installed system on every
+  boot. While any shell channel is provably alive — an established inbound
+  connection on ports 22/4444, or a listener on one of them plus an answering
+  peer (the USB host at `172.16.42.2`, or the Wi-Fi default gateway) — it
+  stays quiet. After 10 minutes of none of that, it reboots the device into
+  LK fastboot, where an attached host can always re-flash. Pat it explicitly
+  with `dc1-boot-watchdog pat` (disarms for the current boot), or opt out
+  persistently with `touch /etc/dc1/boot-watchdog.disabled` — do that if you
+  use the tablet away from any network, or an offline session will reboot
+  under you after 10 minutes. A second, longer deadman (15 minutes) is armed
+  from the initramfs and covers the case where systemd never manages to start
+  the watchdog service at all.

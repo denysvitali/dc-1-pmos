@@ -36,6 +36,7 @@
 #include <fcntl.h>
 #include <sys/mount.h>
 #include <sys/mman.h>
+#include <sys/reboot.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <errno.h>
@@ -181,7 +182,10 @@ static int lease_is_fresh(void)
 /* Set the boot mode nibble LK reads on the way up so the pending watchdog
  * reset lands in fastboot, not the same slot. The hardware reset itself can
  * run no code, so this MUST happen before the petter stops petting. It is the
- * same write the (hardware-verified) dc1-reboot-fastboot tool performs --
+ * same write the dc1-reboot-fastboot tool performs (LK's side of it is
+ * verified by disassembly of the shipped lk_a.img; the Linux-side write has
+ * not yet been observed to land a device in fastboot -- the earlier
+ * "hardware-verified" label here overstated commit a844f3a) --
  * low nibble of WDT_NONRST_REG2 (0x10007000 + 0x24) == 3 == fastboot -- kept
  * inline because this is a forked child whose exec path is not trustworthy
  * after switch_root. Best-effort: a plain reset is the safe failure mode. */
@@ -264,6 +268,88 @@ static void start_watchdog_petter(void)
 		(void)write(fd, "a", 1);
 		sleep(10);
 	}
+}
+
+/* Reachability deadman, armed only for systemd roots that got the
+ * boot-watchdog deploy (boot.sh signals that via /tmp/reach-armed). It is
+ * forked immediately before switch_root and -- like the petter -- survives
+ * it: the open directory fd on /mnt/root keeps working after the MS_MOVE, so
+ * faccessat() can watch for var/lib/dc1/boot-ok, which the in-rootfs
+ * dc1-boot-watchdog service creates the first time the system is provably
+ * reachable (established shell connection, or listener + answering peer).
+ *
+ * This covers the gap none of the other layers do: a boot that reaches
+ * systemd (so the petter has handed the hardware watchdog to a healthy PID 1
+ * that pets it forever) but wedges before dc1-boot-watchdog runs, or boots a
+ * system whose every network path is down. Without it that device is
+ * unreachable until someone presses buttons.
+ *
+ * Deadline: 900 s, deliberately LONGER than the in-rootfs service's 600 s, so
+ * on a working system the service always fires first (cleanly, via
+ * dc1-reboot-fastboot); this deadman is the backstop for the service never
+ * running at all. On expiry: arm the fastboot nibble, ask systemd for a clean
+ * reboot (SIGINT to PID 1 = ctrl-alt-del = reboot.target), and if the system
+ * is too wedged to act on that within 120 s, hard-reboot(2). Every path lands
+ * in LK fastboot because the nibble is armed first.
+ *
+ * If switch_root fails the parent enters rescue(), which touches
+ * /tmp/wd-deadman on the still-live initramfs root this child kept -- seeing
+ * it, the child exits and leaves the board to the rescue deadman lease. */
+#define REACH_DEADLINE_SEC 900
+#define REACH_KICK_WAIT_SEC 120
+#define REACH_POLL_SEC 10
+#define REACH_PAT "var/lib/dc1/boot-ok"
+
+static void start_reachability_deadman(void)
+{
+	int rootfd;
+	pid_t pid;
+	int waited;
+
+	if (access("/tmp/reach-armed", F_OK) != 0) {
+		say("reachability: deploy did not report success -- deadman not armed");
+		return;
+	}
+	rootfd = open("/mnt/root", O_RDONLY | O_DIRECTORY);
+	if (rootfd < 0) {
+		say("reachability: cannot hold /mnt/root -- deadman not armed");
+		return;
+	}
+	pid = fork();
+	if (pid != 0) {
+		close(rootfd);
+		if (pid < 0)
+			say("reachability: fork FAILED -- deadman not armed");
+		else
+			say("reachability: deadman armed (900s for the system to "
+			    "become reachable, else LK fastboot)");
+		return;
+	}
+
+	for (waited = 0; waited < REACH_DEADLINE_SEC; waited += REACH_POLL_SEC) {
+		sleep(REACH_POLL_SEC);
+		if (faccessat(rootfd, REACH_PAT, F_OK, 0) == 0) {
+			say("reachability: system reachable -- deadman stands down");
+			_exit(0);
+		}
+		if (access("/tmp/wd-deadman", F_OK) == 0)
+			_exit(0);	/* rescue owns the board now */
+	}
+
+	say("reachability: NO PAT within the deadline -- arming fastboot and "
+	    "asking systemd to reboot");
+	arm_fastboot_nibble();
+	sync();
+	kill(1, SIGINT);	/* systemd: ctrl-alt-del => reboot.target */
+	for (waited = 0; waited < REACH_KICK_WAIT_SEC; waited += REACH_POLL_SEC) {
+		sleep(REACH_POLL_SEC);
+		if (faccessat(rootfd, REACH_PAT, F_OK, 0) == 0)
+			_exit(0);	/* reachable after all; let it live */
+	}
+	say("reachability: systemd did not reboot in 120s -- hard reset to fastboot");
+	sync();
+	reboot(RB_AUTOBOOT);
+	_exit(1);
 }
 
 /* Run "/bin/busybox sh <script>" in the foreground; returns its exit code
@@ -554,6 +640,10 @@ int main(void)
 		 * the UDC unbind below drops ttyGS0/ttyGS1 regardless. */
 		say("debug channels: systemd root -- handing ttyGS0/ttyGS1 over");
 		stop_debug_channels();
+
+		/* systemd will pet the hardware watchdog no matter how
+		 * unreachable the system is; this is the layer that notices. */
+		start_reachability_deadman();
 	}
 
 	/* Cleanly unbind the initramfs gadget's UDC before switch_root.

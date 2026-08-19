@@ -1,0 +1,20 @@
+# Deployed into /etc/systemd/system by the SYSTEM initramfs (boot.sh) on
+# every boot, together with /usr/local/sbin/dc1-boot-watchdog and dc1tools.
+# It lives in the initramfs, not the device package, because it is a
+# development-bench policy (an unreachable tablet reboots itself into
+# fastboot), not something upstream would ship to end users.
+[Unit]
+Description=DC-1 reachability watchdog (reboots to fastboot when unreachable)
+Documentation=https://github.com/denysvitali/dc-1-pmos
+
+[Service]
+Type=exec
+ExecStart=/usr/local/sbin/dc1-boot-watchdog run
+Restart=always
+RestartSec=10
+# The reboot path needs /dev/mem (boot-mode nibble) and the misc partition.
+# Everything else it touches is /proc/net and /run; keep it lean but rooted.
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

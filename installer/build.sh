@@ -431,6 +431,17 @@ install -m 0644 "$SRC/partlib.sh" "$s/etc/partlib.sh"
 install -m 0755 "$OUT/dc1tools" "$s/bin/dc1tools"
 ln -sf dc1tools "$s/bin/dc1-reboot-fastboot"
 
+# The reachability watchdog for the INSTALLED system. boot.sh copies these
+# into the verified rootfs on every boot (self-heal): the boot image is the
+# only artifact fastboot can update without a running system, so the
+# initramfs is the carrier -- deliberately not the device package, since
+# "reboot to fastboot when nobody can reach you" is bench policy, not
+# something upstream ships to end users.
+mkdir -p "$s/etc/deploy"
+install -m 0755 "$SRC/system/boot-watchdog.sh" "$s/etc/deploy/dc1-boot-watchdog"
+install -m 0644 "$SRC/system/dc1-boot-watchdog.service" \
+	"$s/etc/deploy/dc1-boot-watchdog.service"
+
 # Offline rootfs grow (boot.sh) + optional fsck: resize2fs and e2fsck plus
 # their musl libs, the same pinned set the installer stages. The apk ships each
 # lib as a real file (libX.so.1.2.3) plus a symlink (libX.so.1); copy both.
@@ -463,7 +474,8 @@ fi
 
 for a in sh ash cat ls ln mount mountpoint umount echo sleep mkdir rm cp \
          chmod tr head tail wc grep sed cut od dd find blkid seq date sync \
-         reboot basename dirname readlink printf stat switch_root dmesg setsid; do
+         reboot basename dirname readlink printf stat switch_root dmesg setsid \
+         cmp mv; do
 	ln -sf busybox "$s/bin/$a"
 done
 

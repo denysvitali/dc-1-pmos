@@ -3,8 +3,10 @@
 # FOREGROUND by /init (dc1-system-init). Finds and verifies the installed
 # rootfs; /init does the actual switch_root (only PID 1 can).
 #
-# Fail-closed: this script writes NOTHING to any partition. Any mismatch
-# exits non-zero and /init drops to a rescue shell.
+# Fail-closed: this script writes NOTHING to any partition it has not
+# verified. Any mismatch exits non-zero and /init drops to a rescue shell;
+# only the verified jagar-root filesystem is ever written (offline resize,
+# reachability-watchdog deploy).
 #
 # Success contract with /init: rootfs mounted at /mnt/root, device name in
 # /tmp/rootdev, exit 0.
@@ -87,6 +89,59 @@ mount -t ext4 "$dev" /mnt/root || fail "mount of $dev failed"
 if [ ! -x /mnt/root/sbin/init ]; then
 	umount /mnt/root 2>/dev/null
 	fail "no executable /sbin/init in $dev"
+fi
+
+# ---------------------------------------------------------------------------
+# Self-heal deploy: the reachability watchdog. jagar-boot.img is the only
+# artifact fastboot can update without a running system, so the initramfs --
+# not the device package -- carries the watchdog for the installed system and
+# (re)deploys it on every boot. See src/system/boot-watchdog.sh; the short
+# version: unreachable over every shell channel for too long => reboot into
+# LK fastboot, the one state the attached host can always recover from.
+#
+# Best-effort by design: a deploy failure must not fail an otherwise good
+# boot (the previous boot's copy, if any, still applies). /init arms its
+# post-switch_root deadman only when this reports success via
+# /tmp/reach-armed, so a rootfs that never got the service is never rebooted
+# for missing a pat it could not have delivered.
+if [ -x /mnt/root/usr/lib/systemd/systemd ] && [ -d /etc/deploy ]; then
+	R=/mnt/root
+	wd_ok=1
+	mkdir -p "$R/usr/local/sbin" "$R/var/lib/dc1" \
+	         "$R/etc/systemd/system/multi-user.target.wants" || wd_ok=0
+	# A pat from the previous boot must not satisfy this boot's deadman.
+	rm -f "$R/var/lib/dc1/boot-ok"
+	cp /etc/deploy/dc1-boot-watchdog "$R/usr/local/sbin/dc1-boot-watchdog" \
+		&& chmod 0755 "$R/usr/local/sbin/dc1-boot-watchdog" || wd_ok=0
+	cp /etc/deploy/dc1-boot-watchdog.service \
+		"$R/etc/systemd/system/dc1-boot-watchdog.service" || wd_ok=0
+	ln -sf ../dc1-boot-watchdog.service \
+		"$R/etc/systemd/system/multi-user.target.wants/dc1-boot-watchdog.service" \
+		|| wd_ok=0
+	# The watchdog's reboot tool comes from this image's own dc1tools -- the
+	# installed rootfs may predate the device package that ships the C one.
+	# ~2.5 MB, so copy only when it actually changed, and never through a
+	# half-written file.
+	if ! cmp -s /bin/dc1tools "$R/usr/local/sbin/dc1tools"; then
+		cp /bin/dc1tools "$R/usr/local/sbin/dc1tools.new" \
+			&& chmod 0755 "$R/usr/local/sbin/dc1tools.new" \
+			&& mv "$R/usr/local/sbin/dc1tools.new" "$R/usr/local/sbin/dc1tools" \
+			|| wd_ok=0
+	fi
+	ln -sf dc1tools "$R/usr/local/sbin/dc1-reboot-fastboot" || wd_ok=0
+	# dc1-boot-sync keys on the gzipped-kernel hash of the ACTIVE slot, and a
+	# dtbswap payload can never match /boot/vmlinuz: the moment the device gets
+	# network it would download the plain CI image over the inactive slot, arm
+	# it, and reboot -- silently undoing the mainline device tree AND this
+	# watchdog. Mask it until dc1-boot-sync learns dtbswap payloads; this
+	# initramfs owns the mask, so a future image can lift it again.
+	ln -sf /dev/null "$R/etc/systemd/system/dc1-boot-sync.service" || wd_ok=0
+	if [ "$wd_ok" = 1 ]; then
+		echo 1 > /tmp/reach-armed
+		log "watchdog deployed: dc1-boot-watchdog enabled, dc1-boot-sync masked"
+	else
+		log "watchdog deploy INCOMPLETE; boot continues without the reachability deadman"
+	fi
 fi
 
 echo "$dev" > /tmp/rootdev
