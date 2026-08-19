@@ -63,6 +63,13 @@ EOF
 	echo oldname > "$r/etc/hostname"
 	touch "$r/usr/share/zoneinfo/Europe/Zurich"
 	touch "$r/usr/share/zoneinfo/UTC"
+	# The built image ships sshd.service DISABLED: pmbootstrap's --no-sshd
+	# writes a disable preset that overrides the base preset's enable.
+	# provision.sh must both create the wants symlink and drop the preset.
+	mkdir -p "$r/usr/lib/systemd/system" "$r/usr/lib/systemd/system-preset"
+	touch "$r/usr/lib/systemd/system/sshd.service"
+	echo "disable sshd.service" \
+		> "$r/usr/lib/systemd/system-preset/80-pmbootstrap-install-disable-sshd.preset"
 }
 
 # ---------------------------------------------------------- validation
@@ -123,6 +130,14 @@ grep -q '^127\.0\.1\.1	mydc1$' "$R/etc/hosts" && ok "hosts updated" \
 [ "$(readlink "$R/etc/localtime")" = "../usr/share/zoneinfo/Europe/Zurich" ] \
 	&& ok "timezone symlink" || bad "timezone symlink wrong"
 
+# sshd: always enabled, never conditional on the answers.
+[ "$(readlink "$R/etc/systemd/system/multi-user.target.wants/sshd.service")" = \
+	"/usr/lib/systemd/system/sshd.service" ] \
+	&& ok "sshd enabled via wants symlink" || bad "sshd wants symlink wrong"
+[ -e "$R/usr/lib/systemd/system-preset/80-pmbootstrap-install-disable-sshd.preset" ] \
+	&& bad "pmbootstrap disable-sshd preset survived" \
+	|| ok "pmbootstrap disable-sshd preset removed"
+
 # Wi-Fi: no NM dir, no wpa_supplicant binary -> parked credentials.
 [ -f "$R/var/lib/dc1-installer/wifi.pending" ] \
 	&& ok "wifi parked without network stack" || bad "wifi.pending missing"
@@ -179,6 +194,26 @@ sh "$PROV" "$R" "$TMP/ans3" >/dev/null || bad "provision run failed"
 grep -q '^AutomaticLogin=alice$' "$R/etc/gdm/custom.conf" \
 	&& ok "gdm autologin rewritten to the renamed user" \
 	|| bad "gdm autologin not rewritten (still: $(tr '\n' ' ' < "$R/etc/gdm/custom.conf"))"
+
+# ------------------------------------------------- apply: sshd fallbacks
+echo "== apply: sshd on an OpenRC-only rootfs =="
+R="$TMP/root6"
+make_rootfs "$R"
+rm "$R/usr/lib/systemd/system/sshd.service"
+mkdir -p "$R/etc/init.d" "$R/etc/runlevels/default"
+touch "$R/etc/init.d/sshd"
+sh "$PROV" "$R" "$TMP/ans3" >/dev/null || bad "provision run failed"
+[ -L "$R/etc/runlevels/default/sshd" ] \
+	&& ok "sshd enabled in openrc default runlevel" \
+	|| bad "openrc sshd symlink missing"
+
+echo "== apply: rootfs without any sshd refuses to provision =="
+R="$TMP/root7"
+make_rootfs "$R"
+rm "$R/usr/lib/systemd/system/sshd.service"
+sh "$PROV" "$R" "$TMP/ans3" >/dev/null 2>&1 \
+	&& bad "provision succeeded with no sshd in rootfs" \
+	|| ok "provision fails loudly when the rootfs ships no sshd"
 
 echo
 echo "test-provision: $pass ok, $failn failed"

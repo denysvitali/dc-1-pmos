@@ -115,8 +115,12 @@ pmb build --arch=aarch64 device-daylight-jagar
 # --password is not optional in an automated build: without it, pmbootstrap
 # calls getpass() and an unattended run stops at a prompt nobody can answer.
 # The value is a build placeholder, recorded in PROVENANCE and meant to be
-# changed on first boot. The image ships with no SSH daemon and a locked root
-# account, so it is not a remotely reachable credential.
+# changed on first boot. The image ships with sshd disabled (--no-sshd writes
+# a "disable sshd.service" preset that overrides the base enable) and a locked
+# root account, so it is not a remotely reachable credential. The installer's
+# provision.sh enables sshd -- unconditionally, it is the recovery channel when
+# the desktop fails -- only after a real password hash replaces this
+# placeholder; keep that ordering if either side changes.
 pmb install --no-image --no-sshd --no-firewall --no-recommends \
 	--password "${PMOS_BUILD_PASSWORD:-postmarketos}"
 

@@ -10,6 +10,7 @@
 #
 #   provision.sh ROOTFS_DIR ANSWERS_FILE
 #       Apply: user + password, hostname, timezone, Wi-Fi credentials.
+#       sshd is always enabled, unconditionally (see apply_sshd).
 #
 # Answers file format (KEY=VALUE lines; parsed, never sourced):
 #   DC1_USER=alice              login name          [a-z_][a-z0-9_-]{0,31}
@@ -338,6 +339,37 @@ EOF
 	fi
 }
 
+apply_sshd() {
+	# sshd is enabled UNCONDITIONALLY: when GNOME does not come up, SSH is
+	# usually the only way into the device, so it must never depend on the
+	# Wi-Fi answers or on image defaults. The rootfs is deliberately built
+	# with pmbootstrap's --no-sshd (pre-provisioning it carries a build
+	# placeholder password, which must not be remotely reachable), and that
+	# flag ships a "disable sshd.service" preset which overrides the base
+	# preset's enable. Now that a real password hash is set, enable the
+	# daemon by hand -- no chroot, so no systemctl: sshd.service installs as
+	# WantedBy=multi-user.target, and the wants symlink IS the enabled
+	# state. Also drop pmbootstrap's disable preset so a later
+	# `systemctl preset-all` cannot silently undo this. Host keys need no
+	# help: sshd.service pulls in sshdgenkeys.service, which generates any
+	# missing key before first start.
+	if [ -f "$ROOT/usr/lib/systemd/system/sshd.service" ]; then
+		mkdir -p "$ROOT/etc/systemd/system/multi-user.target.wants"
+		ln -sf /usr/lib/systemd/system/sshd.service \
+			"$ROOT/etc/systemd/system/multi-user.target.wants/sshd.service"
+		rm -f "$ROOT/usr/lib/systemd/system-preset"/*-pmbootstrap-install-disable-sshd.preset
+		echo "sshd: enabled (systemd wants symlink)"
+	elif [ -f "$ROOT/etc/init.d/sshd" ] && [ -d "$ROOT/etc/runlevels/default" ]; then
+		# OpenRC image: the same registration the device package
+		# post-install performs, repeated here so the reachability
+		# guarantee does not depend on that hook having run.
+		ln -sf /etc/init.d/sshd "$ROOT/etc/runlevels/default/sshd"
+		echo "sshd: enabled (openrc default runlevel)"
+	else
+		die "rootfs ships no sshd service; refusing to provision an unreachable system"
+	fi
+}
+
 write_marker() {
 	mkdir -p "$ROOT/var/lib/dc1-installer"
 	# No secrets in the marker: names only.
@@ -378,5 +410,6 @@ apply_user
 apply_gdm_autologin
 apply_display_orientation
 apply_wifi
+apply_sshd
 write_marker
 echo "provisioned: user=$A_USER hostname=$A_HOSTNAME tz=$A_TZ wifi=$([ -n "$A_SSID" ] && echo yes || echo no)"
