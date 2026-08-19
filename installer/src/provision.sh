@@ -223,6 +223,58 @@ apply_gdm_autologin() {
 	fi
 }
 
+apply_display_orientation() {
+	# The panel scans out 180 degrees from the glass, and the device tree
+	# deliberately carries no rotation property, so DRM reports no panel
+	# orientation and GNOME comes up upside-down. Compensate where mutter
+	# actually looks: monitors.xml in the provisioned user's home (the
+	# session) and in gdm's (the greeter). The scale is the one mutter
+	# itself computes for this mode; if mutter ever rejects the file it
+	# falls back to its defaults, so the failure mode is only the rotation
+	# coming back, never a broken session. No-op unless gdm is present
+	# (same signal apply_gdm_autologin keys on).
+	[ -f "$ROOT/etc/gdm/custom.conf" ] || return 0
+	_mon_user_uid=$(awk -F: -v u="$A_USER" '$1 == u { print $3 }' "$ROOT/etc/passwd")
+	_mon_gdm_uid=$(awk -F: '$1 == "gdm" { print $3 }' "$ROOT/etc/passwd")
+	for _mon_pair in "home/$A_USER:$_mon_user_uid" "var/lib/gdm:$_mon_gdm_uid"; do
+		_mon_dir="$ROOT/${_mon_pair%%:*}/.config"
+		_mon_uid="${_mon_pair##*:}"
+		[ -n "$_mon_uid" ] || continue
+		mkdir -p "$_mon_dir"
+		cat > "$_mon_dir/monitors.xml" <<'EOF'
+<monitors version="2">
+  <configuration>
+    <layoutmode>logical</layoutmode>
+    <logicalmonitor>
+      <x>0</x>
+      <y>0</y>
+      <scale>1.4981273412704468</scale>
+      <primary>yes</primary>
+      <transform>
+        <rotation>upside_down</rotation>
+        <flipped>no</flipped>
+      </transform>
+      <monitor>
+        <monitorspec>
+          <connector>DSI-1</connector>
+          <vendor>unknown</vendor>
+          <product>unknown</product>
+          <serial>unknown</serial>
+        </monitorspec>
+        <mode>
+          <width>1200</width>
+          <height>1600</height>
+          <rate>60.000</rate>
+        </mode>
+      </monitor>
+    </logicalmonitor>
+  </configuration>
+</monitors>
+EOF
+		chown -R "$_mon_uid:$_mon_uid" "$_mon_dir" 2>/dev/null || true
+	done
+}
+
 apply_wifi() {
 	[ -n "$A_SSID" ] || return 0
 	if [ -d "$ROOT/etc/NetworkManager" ]; then
@@ -325,6 +377,7 @@ apply_hostname
 apply_timezone
 apply_user
 apply_gdm_autologin
+apply_display_orientation
 apply_wifi
 write_marker
 echo "provisioned: user=$A_USER hostname=$A_HOSTNAME tz=$A_TZ wifi=$([ -n "$A_SSID" ] && echo yes || echo no)"
