@@ -94,6 +94,9 @@ tcp_line tcp6 0016 0A
 run_once DC1_PING="$TMP/ping-ok" DC1_NOW=1000 \
 	&& ok "listener (tcp6) + answering peer is reachable" \
 	|| bad "listener + answering peer not recognized"
+grep -q 'reachable (listener on :22 + 172.16.42.2 answers)' "$TMP/log" \
+	&& ok "the log names WHICH condition patted" \
+	|| bad "reachability reason missing from the log: $(grep reachable "$TMP/log")"
 
 # --- 5. gateway from /proc/net/route is probed -------------------------------
 setup

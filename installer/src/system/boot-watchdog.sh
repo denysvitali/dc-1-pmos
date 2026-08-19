@@ -87,14 +87,14 @@ tcp_state_on_port() {   # $1=hex port  $2=state  -> success if present
 
 established_on_shell_port() {
 	for p in $PORTS; do
-		tcp_state_on_port "$(port_hex "$p")" 01 && return 0
+		tcp_state_on_port "$(port_hex "$p")" 01 && { REACH_PORT=$p; return 0; }
 	done
 	return 1
 }
 
 listening_on_shell_port() {
 	for p in $PORTS; do
-		tcp_state_on_port "$(port_hex "$p")" 0A && return 0
+		tcp_state_on_port "$(port_hex "$p")" 0A && { REACH_PORT=$p; return 0; }
 	done
 	return 1
 }
@@ -120,16 +120,27 @@ probe_peers_answer() {
 	gw=$(default_gateway 2>/dev/null || true)
 	for h in $PROBE_HOSTS $gw; do
 		[ "$h" = "0.0.0.0" ] && continue
-		$PING -c 1 -W 2 "$h" >/dev/null 2>&1 && return 0
+		$PING -c 1 -W 2 "$h" >/dev/null 2>&1 && { REACH_PEER=$h; return 0; }
 	done
 	return 1
 }
 
+# Sets REACH_WHY so the log says WHICH condition patted -- when a boot pats
+# unexpectedly (it happened: a forgotten bench-host watcher answered the
+# probe), the journal must be able to answer "why" without a re-run.
 reachable() {
-	[ -e "$PAT_FILE" ] && return 0
-	established_on_shell_port && return 0
-	if listening_on_shell_port && probe_peers_answer; then
-		return 0
+	REACH_WHY=""
+	if [ -e "$PAT_FILE" ]; then
+		REACH_WHY="explicit pat file"; return 0
+	fi
+	if established_on_shell_port; then
+		REACH_WHY="established connection on port $REACH_PORT"; return 0
+	fi
+	if listening_on_shell_port; then
+		lp=$REACH_PORT
+		if probe_peers_answer; then
+			REACH_WHY="listener on :$lp + $REACH_PEER answers"; return 0
+		fi
 	fi
 	return 1
 }
@@ -180,7 +191,7 @@ run() {
 			last_ok=$(now)
 			echo "$last_ok" > "$LASTOK_FILE"
 			mark_boot_ok
-			[ "$was_reachable" = yes ] || log "reachable"
+			[ "$was_reachable" = yes ] || log "reachable ($REACH_WHY)"
 			was_reachable=yes
 		else
 			[ "$was_reachable" = no ] || log "unreachable; deadline ${DEADLINE}s running"
