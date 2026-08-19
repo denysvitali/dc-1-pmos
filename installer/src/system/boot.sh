@@ -145,9 +145,21 @@ if [ -x /mnt/root/usr/lib/systemd/systemd ] && [ -d /etc/deploy ]; then
 	else
 		ln -sf /dev/null "$R/etc/systemd/system/dc1-boot-sync.service" || wd_ok=0
 	fi
+	# Any display manager with Restart=always and a fast RestartSec can
+	# relaunch a crashing session quickly enough to exhaust memory and
+	# starve every shell on the machine -- measured 2026-08-19 with tinydm's
+	# default 1s against a segfaulting gnome-shell (30+ minutes of a live
+	# kernel nobody could log into). Cap the rate for both DMs this device
+	# has ever used; a drop-in for an uninstalled unit is inert.
+	for dm in tinydm gdm; do
+		mkdir -p "$R/etc/systemd/system/$dm.service.d" && \
+		printf '[Unit]\nStartLimitIntervalSec=300\nStartLimitBurst=5\n[Service]\nRestartSec=30\n' \
+			> "$R/etc/systemd/system/$dm.service.d/50-dc1-restart-cap.conf" \
+			|| wd_ok=0
+	done
 	if [ "$wd_ok" = 1 ]; then
 		echo 1 > /tmp/reach-armed
-		log "watchdog deployed: dc1-boot-watchdog enabled, dc1-boot-sync masked"
+		log "watchdog deployed: dc1-boot-watchdog enabled, dc1-boot-sync masked, DM restart caps set"
 	else
 		log "watchdog deploy INCOMPLETE; boot continues without the reachability deadman"
 	fi

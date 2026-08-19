@@ -91,19 +91,37 @@ fi
 # --- 4. listener + answering probe peer => reachable -------------------------
 setup
 tcp_line tcp6 0016 0A
-run_once DC1_PING="$TMP/ping-ok" DC1_NOW=1000 \
-	&& ok "listener (tcp6) + answering peer is reachable" \
-	|| bad "listener + answering peer not recognized"
-grep -q 'reachable (listener on :22 + 172.16.42.2 answers)' "$TMP/log" \
+run_once DC1_PING="$TMP/ping-ok" DC1_SSH_PROBE=ok DC1_NOW=1000 \
+	&& ok "listener (tcp6) + answering peer + live sshd is reachable" \
+	|| bad "listener + peer + banner not recognized"
+grep -q 'reachable (listener on :22 + 172.16.42.2 answers + sshd banner)' "$TMP/log" \
 	&& ok "the log names WHICH condition patted" \
 	|| bad "reachability reason missing from the log: $(grep reachable "$TMP/log")"
+
+# --- 4b. starved sshd: listener + answering peer but NO banner => UNREACHABLE.
+# The 2026-08-19 wedge: kernel healthy, listen socket accepting, sshd starved
+# for 30+ minutes -- and the old check called that reachable.
+setup
+tcp_line tcp 0016 0A
+if run_once DC1_PING="$TMP/ping-ok" DC1_SSH_PROBE=dead DC1_NOW=1000; then
+	bad "silent sshd counted as reachable (the starvation blind spot)"
+else
+	ok "listener + peer with a silent sshd is UNREACHABLE"
+fi
+
+# --- 4c. USB bench answering + :4444 listener counts without a banner -------
+setup
+tcp_line tcp 115C 0A
+run_once DC1_PING="$TMP/ping-ok" DC1_SSH_PROBE=dead DC1_NOW=1000 \
+	&& ok "USB bench + :4444 listener is reachable without sshd" \
+	|| bad "USB bench 4444 path broken"
 
 # --- 5. gateway from /proc/net/route is probed -------------------------------
 setup
 tcp_line tcp 0016 0A
 route_default 0101A8C0
 printf 'PROBE_HOSTS=""\n' > "$TMP/etc/boot-watchdog.conf"
-run_once PING_LOG="$TMP/pings" DC1_PING="$TMP/ping-ok" DC1_NOW=1000 \
+run_once PING_LOG="$TMP/pings" DC1_PING="$TMP/ping-ok" DC1_SSH_PROBE=ok DC1_NOW=1000 \
 	|| bad "gateway probe run failed"
 grep -q '192\.168\.1\.1' "$TMP/pings" \
 	&& ok "default gateway decoded little-endian (0101A8C0 -> 192.168.1.1) and probed" \
@@ -161,6 +179,36 @@ env DC1_RUNDIR="$TMP/run" DC1_VARDIR="$TMP/var" DC1_CONFDIR="$TMP/etc" \
 [ -e "$TMP/run/dc1-boot-watchdog.pat" ] && [ -e "$TMP/var/boot-ok" ] \
 	&& ok "pat writes the run marker and the deadman file" \
 	|| bad "pat did not write both markers"
+
+# --- 13. fire escalation: plain reboot twice, fastboot on the third ----------
+# fire() is reached by a real (non-DC1_ONCE) run whose deadline is already
+# blown; the plain-reboot and fastboot commands are stubbed and record their
+# order. Each stub exits 0, so fire() exits the script after one shot.
+setup
+printf '#!/bin/sh\necho plain >> "%s"\n' "$TMP/fired-seq" > "$TMP/plain-reboot"
+printf '#!/bin/sh\necho fastboot >> "%s"\n' "$TMP/fired-seq" > "$TMP/fb-reboot"
+chmod +x "$TMP/plain-reboot" "$TMP/fb-reboot"
+for i in 1 2 3; do
+	echo 100 > "$TMP/run/dc1-boot-watchdog.last-ok"
+	env DC1_PROC="$TMP/proc" DC1_RUNDIR="$TMP/run" DC1_VARDIR="$TMP/var" \
+	    DC1_CONFDIR="$TMP/etc" DC1_REBOOT_CMD="$TMP/fb-reboot" \
+	    DC1_PLAIN_REBOOT="$TMP/plain-reboot" DC1_PING="$TMP/ping-fail" \
+	    DC1_NOW=1000 sh "$WD" run >/dev/null 2>&1
+done
+seq_got=$(tr '\n' ' ' < "$TMP/fired-seq" 2>/dev/null)
+[ "$seq_got" = "plain plain fastboot " ] \
+	&& ok "fire escalation: plain, plain, fastboot" \
+	|| bad "fire sequence was '$seq_got', want 'plain plain fastboot '"
+
+# --- 14. a reachable moment resets the escalation streak ----------------------
+setup
+echo 2 > "$TMP/var/watchdog-fires"
+tcp_line tcp 0016 01
+run_once DC1_PING="$TMP/ping-fail" DC1_NOW=1000 >/dev/null 2>&1 \
+	|| bad "reachable run failed"
+[ ! -e "$TMP/var/watchdog-fires" ] \
+	&& ok "a reachable boot resets the escalation streak" \
+	|| bad "fire streak not reset by reachability"
 
 echo "boot-watchdog: $pass ok, $failn failed"
 [ "$failn" -eq 0 ]

@@ -12,9 +12,15 @@ Type=exec
 ExecStart=/usr/local/sbin/dc1-boot-watchdog run
 Restart=always
 RestartSec=10
-# The reboot path needs /dev/mem (boot-mode nibble) and the misc partition.
-# Everything else it touches is /proc/net and /run; keep it lean but rooted.
-Nice=5
+# The watchdog must keep running precisely when everything else is thrashing
+# -- the 2026-08-19 userspace-starvation wedge starved the watchdog itself
+# (it originally ran at Nice=5, the wrong direction). High scheduling
+# priority, protected from the OOM killer, and a guaranteed sliver of
+# memory: this process is the remedy, it must not share the disease.
+Nice=-10
+CPUWeight=1000
+OOMScoreAdjust=-900
+MemoryLow=16M
 
 [Install]
 WantedBy=multi-user.target

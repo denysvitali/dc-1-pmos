@@ -15,9 +15,16 @@
 #      (`dc1-boot-watchdog pat` over any shell);
 #   2. an ESTABLISHED inbound TCP connection on a shell port (sshd:22 or the
 #      dc1-debug-shell on 4444) -- someone is already in;
-#   3. a shell port is LISTENING and a probe peer answers ping: the USB host
-#      (172.16.42.2) or the Wi-Fi default gateway -- nobody is in, but the
-#      path is up.
+#   3. a shell port is LISTENING, a probe peer answers ping, AND the shell
+#      daemon proves it is alive: sshd must return its version banner (a
+#      LISTEN socket is kernel state and survives a starved sshd -- the
+#      2026-08-19 wedge), or the answering peer is the USB bench host and
+#      the bannerless :4444 debug shell is listening.
+#
+# Firing escalates: two consecutive fires are plain reboots (a boot here is
+# proven, and fastboot with no USB host attached strands the device); the
+# third goes to fastboot for cable recovery. A reachable boot resets the
+# streak.
 #
 # The first time the device is reachable each boot, /var/lib/dc1/boot-ok is
 # created; the initramfs deadman (installer/src/system/init.c) waits for that
@@ -36,7 +43,9 @@
 # Test hooks: DC1_PROC overrides /proc, DC1_RUNDIR overrides /run,
 # DC1_VARDIR overrides /var/lib/dc1, DC1_CONFDIR overrides /etc/dc1,
 # DC1_PING overrides the ping command, DC1_REBOOT_CMD overrides
-# dc1-reboot-fastboot, DC1_NOW overrides the clock, DC1_ONCE runs one
+# dc1-reboot-fastboot, DC1_PLAIN_REBOOT overrides reboot, DC1_SSH_PROBE
+# (ok|dead) stubs the sshd banner check, DC1_NOW overrides the clock,
+# DC1_ONCE runs one
 # iteration and exits (its exit code: 0 reachable, 1 not yet fatal, 99 would
 # have fired).
 
@@ -58,6 +67,9 @@ PROBE_HOSTS="172.16.42.2"
 PAT_FILE="$RUNDIR/dc1-boot-watchdog.pat"
 LASTOK_FILE="$RUNDIR/dc1-boot-watchdog.last-ok"
 BOOT_OK="$VARDIR/boot-ok"
+# Consecutive unreachability fires, persisted across the reboots they cause;
+# reset by the first reachable moment of any boot.
+FIRE_COUNT="$VARDIR/watchdog-fires"
 
 # stderr is silenced BEFORE the kmsg redirection is attempted (left-to-right),
 # and the status never propagates: without the trailing ':', a non-root run
@@ -125,6 +137,22 @@ probe_peers_answer() {
 	return 1
 }
 
+# sshd_responds: a LISTEN socket is kernel state and survives a starved or
+# wedged sshd -- measured 2026-08-19, when userspace starvation left the
+# listen socket accepting while sshd never sent its banner for 30+ minutes
+# and this watchdog kept calling the device "reachable". A shell channel
+# only counts if the daemon TALKS: connect to it locally and require the
+# SSH version banner within a few seconds. busybox nc has no read timeout,
+# so the timeout wraps the whole probe.
+sshd_responds() {
+	if [ -n "${DC1_SSH_PROBE:-}" ]; then
+		[ "$DC1_SSH_PROBE" = ok ]
+		return
+	fi
+	banner=$(echo "" | timeout 5 nc 127.0.0.1 "$1" 2>/dev/null | head -c 4)
+	[ "$banner" = "SSH-" ]
+}
+
 # Sets REACH_WHY so the log says WHICH condition patted -- when a boot pats
 # unexpectedly (it happened: a forgotten bench-host watcher answered the
 # probe), the journal must be able to answer "why" without a re-run.
@@ -139,7 +167,22 @@ reachable() {
 	if listening_on_shell_port; then
 		lp=$REACH_PORT
 		if probe_peers_answer; then
-			REACH_WHY="listener on :$lp + $REACH_PEER answers"; return 0
+			# The path is up; now prove a shell daemon is ALIVE, not
+			# just listening. sshd proves itself with its banner. The
+			# 4444 debug shell has no banner, so it counts only when
+			# the answering peer is the USB bench host -- the one
+			# place that can actually use it.
+			if sshd_responds 22; then
+				REACH_WHY="listener on :$lp + $REACH_PEER answers + sshd banner"
+				return 0
+			fi
+			usb_peer=${PROBE_HOSTS%% *}
+			if [ "$REACH_PEER" = "$usb_peer" ] \
+				&& tcp_state_on_port "$(port_hex 4444)" 0A; then
+				REACH_WHY="USB bench $REACH_PEER answers + :4444 listener"
+				return 0
+			fi
+			REACH_WHY=""
 		fi
 	fi
 	return 1
@@ -152,12 +195,31 @@ mark_boot_ok() {
 	mkdir -p "$VARDIR" 2>/dev/null
 	echo "reachable $(now)" > "$BOOT_OK" 2>/dev/null \
 		&& log "first reachability this boot; initramfs deadman satisfied ($BOOT_OK)"
+	# A reachable boot ends any escalation streak.
+	rm -f "$FIRE_COUNT" 2>/dev/null
 }
 
+# Escalation: a plain reboot first -- it clears wedges (a boot here is
+# proven) and never strands the device, which reboot-to-fastboot DOES when
+# no USB host is attached (fastboot waits on a cable forever; learned
+# 2026-08-19 when the bench cable was unplugged). Only a THIRD consecutive
+# unreachable boot escalates to fastboot: by then reboots demonstrably do
+# not help, and a human with a cable is the remaining audience.
 fire() {
-	log "UNREACHABLE for ${DEADLINE}s (no shell connection, no listener+peer);" \
-	    "rebooting into fastboot for remote recovery"
+	n=$(cat "$FIRE_COUNT" 2>/dev/null)
+	case "$n" in ''|*[!0-9]*) n=0 ;; esac
+	n=$((n + 1))
+	mkdir -p "$VARDIR" 2>/dev/null
+	echo "$n" > "$FIRE_COUNT" 2>/dev/null
 	sync
+	if [ "$n" -lt 3 ]; then
+		log "UNREACHABLE for ${DEADLINE}s; plain reboot (consecutive fire $n of 3)"
+		${DC1_PLAIN_REBOOT:-reboot} && exit 0
+		log "plain reboot failed; escalating to fastboot"
+	else
+		log "UNREACHABLE for ${DEADLINE}s and $n consecutive fires;" \
+		    "rebooting into fastboot for cable recovery"
+	fi
 	[ -x "$REBOOT_CMD" ] || REBOOT_CMD=$(command -v dc1-reboot-fastboot 2>/dev/null)
 	if [ -n "$REBOOT_CMD" ]; then
 		"$REBOOT_CMD" && exit 0
@@ -167,7 +229,7 @@ fire() {
 	fi
 	# Last resort: the same slot boots again and this watchdog re-arms, so an
 	# unreachable device keeps cycling instead of sitting dark forever.
-	exec reboot
+	exec ${DC1_PLAIN_REBOOT:-reboot}
 }
 
 run() {
