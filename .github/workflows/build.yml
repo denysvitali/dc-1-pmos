@@ -205,6 +205,14 @@ jobs:
       # (measured on hardware 2026-08-19: "it did not stick"). With the repo
       # cached, an unchanged pkgver-pkgrel keeps byte-identical artifacts
       # across runs, which is the property the whole sync design assumes.
+      # config_abuild_keys rides in the SAME cache entry as packages, on
+      # purpose: the packages are only trustable together with the key that
+      # signed them (apk index verifies every .apk; a key/package split
+      # brought down two builds). Persisting this key is the same model the
+      # pmOS binary mirror uses. Threat check: it signs only the CI-LOCAL
+      # repo; everything a device trusts is anchored on the dc1-apk key,
+      # which lives in repo secrets, never in a cache. The pmb2- prefix
+      # retires the pre-key cache generation atomically.
       - name: Restore pmbootstrap ccache, source and package caches
         uses: actions/cache@v4
         with:
@@ -213,10 +221,11 @@ jobs:
             work/postmarketos/pmbootstrap-work/cache_distfiles
             work/postmarketos/pmbootstrap-work/cache_apk_aarch64
             work/postmarketos/pmbootstrap-work/packages
-          key: pmb-${{ hashFiles('scripts/versions.env') }}-${{ github.run_id }}
+            work/postmarketos/pmbootstrap-work/config_abuild_keys
+          key: pmb2-${{ hashFiles('scripts/versions.env') }}-${{ github.run_id }}
           restore-keys: |
-            pmb-${{ hashFiles('scripts/versions.env') }}-
-            pmb-
+            pmb2-${{ hashFiles('scripts/versions.env') }}-
+            pmb2-
 
       # The chroot build runs as pmbootstrap's `pmos` user, which is UID 12345
       # (pmb.config.chroot_uid_user), and pmbootstrap chowns the ccache mount to
@@ -229,21 +238,12 @@ jobs:
         run: |
           for d in work/postmarketos/pmbootstrap-work/cache_ccache* \
                    work/postmarketos/pmbootstrap-work/cache_distfiles \
-                   work/postmarketos/pmbootstrap-work/packages; do
+                   work/postmarketos/pmbootstrap-work/packages \
+                   work/postmarketos/pmbootstrap-work/config_abuild_keys; do
             if [ -e "$d" ]; then
               sudo chown -R 12345:12345 "$d"
             fi
           done
-          # Every run signs with a fresh ephemeral abuild key, so the cached
-          # repo's APKINDEX is UNTRUSTED to this run and abuild refuses to
-          # update it ("Failed to create index", first hit on run 32270706758).
-          # Deleting only the index is safe and sufficient: this run
-          # regenerates and signs it over the cached .apk files (which is the
-          # whole point of the cache -- byte-identical apks at an unchanged
-          # pkgver-pkgrel), and the published index is re-signed with the
-          # repo's own key at release time anyway.
-          sudo find work/postmarketos/pmbootstrap-work/packages \
-            -name 'APKINDEX*.tar.gz' -delete 2>/dev/null || true
 
       # The kernel toolchain (clang-20/LLVM, per the APKBUILD) lives inside
       # the build chroot; the runner only needs the host-side tools. pigz is
@@ -310,7 +310,8 @@ jobs:
         run: |
           for d in work/postmarketos/pmbootstrap-work/cache_ccache* \
                    work/postmarketos/pmbootstrap-work/cache_distfiles \
-                   work/postmarketos/pmbootstrap-work/packages; do
+                   work/postmarketos/pmbootstrap-work/packages \
+                   work/postmarketos/pmbootstrap-work/config_abuild_keys; do
             if [ -e "$d" ]; then
               sudo chown -R 12345:12345 "$d"
             fi
