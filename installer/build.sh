@@ -548,7 +548,34 @@ if [ -n "$KERNEL_IMAGE" ]; then
 	[ -x "$repack" ] || fatal "missing $repack"
 	sh "$repack" "$KERNEL_IMAGE" "$OUT/installer-initramfs.cpio.lz4" \
 		"$OUT/installer-boot.img"
-	sh "$repack" "$KERNEL_IMAGE" "$OUT/system-initramfs.cpio.lz4" \
+
+	# jagar-boot.img boots the MAINLINE device tree when KERNEL_DTB is given:
+	# the kernel slot becomes gzip([dtbswap stub | dtb | Image]) -- see
+	# boot/dtbswap/README.md. LK's merged signed tree cannot be replaced, so
+	# the stub is the only route; hardware-proven 2026-08-19. Without
+	# KERNEL_DTB the image stays a plain (stock-DT) one. The installer image
+	# above deliberately stays plain either way -- installation mode is
+	# proven on the stock tree and needs nothing from the mainline one.
+	jagar_kernel="$KERNEL_IMAGE"
+	if [ -n "${KERNEL_DTB:-}" ]; then
+		[ -s "$KERNEL_DTB" ] || fatal "KERNEL_DTB missing: $KERNEL_DTB"
+		dtbswap="$HERE/../boot/dtbswap"
+		make -C "$dtbswap" ${DTBSWAP_LLVM:+LLVM="$DTBSWAP_LLVM"} \
+			${DTBSWAP_LLD:+LLD="$DTBSWAP_LLD"} \
+			|| fatal "dtbswap stub build failed"
+		# pack.sh needs the raw Image; accept a gzipped KERNEL_IMAGE.
+		if [ "$(od -An -N2 -tx1 "$KERNEL_IMAGE" | tr -d ' \n')" = "1f8b" ]; then
+			gunzip -c "$KERNEL_IMAGE" > "$OUT/Image.raw"
+		else
+			cp "$KERNEL_IMAGE" "$OUT/Image.raw"
+		fi
+		sh "$dtbswap/pack.sh" "$dtbswap/dtbswap.bin" "$KERNEL_DTB" \
+			"$OUT/Image.raw" "$OUT/dtbswap-kernel.gz" \
+			|| fatal "dtbswap pack failed"
+		rm -f "$OUT/Image.raw"
+		jagar_kernel="$OUT/dtbswap-kernel.gz"
+	fi
+	sh "$repack" "$jagar_kernel" "$OUT/system-initramfs.cpio.lz4" \
 		"$OUT/jagar-boot.img"
 fi
 

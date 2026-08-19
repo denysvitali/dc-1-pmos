@@ -279,6 +279,22 @@ jobs:
       # required applets natively — no qemu, this runner is aarch64.
       # MODDIR is passed only if the built rootfs actually shipped modules
       # (the gadget stack may be built in).
+      # clang/lld/dtc build the dtbswap stub + payload so jagar-boot.img boots
+      # the MAINLINE device tree (installer-boot.img stays plain/stock-DT).
+      # Ubuntu's default clang is fine for the 6 KB freestanding stub -- a
+      # clang19 build of it was boot-proven on hardware 2026-08-19; the kernel
+      # itself keeps its pinned toolchain inside pmbootstrap.
+      - name: Install dtbswap stub toolchain
+        timeout-minutes: 12
+        run: |
+          for attempt in 1 2; do
+            timeout 300 sudo apt-get install -y --no-install-recommends \
+              clang lld device-tree-compiler python3 && break
+            echo "apt attempt $attempt failed or hung; retrying" >&2
+            [ "$attempt" = 2 ] && exit 1
+            sleep 10
+          done
+
       - name: Build installer and system boot images
         run: |
           moddir=$(sudo sh -c \
@@ -287,12 +303,30 @@ jobs:
           if [ -n "$moddir" ]; then
             echo "staging kernel modules from $moddir"
             sudo env KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
+              KERNEL_DTB="$GITHUB_WORKSPACE/out/boot/mt8781-daylight-jagar.dtb" \
+              DTBSWAP_LLVM=/usr/bin/ DTBSWAP_LLD=/usr/bin/ld.lld \
               MODDIR="$moddir" sh installer/build.sh
           else
             echo "no kernel modules directory found; building without MODDIR"
             sudo env KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
+              KERNEL_DTB="$GITHUB_WORKSPACE/out/boot/mt8781-daylight-jagar.dtb" \
+              DTBSWAP_LLVM=/usr/bin/ DTBSWAP_LLD=/usr/bin/ld.lld \
               sh installer/build.sh
           fi
+          # The release must never silently regress to a stock-DT image:
+          # prove the kernel slot is a dtbswap payload (stub magic at 56,
+          # payload table at 0x40, FDT magic at the dtb offset).
+          python3 - <<'EOF'
+          import struct, gzip
+          img = open('installer/out/jagar-boot.img','rb').read()
+          ks = struct.unpack_from('<I', img, 8)[0]
+          blob = gzip.decompress(img[4096:4096+ks])
+          assert blob[56:60] == b'ARM\x64', "kernel slot is not an arm64 image"
+          doff, dlen, koff, klen = struct.unpack_from('<4I', blob, 0x40)
+          assert blob[doff:doff+4] == b'\xd0\x0d\xfe\xed', "no FDT at dtb offset: not a dtbswap payload"
+          assert koff + klen == len(blob), "payload table inconsistent"
+          print(f"jagar-boot.img is a dtbswap payload: dtb {dlen}B @ {doff}, kernel {klen}B @ {koff}")
+          EOF
 
       # One directory holding exactly what the README promises users, with a
       # single regenerated SHA256SUMS: the exporter's manifest predates the

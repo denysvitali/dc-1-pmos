@@ -117,17 +117,52 @@ active_slot() {
 	dc1-slotctl status | sed -n 's/.*active=\([ab]\).*/\1/p'
 }
 
-# kernel_sha DEV -> SHA-256 of the gzip'd kernel inside an Android v4 boot
-# image. Header is 1584 bytes padded to 4096, so the kernel starts at 4096;
-# kernel_size is the little-endian u32 at offset 8 (the same layout
-# boot/repack-boot.sh writes). Returns 1 on a bogus size.
+# u32at FILE OFFSET -> little-endian u32 as decimal, empty on short read.
+u32at() { od -An -tu4 -N4 -j"$2" "$1" 2>/dev/null | tr -d ' '; }
+
+# isnum STR -> true iff STR is a non-empty decimal number.
+isnum() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }
+
+# kernel_sha DEV -> SHA-256 of the UNCOMPRESSED kernel the slot boots.
+#
+# dtbswap-aware: since the mainline-DT switch, jagar-boot.img's kernel slot is
+# gzip([dtbswap stub | dtb | kernel Image]) rather than the plain gzip'd
+# Image (see boot/dtbswap/README.md), so comparing the slot's gzip bytes
+# against /boot/vmlinuz would mismatch forever and this script would deploy on
+# every networked boot. Instead both sides are compared UNCOMPRESSED: the slot
+# side is unwrapped first when it is a dtbswap payload -- identified by the
+# payload table at 0x40 (dtb offset/len, kernel offset/len patched in by
+# pack.sh), the FDT magic at the dtb offset, and the kernel ending exactly at
+# the blob's end. A plain image hashes as a whole.
+#
+# Layout facts: Android v4 header is 1584 bytes padded to 4096, so the kernel
+# slot starts at 4096; kernel_size is the little-endian u32 at offset 8 (the
+# same layout boot/repack-boot.sh writes). Returns 1 on a bogus size.
 kernel_sha() {
 	dev=$1
-	ksize=$(od -An -tu4 -N4 -j8 "$dev" | tr -d ' ')
-	case "$ksize" in ''|*[!0-9]*|0) log "cannot read kernel size from $dev"; return 1 ;; esac
+	ksize=$(u32at "$dev" 8)
+	isnum "$ksize" && [ "$ksize" -gt 0 ] || { log "cannot read kernel size from $dev"; return 1; }
 	# A kernel is a few MiB; anything near the 64 MiB partition is a misread.
 	[ "$ksize" -gt 67108864 ] && { log "kernel size $ksize is implausible"; return 1; }
-	dd if="$dev" bs=4096 skip=1 2>/dev/null | head -c "$ksize" | sha256sum | cut -d' ' -f1
+	blob="${TMPDIR:-/tmp}/dc1-boot-sync-blob.$$"
+	if ! dd if="$dev" bs=4096 skip=1 2>/dev/null | head -c "$ksize" \
+			| gunzip -c > "$blob" 2>/dev/null; then
+		rm -f "$blob"
+		log "kernel slot does not gunzip"
+		return 1
+	fi
+	doff=$(u32at "$blob" 64); koff=$(u32at "$blob" 72); klen=$(u32at "$blob" 76)
+	total=$(wc -c < "$blob")
+	if isnum "$doff" && isnum "$koff" && isnum "$klen" \
+		&& [ "$doff" -gt 0 ] && [ "$koff" -gt "$doff" ] \
+		&& [ $((koff + klen)) -eq "$total" ] \
+		&& [ "$(od -An -tx1 -N4 -j"$doff" "$blob" 2>/dev/null | tr -d ' \n')" = d00dfeed ]; then
+		sha=$(tail -c "+$((koff + 1))" "$blob" | head -c "$klen" | sha256sum | cut -d' ' -f1)
+	else
+		sha=$(sha256sum "$blob" | cut -d' ' -f1)
+	fi
+	rm -f "$blob"
+	echo "$sha"
 }
 
 # deploy INSTALLED_SHA -- download, verify, flash the INACTIVE slot, arm it.
@@ -250,7 +285,11 @@ if [ -n "${DC1_BOOT_SYNC_LIB:-}" ]; then
 fi
 
 [ -f "$VMLINUZ" ] || { log "no $VMLINUZ; nothing to sync"; exit 0; }
-installed_sha=$(sha256sum "$VMLINUZ" | cut -d' ' -f1)
+# Uncompressed, to match kernel_sha's dtbswap unwrapping (a plain gzip'd
+# vmlinuz never byte-matches the payload gzip, only the Image inside it).
+installed_sha=$(gunzip -c "$VMLINUZ" 2>/dev/null | sha256sum | cut -d' ' -f1)
+[ "$installed_sha" != "$(printf '' | sha256sum | cut -d' ' -f1)" ] \
+	|| { log "$VMLINUZ does not gunzip; refusing to sync"; exit 0; }
 
 # --deploy (the apk trigger): deploy + arm now, no reboot. FULLY BEST-EFFORT:
 # the trigger also fires inside the build chroot (the kernel package install

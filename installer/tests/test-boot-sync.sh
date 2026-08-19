@@ -50,13 +50,15 @@ printf '100\n' > "$tmp/sys/sdc26/size"
 echo "-- kernel extraction (Android v4 header)"
 
 # A synthetic boot image: 1584-byte header (kernel_size u32 at offset 8),
-# zero-padded to 4096, then the gzip'd kernel. kernel_sha must return exactly
-# the kernel's SHA-256, proving it reads the size from the header and the bytes
-# from offset 4096 -- the layout boot/repack-boot.sh writes.
-kern="$tmp/kernel.gz"
-head -c 12345 /dev/zero | tr '\0' 'K' > "$kern"
-want=$(sha256sum "$kern" | cut -d' ' -f1)
-python3 - "$tmp/synth.img" "$kern" <<'PY'
+# zero-padded to 4096, then the gzip'd kernel. Since the dtbswap switch,
+# kernel_sha compares UNCOMPRESSED kernels, so the expected hash is the raw
+# Image's, not the gzip's -- proving it reads the size from the header, the
+# bytes from offset 4096, and gunzips them (the layout repack-boot.sh writes).
+raw="$tmp/kernel.raw"
+head -c 12345 /dev/zero | tr '\0' 'K' > "$raw"
+want=$(sha256sum "$raw" | cut -d' ' -f1)
+gzip -c "$raw" > "$tmp/kernel.gz"
+python3 - "$tmp/synth.img" "$tmp/kernel.gz" <<'PY'
 import struct, sys
 kern = open(sys.argv[2], 'rb').read()
 hdr = bytearray(1584)
@@ -64,8 +66,35 @@ hdr[0:8] = b'ANDROID!'
 struct.pack_into('<I', hdr, 8, len(kern))
 open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + kern)
 PY
-got=$(kernel_sha "$tmp/synth.img") || fail "kernel_sha failed on a valid image"
-[ "$got" = "$want" ] || fail "kernel_sha = $got, want $want"
+got=$(kernel_sha "$tmp/synth.img") || fail "kernel_sha failed on a plain image"
+[ "$got" = "$want" ] || fail "plain kernel_sha = $got, want $want"
+
+# A dtbswap payload: gzip([stub | dtb | kernel]) with the payload table at
+# 0x40 and the FDT magic at the dtb offset. kernel_sha must unwrap it and
+# hash ONLY the inner kernel -- the raw Image again, same hash as above.
+python3 - "$tmp/dtbswap.img" "$raw" <<'PY'
+import struct, sys, gzip
+kern = open(sys.argv[2], 'rb').read()
+stub = bytearray(5904)
+stub[56:60] = b'ARM\x64'
+dtb = b'\xd0\x0d\xfe\xed' + b'D' * 996        # FDT magic + filler
+doff = len(stub); koff = doff + len(dtb)
+struct.pack_into('<4I', stub, 0x40, doff, len(dtb), koff, len(kern))
+blob = bytes(stub) + dtb + kern
+gz = gzip.compress(blob)
+hdr = bytearray(1584)
+hdr[0:8] = b'ANDROID!'
+struct.pack_into('<I', hdr, 8, len(gz))
+open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + gz)
+PY
+got=$(kernel_sha "$tmp/dtbswap.img") || fail "kernel_sha failed on a dtbswap image"
+[ "$got" = "$want" ] || fail "dtbswap kernel_sha = $got, want $want (inner kernel not unwrapped)"
+
+# A plain kernel whose bytes HAPPEN to be valid at 0x40 must not be misread
+# as a payload: the FDT-magic-at-doff check is the discriminator. Kernel of
+# 'K's has u32s of 0x4b4b4b4b at 0x40 -- doff far beyond the blob, od reads
+# nothing, and kernel_sha must fall back to whole-blob hashing (== $want).
+# (Covered by the plain-image case above; this comment records the reasoning.)
 
 # A bogus kernel_size must refuse, not hand back a garbage hash.
 python3 - "$tmp/bogus.img" <<'PY'
@@ -76,5 +105,16 @@ struct.pack_into('<I', hdr, 8, 0x7fffffff)
 open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + b'x' * 4096)
 PY
 ! kernel_sha "$tmp/bogus.img" >/dev/null 2>&1 || fail "kernel_sha accepted an implausible kernel size"
+
+# Content that is not gzip at all must refuse (old images were compared as
+# gzip bytes; the uncompressed comparison must not silently hash garbage).
+python3 - "$tmp/notgz.img" <<'PY'
+import struct, sys
+hdr = bytearray(1584)
+hdr[0:8] = b'ANDROID!'
+struct.pack_into('<I', hdr, 8, 100)
+open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + b'N' * 100)
+PY
+! kernel_sha "$tmp/notgz.img" >/dev/null 2>&1 || fail "kernel_sha accepted a non-gzip kernel slot"
 
 echo "boot-sync resolver + kernel extraction tests passed"

@@ -129,13 +129,22 @@ if [ -x /mnt/root/usr/lib/systemd/systemd ] && [ -d /etc/deploy ]; then
 			|| wd_ok=0
 	fi
 	ln -sf dc1tools "$R/usr/local/sbin/dc1-reboot-fastboot" || wd_ok=0
-	# dc1-boot-sync keys on the gzipped-kernel hash of the ACTIVE slot, and a
-	# dtbswap payload can never match /boot/vmlinuz: the moment the device gets
-	# network it would download the plain CI image over the inactive slot, arm
-	# it, and reboot -- silently undoing the mainline device tree AND this
-	# watchdog. Mask it until dc1-boot-sync learns dtbswap payloads; this
-	# initramfs owns the mask, so a future image can lift it again.
-	ln -sf /dev/null "$R/etc/systemd/system/dc1-boot-sync.service" || wd_ok=0
+	# dc1-boot-sync used to key on the gzipped-kernel hash of the ACTIVE
+	# slot, and a dtbswap payload can never match /boot/vmlinuz: the moment
+	# the device got network it would download the CI image over the
+	# inactive slot, arm it, and reboot. A dtbswap-aware dc1-boot-sync
+	# (device pkgrel >= 44, detected by its marker string) compares the
+	# UNCOMPRESSED inner kernels instead, and CI now ships mainline-DT
+	# images -- so for that version the mask comes OFF. Anything older
+	# stays masked. This initramfs owns the mask either way.
+	if grep -q dtbswap-aware "$R/usr/libexec/dc1-boot-sync" 2>/dev/null; then
+		if [ "$(readlink "$R/etc/systemd/system/dc1-boot-sync.service" 2>/dev/null)" = /dev/null ]; then
+			rm -f "$R/etc/systemd/system/dc1-boot-sync.service"
+			log "dc1-boot-sync is dtbswap-aware; mask lifted"
+		fi
+	else
+		ln -sf /dev/null "$R/etc/systemd/system/dc1-boot-sync.service" || wd_ok=0
+	fi
 	if [ "$wd_ok" = 1 ]; then
 		echo 1 > /tmp/reach-armed
 		log "watchdog deployed: dc1-boot-watchdog enabled, dc1-boot-sync masked"
