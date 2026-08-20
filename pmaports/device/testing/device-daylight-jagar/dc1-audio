@@ -35,8 +35,13 @@ grep -q mt6789-mt6366 /proc/asound/cards 2>/dev/null \
 # they persist until the card is removed.
 #   DL1 PCM → ADDA_DL CH1/CH2 → HPL/HPR (LoudSPK Playback)
 #           → Ext_Speaker_Amp → RT9101 → speakers
-# Volumes are set to full scale (Headphone 18/18, ADDA_DL_GAIN 100%): the
-# codec's digital path is the right knob; amp gain is fixed in hardware.
+# Headphone is the master gain (+8 dB = value 18) and drives both channels
+# equally. Lineout is pinned to unity (0 dB = value 10), not full scale: the
+# speakers are asymmetric off the codec, the LEFT runs DACL → line-out buffer
+# → HPL (two gain stages) while the RIGHT runs DACR → HPR (one). Leaving
+# Lineout at +8 dB stacks it on top of Headphone for the left channel alone,
+# so the left speaker clips while the right is 8 dB quieter. Unity keeps the
+# two channels riding Headphone together.
 _set_speaker_path() {
 	local c="amixer -c mt6789mt6366 -q"
 	$c sset 'ADDA_DL_CH1 DL1_CH1' on \
@@ -45,6 +50,7 @@ _set_speaker_path() {
 	&& $c sset 'HPR Mux' 'LoudSPK Playback' \
 	&& $c sset 'Ext_Speaker_Amp' on \
 	&& $c sset 'Headphone' 18 \
+	&& $c sset 'Lineout' 10 \
 	&& $c sset 'ADDA_DL_GAIN' 100%
 }
 _set_speaker_path || echo "dc1-audio: speaker path amixer commands failed" >&2
