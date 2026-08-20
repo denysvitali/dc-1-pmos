@@ -28,6 +28,16 @@ sleep-inactive-battery-type='nothing'
 # anything the user does in Extensions still wins.
 enabled-extensions=['dc1-warmth@denv.it']
 
+[org.gnome.shell.keybindings]
+# The two spare side buttons, remapped by 61-daylight-jagar-keyboard.hwdb to
+# XF86Launch1 (top-left "Quick Action") and XF86Launch2 (bottom-right "Back
+# Button" / Walkie Talkie). Defaults: Quick Action opens the screenshot UI --
+# 'Print' is kept so external keyboards still work -- and Back Button toggles
+# the overview. Both are overrides of the schema *defaults*, so anything the
+# user sets in GNOME Settings > Keyboard still wins.
+show-screenshot-ui=['Print', 'XF86Launch1']
+toggle-overview=['XF86Launch2']
+
 [org.gnome.desktop.session]
 # Never idle-blank: this key is what powerManager arms its screensaver idle
 # watch from, and 0 disables the watch entirely.

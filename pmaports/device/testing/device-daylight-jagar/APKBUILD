@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=46
+pkgrel=47
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -75,6 +75,7 @@ source="
 	90-device-daylight-jagar.rules
 	10-dc1-watchdog.conf
 	10-dc1-gnome.gschema.override
+	61-daylight-jagar-keyboard.hwdb
 	10-dc1-power.conf
 	net.hadess.SensorProxy.service
 	dc1-warmth-extension.js
@@ -190,6 +191,12 @@ package() {
 		"$pkgdir"/etc/systemd/logind.conf.d/10-dc1-power.conf
 	install -Dm644 "$srcdir"/10-dc1-gnome.gschema.override \
 		"$pkgdir"/usr/share/glib-2.0/schemas/10-dc1-gnome.gschema.override
+
+	# Side buttons: remap Quick Action / Back Button (F12/F11 in the keypad's
+	# DT keymap) to XF86Launch1/XF86Launch2 so they are free for the user to
+	# bind in GNOME Settings; defaults live in the gschema override above.
+	install -Dm644 "$srcdir"/61-daylight-jagar-keyboard.hwdb \
+		"$pkgdir"/usr/lib/udev/hwdb.d/61-daylight-jagar-keyboard.hwdb
 
 	# The amber frontlight's quick-settings slider. GNOME binds exactly one
 	# backlight device to the internal display, so the second RT4539 is
@@ -340,7 +347,8 @@ e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99c
 5a4af57abbb3a7c84447d445ce3bf87601e35e8fefc1d8f5ead722cb34c24d0db8651b67ebdf30d92ffbca00972b5997374fc18ab860416d580af34fe6a27c7c  80-device-daylight-jagar.preset
 bd385f9e00a6b72922567c567698ee9ab8aea5de2d21c1fe2d373b0c361376570202c79c1ed3a7f021c5b5684ffcea7d99d1afb21c70924f19fc0eeef1fa7119  90-device-daylight-jagar.rules
 0e7762a93506f1ec322ed7ca16469f1705d0e712716d87edbc121061ce7e3f2185d1b7beaf52c6c9380375accc7f038b37f52662515a4a981a781304d433e8d2  10-dc1-watchdog.conf
-92ddf71d7ef12a1b57676797813a696a7260fe72e5658e7c264079dfdd0be5fb1f0706e80e59245cc2e3094234836b0b2b48921ad3250b99a5aebda66ffb33da  10-dc1-gnome.gschema.override
+d9ef2429685864eeca018bbecafa28b1c2123a930016307d1b7b2bc5b405f4276de1233659e3fb924f40fc6e0255e4d192d26542c854faa67def33fe77be67bd  10-dc1-gnome.gschema.override
+35ed4afb186d649ece52f36dc2d1b9df640f07aaf796f3ea4a63805b7aa24674fba9b945694d0e6863f15908de91931e8766010a2e34b19bbea52e2f2006dbfd  61-daylight-jagar-keyboard.hwdb
 50dfd0ea25c80a97c1625dbf6dc42a8c114148cadafa20e21d210a9ea8c224e0069a75251ce11e427b51b50896929c833166988855a2c96deef03e6d3b94eb58  10-dc1-power.conf
 9ba63fe59f355b45cfc5dbad15a9e4a94d571b28eaf6b09af040be110f080ba01fccc79f96f5ff40beabc9a76e1677fb1e0fd6359f1c03f4465543cad710026b  net.hadess.SensorProxy.service
 b65e984555cef4027fe40070fa90f08d915b1b852be8a7343908de2348a287e24945cfec704af61ccf03f061caf7c1b16a0725b8b5b64d35134fca0c1961910b  dc1-warmth-extension.js

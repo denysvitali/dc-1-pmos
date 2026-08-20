@@ -27,4 +27,9 @@ if [ -x /etc/init.d/sshd ]; then
 fi
 
 glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true
+
+# Keep in step with post-install: rebuild the udev hwdb for the side-button
+# remap and re-trigger the input devices. Best-effort, as above.
+systemd-hwdb update 2>/dev/null || true
+udevadm trigger /dev/input/event* 2>/dev/null || true
 exit 0

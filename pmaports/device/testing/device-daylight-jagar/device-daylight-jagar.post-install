@@ -30,4 +30,11 @@ fi
 # power defaults take effect. Best-effort: only relevant when a GNOME desktop
 # is installed.
 glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true
+
+# Recompile the udev hwdb so the side-button remap (Quick Action / Back
+# Button, F12/F11 -> XF86Launch1/XF86Launch2) applies without a reboot, and
+# re-trigger the input devices so the running keypad picks up the new keymap.
+# Best-effort: in a build chroot there is no udev and no /dev/input.
+systemd-hwdb update 2>/dev/null || true
+udevadm trigger /dev/input/event* 2>/dev/null || true
 exit 0

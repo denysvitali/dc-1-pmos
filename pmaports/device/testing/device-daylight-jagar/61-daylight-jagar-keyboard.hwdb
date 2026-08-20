@@ -1,0 +1,23 @@
+# Daylight DC-1 (jagar) side buttons (mt6779-keypad matrix).
+#
+# The keypad's DT keymap emits KEY_F12 for the top-left "Quick Action" button
+# and KEY_F11 for the bottom-right "Back Button" (a.k.a. Walkie Talkie) --
+# Daylight's official names; stock Android assigns neither. F11/F12 collide
+# with ordinary application function keys, so remap them to KEY_PROG1 and
+# KEY_PROG2 (XF86Launch1/XF86Launch2), which nothing else emits and which
+# GNOME Settings > Keyboard > Custom Shortcuts can capture by pressing the
+# physical button. Default actions ship in 10-dc1-gnome.gschema.override.
+#
+# Match: the keypad's kernel modalias, udev's first evdev hwdb lookup
+# (60-evdev.rules: `hwdb --subsystem=input --lookup-prefix=evdev:`), which
+# needs no DMI data. The id block (bus 0019 host, all-zero vendor/product/
+# version) is unique on this board -- the PMIC keys are v0001p0001e0001 --
+# and the key-capability list stays behind the wildcard because this remap
+# itself rewrites it.
+#
+# Scancodes read back from the device via EVIOCGKEYCODE (matrix row/column
+# codes, verified 2026-08-20): 0 -> KEY_VOLUMEDOWN, 1 -> KEY_F11,
+# 3 -> KEY_F12.
+evdev:input:b0019v0000p0000e0000-e0,1,4,k*
+ KEYBOARD_KEY_03=prog1
+ KEYBOARD_KEY_01=prog2

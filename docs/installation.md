@@ -167,6 +167,28 @@ and Nautilus — from Alpine over the network. This runs once and is skipped on
 later boots; if the network is not ready on the first boot it retries on the
 next one.
 
+### The side buttons
+
+All four side buttons work. The two spare ones use Daylight's official names
+("Quick Action", "Back Button" — stock Android assigns neither), and this
+port maps them to `XF86Launch1`/`XF86Launch2` via a udev hwdb remap so they
+never collide with application function keys:
+
+| Button | Location | Key it emits | Default action |
+| --- | --- | --- | --- |
+| Power | side | `KEY_POWER` | GNOME power menu |
+| Volume up / down | side | `KEY_VOLUMEUP` / `KEY_VOLUMEDOWN` | volume |
+| Quick Action | top left | `XF86Launch1` (`KEY_PROG1`) | screenshot UI |
+| Back Button (Walkie Talkie) | bottom right | `XF86Launch2` (`KEY_PROG2`) | activities overview |
+
+The Quick Action and Back Button defaults are only schema defaults: to rebind
+either one, open GNOME Settings → Keyboard → View and Customize Shortcuts →
+Custom Shortcuts, add a shortcut, and press the physical button when asked
+for the key — it registers as `Launch1`/`Launch2`. To detach a button from
+its default first, clear the matching entry (`show-screenshot-ui` under
+System → Screenshots, `toggle-overview` under Navigation) in the same
+Keyboard panel.
+
 ## Install from a computer (advanced / fallback)
 
 This is the fallback path for when there is no Wi-Fi, or when you want the
