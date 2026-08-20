@@ -36,12 +36,16 @@ grep -q mt6789-mt6366 /proc/asound/cards 2>/dev/null \
 #   DL1 PCM → ADDA_DL CH1/CH2 → HPL/HPR (LoudSPK Playback)
 #           → Ext_Speaker_Amp → RT9101 → speakers
 # Headphone is the master gain (+8 dB = value 18) and drives both channels
-# equally. Lineout is pinned to unity (0 dB = value 10), not full scale: the
-# speakers are asymmetric off the codec, the LEFT runs DACL → line-out buffer
-# → HPL (two gain stages) while the RIGHT runs DACR → HPR (one). Leaving
-# Lineout at +8 dB stacks it on top of Headphone for the left channel alone,
-# so the left speaker clips while the right is 8 dB quieter. Unity keeps the
-# two channels riding Headphone together.
+# equally. The speakers are asymmetric off the codec: one runs through an
+# extra line-out (LOL) buffer gain stage, the other through the headphone DAC
+# directly, so the two can drift apart. Lineout is that stage; +2 dB (value
+# 12) is the hardware-matched trim -- at 0 dB the buffer speaker reads
+# quieter, at +8 dB it reads louder (and clips). There is no factory value to
+# port: Android drove both speakers through one mono `speaker_pga` knob, so it
+# never expressed a per-channel trim. This unit must run AFTER alsa-restore,
+# which otherwise restores the saved mute state (the codec ramps to mute on
+# stop and alsactl stores that) and clobbers these gains -- see the .service
+# ordering.
 _set_speaker_path() {
 	local c="amixer -c mt6789mt6366 -q"
 	$c sset 'ADDA_DL_CH1 DL1_CH1' on \
@@ -50,7 +54,7 @@ _set_speaker_path() {
 	&& $c sset 'HPR Mux' 'LoudSPK Playback' \
 	&& $c sset 'Ext_Speaker_Amp' on \
 	&& $c sset 'Headphone' 18 \
-	&& $c sset 'Lineout' 10 \
+	&& $c sset 'Lineout' 12 \
 	&& $c sset 'ADDA_DL_GAIN' 100%
 }
 _set_speaker_path || echo "dc1-audio: speaker path amixer commands failed" >&2

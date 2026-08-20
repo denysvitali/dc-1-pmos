@@ -55,9 +55,10 @@ start() {
 	# they persist until the card is removed.
 	#   DL1 PCM → ADDA_DL CH1/CH2 → HPL/HPR (LoudSPK Playback)
 	#           → Ext_Speaker_Amp → RT9101 → speakers
-	# Headphone is the master gain (+8 dB = 18); Lineout is unity (0 dB = 10)
-	# because the left speaker runs through an extra line-out gain stage the
-	# right does not -- Lineout at full scale would clip the left alone.
+	# Headphone is the master gain (+8 dB = 18). Lineout is +2 dB (12): the
+	# speakers are asymmetric off the codec, one running through an extra
+	# line-out (LOL) buffer gain stage the other does not, and +2 dB is the
+	# by-ear trim that matches them (0 dB = quieter, +8 dB = louder + clips).
 	local c="amixer -c mt6789mt6366 -q"
 	$c sset 'ADDA_DL_CH1 DL1_CH1' on \
 	&& $c sset 'ADDA_DL_CH2 DL1_CH2' on \
@@ -65,7 +66,7 @@ start() {
 	&& $c sset 'HPR Mux' 'LoudSPK Playback' \
 	&& $c sset 'Ext_Speaker_Amp' on \
 	&& $c sset 'Headphone' 18 \
-	&& $c sset 'Lineout' 10 \
+	&& $c sset 'Lineout' 12 \
 	&& $c sset 'ADDA_DL_GAIN' 100% \
 	|| ewarn "speaker path amixer commands failed"
 

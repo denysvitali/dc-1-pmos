@@ -1,6 +1,10 @@
 [Unit]
 Description=Bring up the MT6789 AFE and the MT6366 sound card
 After=local-fs.target
+# alsa-restore restores the saved mixer state (which is mute -- the codec
+# ramps to mute on stop and alsactl stores that), so it must run first or it
+# clobbers the speaker gain this unit sets. Order strictly after it.
+After=alsa-restore.service
 # The user session's audio daemons enumerate cards when they start; bring the
 # card up before the greeter so the first session sees it.
 Before=gdm.service
