@@ -1,0 +1,96 @@
+#!/usr/bin/python3
+"""Apply MC3416 orientation changes to Mutter's built-in display."""
+
+import signal
+import sys
+import time
+
+import dbus
+
+
+SENSOR_PATH = "/net/hadess/SensorProxy"
+SENSOR_IFACE = "net.hadess.SensorProxy"
+DISPLAY_PATH = "/org/gnome/Mutter/DisplayConfig"
+DISPLAY_IFACE = "org.gnome.Mutter.DisplayConfig"
+PROPERTIES_IFACE = "org.freedesktop.DBus.Properties"
+
+# Mutter's transforms are clockwise. The sensor names describe which edge is
+# physically uppermost, so left-up means a clockwise quarter-turn of scanout.
+TRANSFORMS = {
+    "normal": 0,
+    "left-up": 1,
+    "bottom-up": 2,
+    "right-up": 3,
+}
+
+
+def main():
+    session_address = None
+    for entry in ("DBUS_SESSION_BUS_ADDRESS",):
+        session_address = __import__("os").environ.get(entry)
+    if not session_address:
+        print("dc1-orientation: no graphical session bus", file=sys.stderr)
+        return 1
+
+    system = dbus.SystemBus()
+    session = dbus.bus.BusConnection(session_address)
+    sensor = system.get_object("net.hadess.SensorProxy", SENSOR_PATH)
+    sensor_props = dbus.Interface(sensor, PROPERTIES_IFACE)
+    display = session.get_object("org.gnome.Mutter.DisplayConfig", DISPLAY_PATH)
+    display_props = dbus.Interface(display, PROPERTIES_IFACE)
+    display_api = dbus.Interface(display, DISPLAY_IFACE)
+
+    try:
+        sensor.ClaimAccelerometer(dbus_interface=SENSOR_IFACE)
+    except dbus.DBusException as error:
+        print("dc1-orientation: cannot claim accelerometer: %s" % error,
+              file=sys.stderr)
+        return 1
+
+    running = True
+
+    def stop(*_args):
+        nonlocal running
+        running = False
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+
+    previous = None
+    try:
+        while running:
+            orientation = str(sensor_props.Get(SENSOR_IFACE,
+                                                "AccelerometerOrientation"))
+            transform = TRANSFORMS.get(orientation)
+            if transform is not None and transform != previous:
+                try:
+                    serial, monitors, logical, _props = \
+                        display_api.GetCurrentState()
+                    configured = []
+                    for x, y, scale, _old_transform, primary, outputs, props \
+                            in logical:
+                        configured.append((dbus.Int32(x), dbus.Int32(y),
+                                           dbus.Double(scale),
+                                           dbus.UInt32(transform),
+                                           dbus.Boolean(primary), outputs,
+                                           props))
+                    display_api.ApplyMonitorsConfig(
+                        dbus.UInt32(serial), dbus.UInt32(1), configured,
+                        {})
+                    previous = transform
+                    print("dc1-orientation: %s -> transform %d" %
+                          (orientation, transform), flush=True)
+                except dbus.DBusException as error:
+                    print("dc1-orientation: Mutter update failed: %s" %
+                          error, file=sys.stderr, flush=True)
+            time.sleep(0.25)
+    finally:
+        try:
+            sensor.ReleaseAccelerometer(dbus_interface=SENSOR_IFACE)
+        except dbus.DBusException:
+            pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
