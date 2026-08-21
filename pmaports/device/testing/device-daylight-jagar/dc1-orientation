@@ -66,14 +66,32 @@ def main():
                 try:
                     serial, monitors, logical, _props = \
                         display_api.GetCurrentState()
+                    mode_by_connector = {}
+                    for monitor_spec, modes, _monitor_props in monitors:
+                        connector = str(monitor_spec[0])
+                        current_mode = str(modes[0][0])
+                        for mode in modes:
+                            if bool(mode[6].get("is-current", False)):
+                                current_mode = str(mode[0])
+                                break
+                        mode_by_connector[connector] = current_mode
                     configured = []
                     for x, y, scale, _old_transform, primary, outputs, props \
                             in logical:
+                        configured_outputs = []
+                        for output in outputs:
+                            # GetCurrentState returns monitor specs here;
+                            # ApplyMonitorsConfig expects connector, current
+                            # mode ID, and an a{sv} property dictionary.
+                            connector = str(output[0])
+                            configured_outputs.append((connector,
+                                                       mode_by_connector[connector],
+                                                       {}))
                         configured.append((dbus.Int32(x), dbus.Int32(y),
                                            dbus.Double(scale),
                                            dbus.UInt32(transform),
-                                           dbus.Boolean(primary), outputs,
-                                           props))
+                                           dbus.Boolean(primary),
+                                           configured_outputs))
                     display_api.ApplyMonitorsConfig(
                         dbus.UInt32(serial), dbus.UInt32(1), configured,
                         {})
