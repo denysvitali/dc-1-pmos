@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=54
+pkgrel=55
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -14,12 +14,14 @@ depends="
 	alsa-utils
 	curl
 	gnome-settings-daemon-mobile
+	gtk+3.0
 	iio-sensor-proxy
 	linux-firmware-mediatek
 	linux-postmarketos-mediatek-mt6789
 	openssh-server
 	postmarketos-base
 	py3-dbus
+	py3-gobject3
 	python3
 	wireless-regdb
 "
@@ -355,7 +357,7 @@ d9ef2429685864eeca018bbecafa28b1c2123a930016307d1b7b2bc5b405f4276de1233659e3fb92
 35ed4afb186d649ece52f36dc2d1b9df640f07aaf796f3ea4a63805b7aa24674fba9b945694d0e6863f15908de91931e8766010a2e34b19bbea52e2f2006dbfd  61-daylight-jagar-keyboard.hwdb
 50dfd0ea25c80a97c1625dbf6dc42a8c114148cadafa20e21d210a9ea8c224e0069a75251ce11e427b51b50896929c833166988855a2c96deef03e6d3b94eb58  10-dc1-power.conf
 c7cb091033e7c169d30ece81da335fcd47355e1a93661bfc07dcdee144a28b7e3828359d3d6b7307bf84dfa315b6c84f564e27e5c4ecf99b0fd9e012dc8410d0  49-device-daylight-jagar-sensors.rules
-c1c2d3cb63d413e8de49e5137a2dfa97fb10837a2e223d20c0ddff30047ec5aa251365b240189c779488496777043d9e18faa886635ec6665c6b46bf523646c0  dc1-orientation
+d5928be43f4047c03182367edf85b077ecd0e88749ed80e315903491f56316c02f804f7257e0d058bb1ff778c120a09d8a92d294c2acac503f735fcf12f7a525  dc1-orientation
 8d913b3ea4f4b4269824be159fc279f031d3650b356705aa02acbbcb5f4933481f4a0d13096d109ecb6b29b706da9bd3c28fb32e3805f6707bd32110e22427fc  dc1-orientation.desktop
 6e87612caf150110b4d2ee09ab949c0ea2ed61f0b9241262cbd13bde484ee9068fb05a27d0f40b76c854bd2f35080470ebe5e252c392aaa296b3f451d9054aa2  dc1-orientation.service
 9ba63fe59f355b45cfc5dbad15a9e4a94d571b28eaf6b09af040be110f080ba01fccc79f96f5ff40beabc9a76e1677fb1e0fd6359f1c03f4465543cad710026b  net.hadess.SensorProxy.service
