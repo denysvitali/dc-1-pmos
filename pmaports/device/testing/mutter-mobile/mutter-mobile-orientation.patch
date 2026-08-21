@@ -1,0 +1,186 @@
+--- a/src/backends/meta-monitor-manager.c
++++ b/src/backends/meta-monitor-manager.c
+@@ -57,6 +57,8 @@
+ #include "backends/meta-virtual-monitor.h"
+ #include "clutter/clutter.h"
+ #include "core/util-private.h"
++#include "meta/compositor.h"
++#include "meta/meta-context.h"
+ #include "meta/main.h"
+ #include "meta/meta-enum-types.h"
+ #include "meta/meta-orientation-manager.h"
+@@ -1004,6 +1006,141 @@ create_fallback (MetaMonitorConfigManager *config_manager)
+   return config;
+ }
+ 
++static void
++orientation_snapshot_fade_out_completed (ClutterTimeline *timeline,
++                                        gboolean         is_finished,
++                                        gpointer         user_data)
++{
++  ClutterActor *snapshot = CLUTTER_ACTOR (user_data);
++
++  clutter_actor_destroy (snapshot);
++}
++
++static void
++orientation_snapshot_rotation_completed (ClutterTimeline *timeline,
++                                         gboolean         is_finished,
++                                         gpointer         user_data)
++{
++  ClutterActor *snapshot = CLUTTER_ACTOR (user_data);
++  ClutterTransition *transition;
++  /* Keep the fade as a short compositor-owned handoff. */
++  clutter_actor_save_easing_state (snapshot);
++  clutter_actor_set_easing_mode (snapshot, CLUTTER_EASE_IN_QUAD);
++  clutter_actor_set_easing_duration (snapshot, 80);
++  clutter_actor_set_opacity (snapshot, 0);
++  transition = clutter_actor_get_transition (snapshot, "opacity");
++  clutter_actor_restore_easing_state (snapshot);
++  /* The snapshot is destroyed by the opacity transition callback. */
++  if (transition)
++    g_signal_connect (transition, "stopped",
++                      G_CALLBACK (orientation_snapshot_fade_out_completed),
++                      snapshot);
++  else
++    clutter_actor_destroy (snapshot);
++}
++
++static ClutterActor *
++create_orientation_snapshot (MetaMonitorManager *manager,
++                              float              *width,
++                              float              *height)
++{
++  MetaContext *context = meta_backend_get_context (manager->backend);
++  MetaDisplay *display = meta_context_get_display (context);
++  MetaCompositor *compositor = meta_display_get_compositor (display);
++  ClutterStage *stage = meta_compositor_get_stage (compositor);
++  ClutterContent *content;
++  ClutterActor *snapshot;
++  ClutterActor *feedback_group;
++  MtkRectangle rect;
++  g_autoptr (GError) error = NULL;
++
++  clutter_actor_get_size (CLUTTER_ACTOR (stage), width, height);
++  if (*width <= 0 || *height <= 0)
++    return NULL;
++
++  rect = (MtkRectangle) {
++    .x = 0,
++    .y = 0,
++    .width = (int) roundf (*width),
++    .height = (int) roundf (*height),
++  };
++  content = clutter_stage_paint_to_content (stage, &rect, 1.0,
++                                             CLUTTER_PAINT_FLAG_NONE,
++                                             &error);
++  if (!content)
++    {
++      g_warning ("Failed to capture orientation frame: %s",
++                 error ? error->message : "unknown error");
++      return NULL;
++    }
++
++  snapshot = clutter_actor_new ();
++  clutter_actor_set_accessible_name (snapshot, "Orientation transition");
++  clutter_actor_set_content (snapshot, content);
++  g_object_unref (content);
++  clutter_actor_set_size (snapshot, *width, *height);
++  clutter_actor_set_pivot_point (snapshot, 0.5, 0.5);
++  clutter_actor_set_opacity (snapshot, 255);
++
++  feedback_group = meta_compositor_get_feedback_group (compositor);
++  clutter_actor_add_child (feedback_group, snapshot);
++  return snapshot;
++}
++
++static void
++animate_orientation_snapshot (MetaMonitorManager *manager,
++                               ClutterActor       *snapshot,
++                               float               old_width,
++                               float               old_height,
++                               MtkMonitorTransform transform)
++{
++  MetaContext *context = meta_backend_get_context (manager->backend);
++  MetaDisplay *display = meta_context_get_display (context);
++  MetaCompositor *compositor = meta_display_get_compositor (display);
++  ClutterStage *stage = meta_compositor_get_stage (compositor);
++  ClutterTransition *transition;
++  float new_width, new_height;
++  float angle;
++
++  clutter_actor_get_size (CLUTTER_ACTOR (stage), &new_width, &new_height);
++  clutter_actor_set_position (snapshot,
++                              (new_width - old_width) / 2,
++                              (new_height - old_height) / 2);
++  angle = 0;
++  switch (transform)
++    {
++    case MTK_MONITOR_TRANSFORM_90:
++      angle = 90;
++      break;
++    case MTK_MONITOR_TRANSFORM_180:
++      angle = 180;
++      break;
++    case MTK_MONITOR_TRANSFORM_270:
++      angle = -90;
++      break;
++    case MTK_MONITOR_TRANSFORM_NORMAL:
++    case MTK_MONITOR_TRANSFORM_FLIPPED:
++    case MTK_MONITOR_TRANSFORM_FLIPPED_90:
++    case MTK_MONITOR_TRANSFORM_FLIPPED_180:
++    case MTK_MONITOR_TRANSFORM_FLIPPED_270:
++      break;
++    }
++
++  clutter_actor_save_easing_state (snapshot);
++  clutter_actor_set_easing_mode (snapshot, CLUTTER_EASE_OUT_CUBIC);
++  clutter_actor_set_easing_duration (snapshot, 260);
++  clutter_actor_set_rotation_angle (snapshot, CLUTTER_Z_AXIS, angle);
++  transition = clutter_actor_get_transition (snapshot, "rotation-angle-z");
++  clutter_actor_restore_easing_state (snapshot);
++
++  if (transition)
++    g_signal_connect (transition, "stopped",
++                      G_CALLBACK (orientation_snapshot_rotation_completed),
++                      snapshot);
++  else
++    clutter_actor_destroy (snapshot);
++}
++
+ static void
+ handle_orientation_change (MetaOrientationManager *orientation_manager,
+                            MetaMonitorManager     *manager)
+@@ -1015,6 +1151,8 @@ handle_orientation_change (MetaOrientationManager *orientation_manager,
+   MetaMonitor *laptop_panel;
+   MetaLogicalMonitor *laptop_logical_monitor;
+   MetaMonitorsConfig *current_config;
++  ClutterActor *snapshot;
++  float snapshot_width, snapshot_height;
+ 
+   laptop_panel = meta_monitor_manager_get_laptop_panel (manager);
+   g_return_if_fail (laptop_panel);
+@@ -1044,6 +1182,9 @@ handle_orientation_change (MetaOrientationManager *orientation_manager,
+   if (!config)
+     return;
+ 
++  snapshot = create_orientation_snapshot (manager, &snapshot_width,
++                                           &snapshot_height);
++
+   if (!meta_monitor_manager_apply_monitors_config (manager,
+                                                    config,
+                                                    META_MONITORS_CONFIG_METHOD_TEMPORARY,
+@@ -1052,6 +1193,13 @@ handle_orientation_change (MetaOrientationManager *orientation_manager,
+       g_warning ("Failed to use orientation monitor configuration: %s",
+                  error->message);
+       g_error_free (error);
++      if (snapshot)
++        clutter_actor_destroy (snapshot);
++    }
++  else if (snapshot)
++    {
++      animate_orientation_snapshot (manager, snapshot, snapshot_width,
++                                    snapshot_height, transform);
+     }
+   g_object_unref (config);
+ }

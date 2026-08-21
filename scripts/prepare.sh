@@ -41,7 +41,8 @@ prepare_checkout() {
 			path=${line#???}
 			case "$path" in
 				device/testing/device-daylight-jagar/*|\
-				device/testing/linux-postmarketos-mediatek-mt6789/*) ;;
+				device/testing/linux-postmarketos-mediatek-mt6789/*|\
+				device/testing/mutter-mobile/*) ;;
 				*) echo "$directory has unrelated local change: $path" >&2; exit 1 ;;
 			esac
 		done
@@ -68,10 +69,16 @@ prepare_checkout "$pmbootstrap_dir" \
 rm -rf -- \
 	"$pmaports_dir/device/testing/device-daylight-jagar" \
 	"$pmaports_dir/device/testing/linux-postmarketos-mediatek-mt6789"
+rm -rf -- \
+	"$pmaports_dir/temp/mutter-mobile" \
+	"$pmaports_dir/extra-repos/systemd/mutter-mobile"
 cp -R "$overlay_dir/device/testing/device-daylight-jagar" \
 	"$pmaports_dir/device/testing/"
 cp -R "$overlay_dir/device/testing/linux-postmarketos-mediatek-mt6789" \
 	"$pmaports_dir/device/testing/"
+mkdir -p "$pmaports_dir/extra-repos/systemd"
+cp -R "$overlay_dir/device/testing/mutter-mobile" \
+	"$pmaports_dir/extra-repos/systemd/"
 
 printf 'pmaports=%s\npmbootstrap=%s\nkernel=%s\n' \
 	"$PMAPORTS_COMMIT" "$PMBOOTSTRAP_COMMIT" "$KERNEL_COMMIT" \

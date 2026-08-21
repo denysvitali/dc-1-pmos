@@ -6,10 +6,6 @@ import sys
 import time
 
 import dbus
-import gi
-
-gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
 
 
 SENSOR_PATH = "/net/hadess/SensorProxy"
@@ -68,17 +64,6 @@ def main():
             transform = TRANSFORMS.get(orientation)
             if transform is not None and transform != previous:
                 try:
-                    overlay = Gtk.Window()
-                    overlay.set_decorated(False)
-                    overlay.set_keep_above(True)
-                    overlay.set_skip_taskbar_hint(True)
-                    overlay.set_opacity(0.0)
-                    overlay.add(Gtk.Label())
-                    overlay.fullscreen()
-                    overlay.show_all()
-                    pump_gtk()
-                    animate_overlay(overlay, 0.0, 0.88, 0.16)
-
                     serial, monitors, logical, _props = \
                         display_api.GetCurrentState()
                     mode_by_connector = {}
@@ -110,19 +95,12 @@ def main():
                     display_api.ApplyMonitorsConfig(
                         dbus.UInt32(serial), dbus.UInt32(1), configured,
                         {})
-                    pump_gtk()
-                    animate_overlay(overlay, 0.88, 0.0, 0.24)
-                    overlay.destroy()
-                    pump_gtk()
                     previous = transform
                     print("dc1-orientation: %s -> transform %d" %
                           (orientation, transform), flush=True)
                 except dbus.DBusException as error:
                     print("dc1-orientation: Mutter update failed: %s" %
                           error, file=sys.stderr, flush=True)
-                    if "overlay" in locals():
-                        overlay.destroy()
-                        pump_gtk()
             time.sleep(0.25)
     finally:
         try:
@@ -130,20 +108,6 @@ def main():
         except dbus.DBusException:
             pass
     return 0
-
-
-def pump_gtk():
-    while Gtk.events_pending():
-        Gtk.main_iteration_do(False)
-
-
-def animate_overlay(overlay, start, end, duration):
-    steps = max(1, int(duration / 0.016))
-    for step in range(1, steps + 1):
-        progress = step / steps
-        overlay.set_opacity(start + (end - start) * progress)
-        pump_gtk()
-        time.sleep(0.016)
 
 
 if __name__ == "__main__":

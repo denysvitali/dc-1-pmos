@@ -114,15 +114,17 @@ pmb() {
 # This command allowlist is intentionally incapable of deploying an artifact.
 pmb apkbuild_parse device-daylight-jagar >/dev/null
 pmb apkbuild_parse linux-postmarketos-mediatek-mt6789 >/dev/null
+pmb apkbuild_parse mutter-mobile >/dev/null
 if [ "$verify_sources" = yes ]; then
 	pmb checksum --verify device-daylight-jagar \
-		linux-postmarketos-mediatek-mt6789
+		linux-postmarketos-mediatek-mt6789 mutter-mobile
 fi
 if [ "$validate_only" = yes ]; then
 	echo "validated pinned postmarketOS package metadata"
 	exit 0
 fi
 
+pmb build --arch=aarch64 mutter-mobile
 pmb build --arch=aarch64 linux-postmarketos-mediatek-mt6789
 pmb build --arch=aarch64 device-daylight-jagar
 

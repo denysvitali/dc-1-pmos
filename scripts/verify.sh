@@ -5,6 +5,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 overlay_dir=$(CDPATH= cd -- "$script_dir/../pmaports" && pwd)
 device_dir="$overlay_dir/device/testing/device-daylight-jagar"
 kernel_dir="$overlay_dir/device/testing/linux-postmarketos-mediatek-mt6789"
+mutter_dir="$overlay_dir/device/testing/mutter-mobile"
 
 fail() {
 	echo "postmarketOS packaging verification failed: $*" >&2
@@ -15,7 +16,8 @@ for file in \
 	"$script_dir/versions.env" \
 	"$device_dir/APKBUILD" \
 	"$device_dir/deviceinfo" \
-	"$kernel_dir/APKBUILD"; do
+	"$kernel_dir/APKBUILD" \
+	"$mutter_dir/APKBUILD"; do
 	[ -f "$file" ] || fail "missing $file"
 done
 
@@ -26,6 +28,7 @@ sh -n "$script_dir/make-ext4-image.sh"
 sh -n "$script_dir/verify.sh"
 sh -n "$device_dir/APKBUILD"
 sh -n "$kernel_dir/APKBUILD"
+sh -n "$mutter_dir/APKBUILD"
 python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' \
 	"$script_dir/make-rootfs-archive.py"
 python3 "$script_dir/tests/test_make_rootfs_archive.py"
@@ -43,7 +46,7 @@ python3 "$script_dir/tests/test_make_rootfs_archive.py"
 # every following file against the wrong hash (a multi-CI-cycle failure).
 # Source both lists exactly as abuild does and assert the pairing, then hash
 # every local file against its paired checksum.
-for dir in "$device_dir" "$kernel_dir"; do
+for dir in "$device_dir" "$kernel_dir" "$mutter_dir"; do
 	(
 		cd "$dir" || exit 1
 		startdir=$(pwd)

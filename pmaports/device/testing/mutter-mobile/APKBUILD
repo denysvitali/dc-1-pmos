@@ -1,0 +1,126 @@
+maintainer="Denys Vitali <denys@denv.it>"
+pkgname=mutter-mobile
+pkgver=999948.0
+pkgrel=4
+pkgdesc="clutter-based window manager and compositor with smooth display rotation"
+url="https://gitlab.gnome.org/verdre/mutter-mobile"
+arch="aarch64"
+license="GPL-2.0-or-later"
+depends="
+	gnome-settings-daemon-mobile
+	gsettings-desktop-schemas
+	mutter-mobile-schemas
+	xkeyboard-config
+	xwayland
+	"
+makedepends="
+	at-spi2-core-dev
+	cairo-dev
+	dbus-dev
+	elogind-dev
+	eudev-dev
+	fribidi-dev
+	gdk-pixbuf-dev
+	glib-dev
+	gnome-desktop-dev
+	gnome-settings-daemon-mobile-dev
+	gobject-introspection-dev
+	graphene-dev
+	gtk+3.0-dev
+	json-glib-dev
+	lcms2-dev
+	libcanberra-dev
+	libdrm-dev
+	libdisplay-info-dev
+	libgudev-dev
+	libice-dev
+	libinput-dev
+	libsm-dev
+	libwacom-dev
+	libx11-dev
+	libxau-dev
+	libxcb-dev
+	libxcomposite-dev
+	libxcursor-dev
+	libxdamage-dev
+	libxext-dev
+	libxfixes-dev
+	libxi-dev
+	libxinerama-dev
+	libxkbcommon-dev
+	libxkbfile-dev
+	libxrandr-dev
+	libxrender-dev
+	libxtst-dev
+	libei-dev
+	mesa-dev
+	meson
+	pango-dev
+	pipewire-dev
+	py3-argcomplete
+	py3-docutils
+	startup-notification-dev
+	wayland-dev
+	wayland-protocols
+	xorg-server
+	xwayland
+	"
+options="!check"
+provides="mutter=$pkgver-r$pkgrel"
+subpackages="$pkgname-dbg $pkgname-dev $pkgname-doc $pkgname-lang $pkgname-schemas::noarch"
+_commit="48.mobile.0"
+_gvdb_commit="b54bc5da25127ef416858a3ad92e57159ff565b3"
+source="
+	mutter-mobile-$_commit.tar.gz::https://gitlab.gnome.org/verdre/mutter-mobile/-/archive/$_commit/mutter-mobile-$_commit.tar.gz
+	gvdb-$_gvdb_commit.tar.gz::https://gitlab.gnome.org/GNOME/gvdb/-/archive/$_gvdb_commit/gvdb-$_gvdb_commit.tar.gz
+	mutter-mobile-orientation.patch
+	"
+builddir="$srcdir/mutter-mobile-$_commit"
+
+prepare() {
+	default_prepare
+	sed -i "s/libmutter_api_version = '.*'/libmutter_api_version = '16'/g" meson.build
+	sed -i "s/gsettings_desktop_schemas_req = '.*'/gsettings_desktop_schemas_req = '>= 47'/g" meson.build
+	# Versions containing "mobile" are invalid in pkg-config metadata.
+	sed -i 's/\([0-9]\+\)\.mobile\.\([0-9]\+\)/\1.\2/g' meson.build
+	mkdir -p subprojects/gvdb
+	cp -R "$srcdir"/gvdb-$_gvdb_commit/. subprojects/gvdb/
+}
+
+build() {
+	abuild-meson \
+		-Dudev=true \
+		-Dnative_backend=true \
+		-Dintrospection=true \
+		-Dxwayland_path=/usr/bin/Xwayland \
+		-Dremote_desktop=true \
+		-Dprofiler=false \
+		-Dtests=disabled \
+		-Dinstalled_tests=false \
+		. output
+	meson compile ${JOBS:+-j ${JOBS}} -C output
+}
+
+schemas() {
+	pkgdesc="Mutter schemas related files"
+	provides="mutter-schemas=$pkgver-r$pkgrel"
+	depends=""
+	amove usr/share/glib-2.0/schemas
+	amove usr/share/GConf/gsettings
+	amove usr/share/gnome-control-center/keybindings
+}
+
+lang() {
+	default_lang
+	provides="mutter-lang=$pkgver-r$pkgrel"
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install --no-rebuild -C output
+}
+
+sha512sums="
+c1aef60e14662b373ddeab88d7b49f153165ab2bfb63906aeb64f6de9d224ed3d4c9c5b3cd8a7b12ba29b8de8a5b9fa738dfa681e83cd51e7a33d0695b6410f2  mutter-mobile-48.mobile.0.tar.gz
+1cd8d689758cda662737e5ec78d55e4f4c6934b0f429d8cadcec4a423bafd8765040f8d62c51d8797b101fff89df75a7b85e37006ea133ab81e600f205c2ef1e  gvdb-b54bc5da25127ef416858a3ad92e57159ff565b3.tar.gz
+6c6116dd02ad2a65f4a30f1fff02211c185d61d3a43d12fad6d95d4157c9b2ee3e2fac88c17f39863179b10e9ad2ceb4b865b1f5d8a7156f64b73c4730afabf5  mutter-mobile-orientation.patch
+"

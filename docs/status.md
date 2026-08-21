@@ -77,7 +77,7 @@ codifies all five pieces so every fresh install gets them:
    with the packaged autologin block preserved. Otherwise any session
    failure falls back to an X11 greeter on an image that ships no Xorg and
    no X11 session files — SIGABRT until start-limit-hit.
-4. **Accelerometer-driven orientation** (device package, pkgrel 55). Static
+4. **Accelerometer-driven orientation** (device package, pkgrel 56). Static
    GNOME and Sway 180° transforms were removed: they overrode the MC3416
    orientation reported through `iio-sensor-proxy`. The device package now
    also installs `gnome-settings-daemon-mobile`, which supplies the desktop
@@ -86,8 +86,8 @@ codifies all five pieces so every fresh install gets them:
    claim and reports orientation as `undefined`. The panel's physical scanout
    correction is supplied by the compositor's live sensor orientation, not a
    fixed monitor file. The device orientation bridge runs as a persistent
-   user service and crossfades through a short dark overlay around each
-   synchronous Mutter transform, avoiding a visible hard snap during rotation.
+   user service and requests the compositor-owned rotation transition from the
+   patched Mutter-Mobile package, avoiding a visible hard snap during rotation.
 5. **accountsservice pin** (rootfs build, `scripts/build-rootfs.sh`). The
    pmOS fork `accountsservice-999923.13.9` ships a typelib referencing
    `libaccountsservice.so.0` while the installed gdm/gnome-shell link

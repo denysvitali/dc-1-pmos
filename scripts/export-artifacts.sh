@@ -97,7 +97,7 @@ zstd -q -12 -T0 --rm "$output_dir/jagar-rootfs.ext4"
 [ -s "$output_dir/jagar-rootfs.ext4.zst" ] ||
 	fail "ext4 image compression produced nothing"
 
-# Publish the two packages by EXACT version, never "whatever *.apk is there".
+# Publish the three packages by EXACT version, never "whatever *.apk is there".
 # The local binary repository is cached between CI runs so it legitimately
 # holds older builds; globbing would ship one of those and the release would
 # describe a kernel it does not contain.
@@ -109,7 +109,8 @@ apkbuild_field() {
 }
 
 mkdir "$output_dir/packages"
-for package in linux-postmarketos-mediatek-mt6789 device-daylight-jagar; do
+for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
+	device-daylight-jagar; do
 	apkbuild="$overlay/$package/APKBUILD"
 	[ -f "$apkbuild" ] || fail "missing overlay APKBUILD: $apkbuild"
 	pkgver=$(apkbuild_field "$apkbuild" pkgver)
