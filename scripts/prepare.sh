@@ -42,7 +42,9 @@ prepare_checkout() {
 			case "$path" in
 				device/testing/device-daylight-jagar/*|\
 				device/testing/linux-postmarketos-mediatek-mt6789/*|\
-				device/testing/mutter-mobile/*) ;;
+				device/testing/mutter-mobile/*|\
+				temp/mutter-mobile/*|\
+				extra-repos/systemd/mutter-mobile/*) ;;
 				*) echo "$directory has unrelated local change: $path" >&2; exit 1 ;;
 			esac
 		done
