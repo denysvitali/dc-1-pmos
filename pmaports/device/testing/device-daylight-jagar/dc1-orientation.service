@@ -1,0 +1,13 @@
+[Unit]
+Description=DC-1 accelerometer display orientation
+After=graphical-session.target
+
+[Service]
+Type=simple
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
+ExecStart=/usr/libexec/dc1-orientation
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=default.target
