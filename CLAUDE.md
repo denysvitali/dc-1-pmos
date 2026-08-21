@@ -13,6 +13,21 @@ device into **installation mode** (our installer initramfs), the installer asks
 for username, password, and Wi-Fi credentials, then writes and configures the
 system. No secrets are ever baked into published artifacts.
 
+## Which machine is this?
+
+Check `hostname`. If it says **`dc1`, you are running on the DC-1 itself** —
+the device this repository builds for — not on a workstation or CI runner.
+Consequences:
+
+- This is postmarketOS/Alpine on aarch64; builds run natively.
+- There is **no system-wide `ssh` client** and `sudo` needs an interactive
+  password. A user-mode `openssh-client` lives at
+  `/home/dc1/.local/alpine-root/usr/bin/ssh`; GitHub access uses per-repo key
+  aliases from `~/.ssh/config` (`github-dc1-pmos`, `github-dc1-linux`,
+  `github-dc1-linux-kernel`).
+- Rebooting, killing services, or filling the disk takes down the machine you
+  are working on. Nothing here is disposable.
+
 ## THIS REPOSITORY IS PUBLIC
 
 Everything committed here is world-readable. Non-negotiable rules:
