@@ -1,0 +1,10 @@
+// The DC-1 desktop user owns the device's graphical session. Alpine's polkit
+// setup does not reliably mark the GNOME/Mutter caller active, which otherwise
+// makes iio-sensor-proxy reject ClaimAccelerometer() and leaves
+// AccelerometerOrientation at "undefined".
+polkit.addRule(function(action, subject) {
+    if (action.id == "net.hadess.SensorProxy.claim-sensor" &&
+        subject.user == "dc1") {
+        return polkit.Result.YES;
+    }
+});

@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=49
+pkgrel=52
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -13,6 +13,7 @@ options="!check !archcheck"
 depends="
 	alsa-utils
 	curl
+	gnome-settings-daemon-mobile
 	iio-sensor-proxy
 	linux-firmware-mediatek
 	linux-postmarketos-mediatek-mt6789
@@ -77,6 +78,7 @@ source="
 	10-dc1-gnome.gschema.override
 	61-daylight-jagar-keyboard.hwdb
 	10-dc1-power.conf
+	49-device-daylight-jagar-sensors.rules
 	net.hadess.SensorProxy.service
 	dc1-warmth-extension.js
 	dc1-warmth-metadata.json
@@ -87,7 +89,6 @@ source="
 	dc1-apk.rsa.pub
 	dc1-pmos.list
 	gdm-custom.conf
-	monitors.xml
 "
 
 build() {
@@ -182,6 +183,8 @@ package() {
 		"$pkgdir"/usr/lib/systemd/system-preset/80-device-daylight-jagar.preset
 	install -Dm644 "$srcdir"/10-dc1-watchdog.conf \
 		"$pkgdir"/etc/systemd/system.conf.d/10-dc1-watchdog.conf
+	install -Dm644 "$srcdir"/49-device-daylight-jagar-sensors.rules \
+		"$pkgdir"/etc/polkit-1/rules.d/49-device-daylight-jagar-sensors.rules
 
 	# The power key must not reach a sleep path, and must not blank a panel
 	# whose frontlight stays lit: logind ignores the keys, and the gschema
@@ -264,20 +267,10 @@ package() {
 	install -Dm644 "$srcdir"/dc1-pmos.list \
 		"$pkgdir"/etc/apk/repositories.d/dc1-pmos.list
 
-	# gdm autologin + panel orientation for the GNOME (systemd) desktop. The
-	# 180-degree scanout rotation is a panel-hardware property (the scanout
-	# is upside-down relative to the glass); mutter applies it from a
-	# system-wide monitors.xml that both the greeter and the user session
-	# read. sway still gets the equivalent from dc1-sway.conf.
-	# monitors.xml must carry an explicit <layoutmode>: without it, mutter
-	# 48 (meta-monitor-config-store.c, STATE_CONFIGURATION) takes its
-	# layout-mode detection path, flags the file as needing migration
-	# ("System monitor configuration file needs updating"), and when that
-	# conversion fails the config is dropped -- zero logical monitors, and
-	# gnome-shell crashes ("this.primaryMonitor is null"). Observed on
-	# hardware 2026-08-19 with the previous layoutmode-less file.
+	# gdm autologin for the GNOME (systemd) desktop. Display orientation is
+	# intentionally left to iio-sensor-proxy and mutter, which follow the
+	# MC3416 accelerometer; a static monitors.xml would override that path.
 	install -Dm644 "$srcdir"/gdm-custom.conf "$pkgdir"/etc/gdm/custom.conf
-	install -Dm644 "$srcdir"/monitors.xml "$pkgdir"/etc/xdg/monitors.xml
 
 	# The only route from a running system back into LK's fastboot, and so
 	# the only route back to flashing. See the source for the LK evidence.
@@ -350,6 +343,7 @@ bd385f9e00a6b72922567c567698ee9ab8aea5de2d21c1fe2d373b0c361376570202c79c1ed3a7f0
 d9ef2429685864eeca018bbecafa28b1c2123a930016307d1b7b2bc5b405f4276de1233659e3fb924f40fc6e0255e4d192d26542c854faa67def33fe77be67bd  10-dc1-gnome.gschema.override
 35ed4afb186d649ece52f36dc2d1b9df640f07aaf796f3ea4a63805b7aa24674fba9b945694d0e6863f15908de91931e8766010a2e34b19bbea52e2f2006dbfd  61-daylight-jagar-keyboard.hwdb
 50dfd0ea25c80a97c1625dbf6dc42a8c114148cadafa20e21d210a9ea8c224e0069a75251ce11e427b51b50896929c833166988855a2c96deef03e6d3b94eb58  10-dc1-power.conf
+c7ad908df595202ea656f170da35c4dc15c6667912f1b285765324f7c99aca9c  49-device-daylight-jagar-sensors.rules
 9ba63fe59f355b45cfc5dbad15a9e4a94d571b28eaf6b09af040be110f080ba01fccc79f96f5ff40beabc9a76e1677fb1e0fd6359f1c03f4465543cad710026b  net.hadess.SensorProxy.service
 b65e984555cef4027fe40070fa90f08d915b1b852be8a7343908de2348a287e24945cfec704af61ccf03f061caf7c1b16a0725b8b5b64d35134fca0c1961910b  dc1-warmth-extension.js
 90979c3b358c57256eed9a577b159725c2711e94f20e38e76528f8d527aece42c8ea2cb38ec2c3bda00e08682908e8b499453394d36ba176a9ec10f8274bc27c  dc1-warmth-metadata.json
@@ -360,5 +354,4 @@ b3f2c3dd4ff5de3a98038661a95b12572ce6e68a4f5b895c951d1be9cf0f2da20a88039d34c707d4
 db4d369e81942ec05a3843b02f2c029a6ce585c5b5e6e5d2036e5f99344b31c2b056729fcf3cd84acd679e2556bac7513aa80e7bc36c2c012b9c1e09631ea655  dc1-apk.rsa.pub
 f3e3ef43fe119e376ce3462d69cabd5ce6b4907b5135736c99792b2d35c4be5136f7f8d170e17c09ed094924cba217314c8a66a653715433b8a540c3a6e325f0  dc1-pmos.list
 353598a3b9f8225bea0a7f091d43d7301789ba0323f5cb4b8f9d26783c039c0bf5b0293cd1dae0bcdd3da50f647ca6160f448f3cfc00565bdef0bba4477939c6  gdm-custom.conf
-5338f18f3da087ce2a3f03642abce7aa491b58242ecdebcbcddd4c1213973cbc58c81f2a6c5c9e15d72071755c80bb5478b46b1c009292144b647e5e66e06436  monitors.xml
 "

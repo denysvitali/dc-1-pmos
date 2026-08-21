@@ -77,15 +77,15 @@ codifies all five pieces so every fresh install gets them:
    with the packaged autologin block preserved. Otherwise any session
    failure falls back to an X11 greeter on an image that ships no Xorg and
    no X11 session files — SIGABRT until start-limit-hit.
-4. **monitors.xml with an explicit `<layoutmode>`** (device package,
-   pkgrel 46). The previous `/etc/xdg/monitors.xml` carried none, so mutter
-   48 took its layout-mode detection path, warned "System monitor
-   configuration file needs updating", and when that conversion failed
-   dropped the config — zero logical monitors, gnome-shell crashing with
-   `this.primaryMonitor is null`. The rewritten file keeps
-   `<rotation>upside_down</rotation>`: that 180° is the load-bearing
-   glass-vs-scanout compensation no device tree provides (see the Display
-   row), so the file must never simply be deleted.
+4. **Accelerometer-driven orientation** (device package, pkgrel 52). Static
+   GNOME and Sway 180° transforms were removed: they overrode the MC3416
+   orientation reported through `iio-sensor-proxy`. The device package now
+   also installs `gnome-settings-daemon-mobile`, which supplies the desktop
+   orientation consumer. A device polkit rule permits the active `dc1` GNOME
+   session to claim the accelerometer; without that, SensorProxy rejects the
+   claim and reports orientation as `undefined`. The panel's physical scanout
+   correction is supplied by the compositor's live sensor orientation, not a
+   fixed monitor file.
 5. **accountsservice pin** (rootfs build, `scripts/build-rootfs.sh`). The
    pmOS fork `accountsservice-999923.13.9` ships a typelib referencing
    `libaccountsservice.so.0` while the installed gdm/gnome-shell link
@@ -103,8 +103,8 @@ device. Two known risks:
   once aborting with "no session desktop files installed" — after a user
   rename or a logout the greeter may still be broken even with the set
   above applied;
-- screen orientation with the rewritten monitors.xml is verified only as
-  config intent, not yet by physically looking at the glass.
+- screen orientation after removing the static transforms still needs a
+  physical tilt test on hardware.
 
 **What the switch would cost, audited 2026-08-17.** Every device with a driver
 bound on the running (stock) tree was mapped back to its DT node and checked
