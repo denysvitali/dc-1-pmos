@@ -1,203 +1,325 @@
 # dc-1-pmos
 
 Public repository for running postmarketOS / Alpine Linux on the Daylight DC-1
-(`jagar`, MediaTek MT8781/MT6789). Two jobs:
+(`jagar`, MediaTek MT8781/MT6789). It has two coupled purposes:
 
-1. **Document** how to install and run Linux on the DC-1.
-2. **Build** everything needed to do so — kernel apk, device apk, rootfs, and a
-   bootable installer image — from source, on every commit, on public GitHub
-   runners, published as a rolling GitHub release.
+1. Document a safe, reproducible installation and operating path.
+2. Build the kernel package, device package, desktop compositor package,
+   root filesystem, boot images, and installer from pinned source on public
+   GitHub runners.
 
-The end-user flow this repo targets: a handful of `fastboot` commands put the
-device into **installation mode** (our installer initramfs), the installer asks
-for username, password, and Wi-Fi credentials, then writes and configures the
-system. No secrets are ever baked into published artifacts.
+The supported end-user flow is: flash `installer-boot.img` to `boot_a`, boot
+the installation-mode initramfs, provide an account and optional Wi-Fi
+credentials, then let the installer write `userdata` and the real boot image.
+The on-device path is primary; `installer/host/dc1-install.sh` is the USB
+network fallback. Build artifacts contain no user-provided credentials.
 
-## Which machine is this?
+## Session and machine safety
 
-Check `hostname`. If it says **`dc1`, you are running on the DC-1 itself** —
-the device this repository builds for — not on a workstation or CI runner.
-Consequences:
+Start by checking `hostname` and `git status`. If the hostname is `dc1`, this
+is the DC-1 itself, not a disposable workstation or CI runner:
 
-- This is postmarketOS/Alpine on aarch64; builds run natively.
-- There is **no system-wide `ssh` client** and `sudo` needs an interactive
-  password. A user-mode `openssh-client` lives at
-  `/home/dc1/.local/alpine-root/usr/bin/ssh`; GitHub access uses per-repo key
-  aliases from `~/.ssh/config` (`github-dc1-pmos`, `github-dc1-linux`,
-  `github-dc1-linux-kernel`).
-- Rebooting, killing services, or filling the disk takes down the machine you
-  are working on. Nothing here is disposable.
+- The system is Alpine/postmarketOS on native aarch64; builds do not need qemu.
+- There is no system-wide `ssh` client. The user-mode client is
+  `/home/dc1/.local/alpine-root/usr/bin/ssh`; GitHub access uses the per-repo
+  aliases in `~/.ssh/config`: `github-dc1-pmos`, `github-dc1-linux`, and
+  `github-dc1-linux-kernel`.
+- `sudo` needs an interactive password. Do not design a command that depends
+  on unattended sudo unless the caller has explicitly arranged it.
+- Do not reboot, kill services, fill the filesystem, or manipulate partitions
+  casually. Losing the running kernel can remove the only recovery channel.
 
-## THIS REPOSITORY IS PUBLIC
+Preserve existing worktree changes. This repository's normal working agreement
+is to work directly on `main`, keep diffs focused, commit, and push `main` when
+the requested work is complete. Never use destructive Git commands such as
+`reset --hard` or `checkout --` without explicit approval.
 
-Everything committed here is world-readable. Non-negotiable rules:
+`AGENTS.md` is a tracked symlink to this file. Edit `CLAUDE.md`; do not replace
+the symlink with a second independent instruction file.
 
-- **Never** commit: Wi-Fi credentials, `authorized_keys`, private keys,
-  device serials, factory partition dumps, or proprietary Android blobs.
-- MT7902 Wi-Fi/BT firmware and `regulatory.db` come from **upstream
-  linux-firmware / wireless-regdb only**, downloaded at build time and pinned
-  by size + SHA-256. Never commit the blobs themselves; never accept
-  same-named stock Android blobs (they pass the handshake and then fail
-  mainline mt76's UNI commands).
-- The private sibling repo `../dc-1-linux` is **read-only source material**.
-  Take only building blocks (scripts, sources, configs), never documentation,
-  hardware evidence, recovery logs, `HANDOFF.md`/`TODO.md`/`history.md`
-  content, or anything referencing its internal state.
+## Public-repository rules
 
-## Sources of truth
+Everything committed here is world-readable. Never commit or publish:
 
-- Kernel: https://github.com/denysvitali/dc-1-linux-kernel, branch `jagar`.
-  Pinned by commit in `scripts/versions.env`
-  (`KERNEL_COMMIT`). Kernel builds use clang/LLVM/LLD 20 via kbuild's
-  prefix form (`LLVM=/usr/lib/llvm20/bin/` + explicit `LD=/usr/bin/ld.lld`;
-  Alpine ships no `ld.lld-20`).
-  The boot-proven compiler boundary was clang 19, but Alpine edge dropped
-  the clang19 package (2026-08), so 20 is the closest buildable toolchain;
-  do not move it further without reason.
-- pmaports + pmbootstrap: upstream postmarketOS GitLab, pinned by commit in
-  `scripts/versions.env`. Our two overlay packages
-  (`device-daylight-jagar`, `linux-postmarketos-mediatek-mt6789`) live in
-  `pmaports/device/testing/` here, laid out exactly as they would land
-  upstream — **upstreamability is a design goal**: keep APKBUILDs
-  conventional, keep device-specific hacks in the installer, not the
-  packages.
+- Wi-Fi credentials, `authorized_keys`, private keys, password hashes,
+  device serials, factory partition dumps, recovery logs containing internal
+  state, or proprietary Android blobs.
+- A same-named stock Android Wi-Fi/Bluetooth blob. MT7902 firmware and
+  `regulatory.db` must come from upstream `linux-firmware` and
+  `wireless-regdb`, fetched at build time and checked by exact size and
+  SHA-256. Stock files can pass the old firmware handshake and still fail
+  mainline mt76 UNI commands.
 
-## Layout
+The committed `boot/boot-signature.bin` is an explicit, vendor-derived 4096
+byte AVB0 boot-signature page with recorded provenance; it is not permission to
+add other vendor partitions or blobs. Preserve its hash and provenance if the
+boot-image code changes.
 
-- `pmaports/device/testing/` — the two pmaports overlay packages, in
-  upstream layout.
-- `scripts/` — pinned-source preparation, rootfs build, artifact export,
-  image creation, `versions.env`, offline tests.
-- `installer/` — the installation-mode initramfs: builder, init + rc
-  sources, and the interactive installer (username/password/Wi-Fi prompts,
-  rootfs write, first-boot provisioning).
-- `boot/` — Android boot-image v4 tooling: `mkboot` (Go) and the repack
-  script owning the LK invariants (gzip kernel, legacy-frame LZ4 ramdisk,
-  non-zero 4096-byte AVB0 signature page).
-- `docs/` — user-facing installation and status documentation.
-- `tools/` — hardware probe tools kept for re-measurement (`i2cbb`).
-- `.github/workflows/` — CI.
+The private sibling repository `../dc-1-linux` is read-only source material.
+Take reusable code or configuration only. Do not copy its documentation,
+hardware evidence, recovery logs, `HANDOFF.md`, `TODO.md`, `history.md`, or
+anything that exposes its internal state.
 
-## Hardware invariants (cost boot cycles to learn; do not re-derive)
+The CI-only `DC1_APK_PRIVATE_KEY` signs the published `APKINDEX.tar.gz`. It
+must exist only in the GitHub secret/environment and temporary files created by
+the signing script. The public key is intentionally committed at
+`pmaports/device/testing/device-daylight-jagar/dc1-apk.rsa.pub`.
 
-- The DC-1 boots via MediaTek LK with A/B slots. `fastboot` is available from
-  LK. There is **no general recovery channel without a running kernel**: the
-  authenticated preloader does not accept an *arbitrary* download agent for
-  storage writes. It does accept the vendor's **signed** agent plus its auth
-  blob — proprietary files that are never committed or published here, and
-  the only reason `docs/preloader-recovery.md` (repair the `misc` BCB over
-  USB) exists. Never instruct users to write `preloader`, `lk`, `dtbo`,
-  `vendor_boot`, or UFS boot LUNs in the normal install path — the signed
-  agent does not change that; it is what those partitions being intact buys
-  you.
-- Boot images are Android header **v4**, gzip kernel, legacy-frame LZ4
-  ramdisk, with a non-zero AVB0 signature page. `pmbootstrap flasher` and
-  generic pmOS boot deployment do not reproduce this;
-  `deviceinfo_flash_method="none"` is deliberate and required.
-- The persistent root is the ext4 filesystem **labelled `jagar-root`** on
-  `userdata`. The label is load-bearing: the initramfs finds root by label
-  and falls back to the recovery shell otherwise.
-- Kernel config must keep `CONFIG_BINFMT_SCRIPT`, `CONFIG_EPOLL`,
-  `CONFIG_SIGNALFD`, `CONFIG_TIMERFD`, `CONFIG_EVENTFD` (udhcpc hook + BlueZ
-  need them; failures are silent).
-- Sensors sit on the SCP's two I2C buses, but that does **not** put them out
-  of the AP's reach — the earlier claim that "no DTS node or defconfig entry
-  can expose them" is retracted. Both bus pin pairs are dual-function, so
-  muxing them to their AP function hands the bus to an ordinary
-  `i2c-mt65xx` controller:
-  - GPIO142/143 — func 2 `SCP_SCL1/SDA1`, func 1 `SCL6/SDA6` (i2c6
-    @1101a000): mCube **MC3416 accelerometer @0x4c**, driven by
-    `drivers/iio/accel/mc3230.c` (`mcube,mc3416`).
-  - GPIO132/133 — func 2 `SCP_SCL0/SDA0`, func 1 `SCL1/SDA1` (i2c1
-    @11e01000): ambient-light/proximity part **@0x49**, no mainline driver
-    yet, so still undeclared.
-  This is only safe while nothing drives the SCP: no mainline driver binds
-  `mediatek,mt6789-tinysys-scp`, and the accelerometer was found in its
-  power-on STANDBY state, so the firmware had never initialised it. An
-  mt6789 sensorhub driver and these nodes cannot both own the pins.
-- There is still no gyro or magnetometer. The hall switch (magnetic lid,
-  GPIO) is directly AP-wired and still not in the DTS.
-- The panel's scanout is 180° from the glass, and **no tree carries a
-  `rotation` property** — not the stock one, and not the mainline board DTS,
-  which since kernel `a3a633ef9` does describe the panel
-  (`sharp,nt36523n,vdo,120hz`, driven by `panel-novatek-nt36523.c`) but
-  deliberately omits `rotation`. So DRM exposes no `panel orientation` for
-  the compositor to compensate with, and the accelerometer's `mount-matrix`
-  carries that 180° itself, on top of the chip's physical mounting. If
-  `rotation = <180>` is ever added, take the 180° back out of the matrix in
-  the same change or the screen will rotate the wrong way round.
-- **The kernel's device tree does NOT come from `vendor_boot`.** It is
-  `lk_main_dtb` — a *signed* image inside the **`lk`** partition — merged
-  with the *signed* **`dtbo`**. Read straight out of LK's own log
-  (2026-08-18):
+## Pinned sources and package overlays
 
-      lk_main_dtb image name found
-      mkimg hdr detected (178773)
-      Load 'lk_b' partition to 0x... (178773 bytes in 10 ms)
-      Load 'dtbo_b' partition to 0x... (43240 bytes)
-      dtbo_size=43176
-      after overlay, fdt size(221949)
+`scripts/versions.env` is the source manifest. It pins `PMAPORTS_COMMIT`,
+`PMBOOTSTRAP_COMMIT`, `KERNEL_COMMIT`, and `SOURCE_DATE_EPOCH`. Do not replace
+these with floating branches when reproducing a build.
 
-  and 178773 + 43176 = 221949 exactly. The DTB inside `vendor_boot` is a
-  *different* blob (178385 bytes) that never reaches the kernel. This
-  retracts the earlier "LK takes the DTB from `vendor_boot`" invariant,
-  which was wrong and cost at least six boot cycles: every `vendor_boot`
-  write left the device tree completely unchanged, which is why `model`
-  never moved off the stock value no matter what was flashed.
-- **`lk` and `dtbo` are authenticated; `boot`/`vendor_boot` are not.** For
-  the DT images LK logs `img_auth_required = 1`, `[SBC] sbc_en = 1`,
-  `[SEC] dtbo cert chain vfy pass`, `[SEC] image dtbo auth pass`; for
-  vendor_boot it logs `[AVB] img_auth_required = 0`. So an unsigned `dtbo`
-  fails authentication and LK kills the slot **before the kernel starts** —
-  no kernel log, no pstore record, just a slot marked dead. Both slots were
-  lost that way on 2026-08-18 to a hand-built 136-byte overlay. We cannot
-  sign these images, so **shipping a mainline device tree through `lk` or
-  `dtbo` is not possible**; the only route left is a runtime DT overlay
-  applied by Linux on top of the stock tree (the mechanism the
-  `*-live-*-probe.dtbo` files already use).
-- **LK's own log is readable at runtime, and is the diagnostic channel of
-  record.** `CONFIG_STRICT_DEVMEM` is off, so:
+- Kernel source: `https://github.com/denysvitali/dc-1-linux-kernel`, branch
+  `jagar`, at `KERNEL_COMMIT`.
+- pmaports and pmbootstrap: upstream postmarketOS GitLab checkouts at their
+  pinned commits.
+- Local pmaports overlay: three recipes currently exist under
+  `pmaports/device/testing/`:
+  `device-daylight-jagar`,
+  `linux-postmarketos-mediatek-mt6789`, and `mutter-mobile`.
+- `scripts/prepare.sh` copies the first two into upstream
+  `device/testing/`, but places `mutter-mobile` in the upstream
+  `extra-repos/systemd/mutter-mobile` location expected by pmbootstrap. Do
+  not assume all three are ordinary device packages.
 
-      dd if=/dev/mem bs=4096 skip=$((0x7ffbf000/4096)) count=64   # mblock-7-log_store
+The packages should remain conventional and upstreamable. Keep device-specific
+installation policy in `installer/` or the build scripts, not in an APKBUILD
+merely because it is convenient. When a package build recipe or its effective
+inputs change, bump that recipe's `pkgrel`; pmbootstrap/CI deliberately reuses
+an unchanged `pkgver-pkgrel`, and the cached package can otherwise be silently
+reused. `scripts/verify.sh` checks the overlay, checksums, pins, and safety
+properties.
 
-  gives LK's log for the boot that just happened (LK **resets** before
-  falling back, so the ring only ever holds the slot that succeeded). A
-  copy is persisted in the **`expdb`** partition — that is where to look
-  for a *failed* slot's log. Prefer this over guessing from silence: three
-  hypotheses in a row (`/memory` path, "pstore is stale", boot.img cmdline
-  markers) were wrong and each cost a boot.
-- LK does **not** propagate the boot.img header `cmdline` field to the
-  kernel; it builds the whole command line itself. Do not use it to tag a
-  slot.
+The kernel compiler boundary is deliberate and must not drift without a
+measured reason:
 
-## CI
+- Kernel C and host LLVM tools use clang/LLVM 20 with
+  `LLVM=/usr/lib/llvm20/bin/`, `LD=/usr/bin/ld.lld`, and
+  `HOSTLD=/usr/bin/ld.lld`.
+- Kernel and host compiler commands route explicitly through
+  `CC="ccache clang-20"` and `HOSTCC="ccache clang-20"`; a PATH-only ccache
+  setup misses clang on Alpine.
+- The DTB pass uses `HOSTCC=gcc`, serially, because the pinned source's
+  `fdtoverlay` is unreliable with clang 20. This does not change the kernel
+  compiler boundary.
+- The APKBUILD sets `CCACHE_DIR=/home/pmos/.ccache` and fails if ccache sees
+  zero compiles. Keep that positive control.
 
-- Public GitHub runners only. Use `ubuntu-24.04-arm` for aarch64 work
-  (native, no qemu binfmt); `ubuntu-24.04` for x86 lint/static jobs.
-- Every push builds; a rolling prerelease publishes artifacts so users can
-  always fetch the latest build. pmbootstrap skips unchanged
-  `pkgver-pkgrel` — **bump `pkgrel` when you change a build recipe** or the
-  cached package is silently reused.
-- ccache must be routed explicitly (`CC="ccache clang-20"`); Alpine's ccache
-  shims cover gcc names only, so a PATH-based LLVM build silently misses the
-  cache. Keep the positive controls: fail if ccache saw zero compiles when a
-  kernel was built.
-- A green build proves compilation, not booting. Releases record
-  `hardware_verified=false`.
+## Hardware and boot invariants
 
-## Definition of done
+These facts cost boot cycles to establish. Treat them as load-bearing unless a
+new hardware measurement and documentation update supersede them.
 
-- Shell: `sh -n` every script; scripts are POSIX sh unless they say
-  otherwise.
-- Python: `python3 -m py_compile`; run `scripts/tests/` and
-  `installer/tests/` offline tests.
-- Go (`boot/mkboot`): `go build ./... && go vet ./... && go test ./...`.
-- Workflows: `actionlint` (or at minimum a YAML parse).
-- After push: check the Actions run; don't claim green without looking.
+### Partitions, slots, and authentication
 
-## Working agreements
+- The device boots through MediaTek LK with A/B slots and exposes fastboot
+  from LK. There is no general recovery channel without a running kernel.
+  The authenticated preloader does not accept an arbitrary download agent for
+  storage writes. A vendor-signed agent and auth blob exist only for the
+  narrowly documented `misc` BCB recovery path and must never be committed.
+- Normal installation may write `boot_a`, `userdata`, and the required A/B
+  boot-control data in `misc`. Never tell users to write `preloader`, `lk`,
+  `dtbo`, `vendor_boot`, or UFS boot LUNs in the normal path.
+- `lk` and `dtbo` are authenticated. `boot` and `vendor_boot` are not, but an
+  unsigned `dtbo` can kill a slot before Linux starts. Do not experiment with
+  signed partitions on hardware.
+- The persistent root is an ext4 filesystem labelled exactly `jagar-root` on
+  `userdata`. The system initramfs finds it by label and otherwise enters the
+  rescue path. `deviceinfo_flash_method="none"` is intentional: generic
+  `pmbootstrap flasher` deployment is not valid for this device.
 
-- Commit and push to `main` after completing work; no feature branches.
-- Keep diffs minimal; no reformatting of untouched code.
-- When editing anything under `pmaports/`, ask "would upstream take this
-  as-is?" — if not, move the logic elsewhere.
+### Device-tree delivery
+
+The kernel DT does **not** come from `vendor_boot`. LK constructs the runtime
+tree from its signed `lk_main_dtb` inside `lk`, merged with signed `dtbo`.
+The separate DTB in `vendor_boot` never reaches Linux; writing
+`vendor_boot` is a no-op for DT delivery.
+
+The hardware-proven mainline route is `boot/dtbswap`:
+
+1. LK starts the kernel slot with its original FDT address in arm64 `x0`.
+2. The freestanding stub in `boot/dtbswap` receives that handoff and jumps to
+   `[stub | our DTB | real kernel Image]` with our DTB instead.
+3. Its fail-safe paths return LK's original FDT, so a bad swap should fall
+   back to stock DT behavior.
+
+`jagar-boot.img` is built with this payload when `KERNEL_DTB` is supplied.
+`installer-boot.img` deliberately remains a plain kernel image with the stock
+DT path; installation mode is proven there and does not need the mainline
+tree. The normal install therefore flashes only `jagar-boot.img` after the
+rootfs is written. The workflow also creates `jagar-vendor-boot.img` as a
+DTB-only compatibility artifact, but it is not part of the normal install and
+must not be flashed to deliver the mainline DT.
+
+There are stale vendor_boot-as-DT comments in older prose and workflow/tooling
+comments. When touching those files, align them with `boot/dtbswap/README.md`,
+`docs/installation.md`, and this section; do not revive the old vendor_boot
+path merely to make the comments agree.
+
+### Boot image shape and diagnostics
+
+- Android boot header v4, gzip kernel, legacy-frame LZ4 ramdisk, and a
+  non-zero 4096-byte AVB0 signature page are required. `boot/repack-boot.sh`
+  owns the pipeline invariants; `boot/mkboot` is the Go parser/packer and
+  byte-identical verifier.
+- LK builds the complete kernel command line itself. The boot-image header's
+  `cmdline` field is not a reliable slot marker or diagnostic channel.
+- LK's current-boot log is readable because `CONFIG_STRICT_DEVMEM` is off:
+
+      dd if=/dev/mem bs=4096 skip=$((0x7ffbf000/4096)) count=64
+
+  This ring is reset before LK falls back, so it normally contains the slot
+  that succeeded. A failed slot's persisted log is in `expdb`. Prefer these
+  logs over inferring failure from silence; pstore is not a reliable channel
+  for this port.
+
+### Kernel configuration and hardware notes
+
+Keep `CONFIG_BINFMT_SCRIPT`, `CONFIG_EPOLL`, `CONFIG_SIGNALFD`,
+`CONFIG_TIMERFD`, and `CONFIG_EVENTFD`; the udhcpc hook, installer, and BlueZ
+depend on them and failures can be silent.
+
+The sensor buses are SCP-connected but reachable from the AP when the pins are
+re-muxed and nothing drives the SCP:
+
+- GPIO142/143, AP i2c6 at `0x1101a000`, exposes the MCube MC3416 at `0x4c`
+  (`mcube,mc3416`, `drivers/iio/accel/mc3230.c`).
+- GPIO132/133, AP i2c1 at `0x11e01000`, exposes an ambient-light/proximity part
+  at `0x49`; it has no mainline driver and remains undeclared.
+
+Do not add an AP sensor node while also adding an SCP/sensorhub owner for the
+same pins. There is still no gyro or magnetometer; the hall switch is directly
+AP-wired but absent from the DTS. The panel scanout is 180 degrees from the
+glass. If a future DTS `rotation = <180>` property is added, remove the same
+180-degree compensation from the accelerometer `mount-matrix` in that change
+to avoid double rotation.
+
+## Repository map
+
+- `pmaports/device/testing/` — the three local APKBUILD overlays and their
+  package files. The mutter overlay is staged into the upstream systemd extra
+  repo by `scripts/prepare.sh`.
+- `scripts/` — pinned checkout preparation, pmbootstrap rootfs/package build,
+  artifact export, deterministic ext4 creation, rootfs archive creation,
+  signed APK index creation, verification, and offline tests.
+- `installer/build.sh` — creates both initramfs images and, when given
+  `KERNEL_IMAGE`, the two Android boot images. It also downloads and verifies
+  public upstream firmware and pinned Alpine runtime packages into a local,
+  gitignored cache.
+- `installer/gotools/` — the CGO-free multi-call Go userland (`dc1tools`),
+  used by installer PID 1 and the system-initramfs helpers.
+- `installer/src/` — C entry points, POSIX initramfs scripts, system-init
+  sources, vendored UAPI headers, and the touch/network/write paths.
+- `installer/host/` — host-side USB/fastboot fallback installer.
+- `installer/tests/` — offline shell tests and syntax gate for installer,
+  host, and initramfs scripts.
+- `boot/dtbswap/` — freestanding arm64 DT handoff stub and packer.
+- `boot/mkboot/` — Go Android boot/vendor_boot v4 tooling and Python verifier.
+- `boot/repack-boot.sh` — minimal production boot-image packer.
+- `docs/` — installation, status, and the narrowly scoped preloader-recovery
+  procedure. `README.md` is the user-facing quickstart and safety warning.
+- `tools/i2cbb/` — hardware probe utility retained for controlled
+  re-measurement; it is not a normal build dependency.
+- `.github/workflows/build.yml` — the complete verify/build/release contract.
+
+## Build flow and artifact contract
+
+`scripts/prepare.sh WORK` fetches only the pinned pmaports and pmbootstrap
+commits, validates the overlay scope, copies the three recipes, and writes
+`WORK/SOURCES`. `scripts/build-rootfs.sh [--validate-only]
+[--verify-sources] WORK OUTPUT` prepares those sources, builds the three
+aarch64 packages, installs a non-deploying pmbootstrap rootfs, shuts down the
+chroot, and calls `scripts/export-artifacts.sh`.
+
+The rootfs builder must stay non-deploying: it uses `pmbootstrap install
+--no-image --no-sshd --no-firewall --no-recommends`, never fastboot, ssh, scp,
+or a block-device target. The build-time `dc1`/placeholder account state is
+not a user secret; the installer provisions the real account and password.
+
+The exporter produces a tar archive, a `jagar-root` ext4 image compressed as
+zstd, exact-version copies of all three APKs, the kernel and DTB inputs under
+`boot/`, `FILES.tsv`, `SOURCES`, `PROVENANCE`, and `SHA256SUMS`. Its
+`PROVENANCE` intentionally records `flash_method=none`,
+`boot_image_included=false`, `deployable=rootfs-image-only`, and
+`hardware_verified=false`; the CI release assembly adds the boot images later.
+
+The final release directory contains:
+
+- `installer-boot.img` and `jagar-boot.img`;
+- the optional/non-normal-path `jagar-vendor-boot.img`;
+- `jagar-rootfs.ext4.zst` and `jagar-rootfs.tar.gz`;
+- the three exact-version APKs;
+- `dc1-install.sh`, `PROVENANCE`, `SOURCES`, `FILES.tsv`,
+  signed `APKINDEX.tar.gz`, and one final `SHA256SUMS` covering all files.
+
+Do not claim that a green CI run proves booting. Releases deliberately say
+`hardware_verified=false` until a separate hardware test has been performed.
+
+## CI contract
+
+`.github/workflows/build.yml` runs without path filters:
+
+- `verify` on `ubuntu-24.04` (x86) runs `scripts/verify.sh`, all offline
+  installer tests, installer/device C smoke builds, `boot/mkboot` Go build/vet/
+  tests, `installer/gotools` build/vet/tests plus an arm64 build, and the
+  Python boot-tool syntax check.
+- `build` on `ubuntu-24.04-arm` runs natively, restores pmbootstrap source,
+  package, and ccache caches, builds the pinned rootfs, builds `dtbswap`,
+  creates both boot images, assembles the release, signs its APK index, and
+  verifies the final manifest.
+
+The workflow runs for pushes to `main`, pull requests, and manual dispatch.
+Pull requests upload a workflow artifact. A push to the default branch
+publishes/replaces the rolling prerelease `latest`; manual dispatch without a
+tag can do the same on the default branch. A manual `pmos-v*` tag publishes a
+prerelease with that version. Keep the `DC1_APK_PRIVATE_KEY` secret available;
+the build must fail rather than publish an unsigned APK index.
+
+No workflow step may quietly turn a docs-only change into a skipped build. The
+cache is part of correctness: unchanged `pkgver-pkgrel` packages must remain
+byte-identical so the package and matching boot image do not drift across
+runs. Preserve the cache ownership handling and the final SHA256 check.
+
+## Required validation
+
+Before handing off a change, run the narrowest relevant checks and then the
+full offline gates when practical:
+
+```sh
+sh -n scripts/*.sh installer/build.sh installer/src/*.sh \
+  installer/src/system/*.sh installer/host/*.sh installer/tests/*.sh
+sh scripts/verify.sh
+sh installer/tests/run-tests.sh
+
+(cd boot/mkboot && go build ./... && go vet ./... && go test ./...)
+(cd installer/gotools && CGO_ENABLED=0 go build ./... && \
+  go vet ./... && go test ./...)
+python3 -m py_compile boot/mkboot/vendorboot_v4_verify.py
+make -C boot/dtbswap
+```
+
+`installer/tests/run-tests.sh` is the authoritative installer syntax/test
+runner and includes the host scripts. `scripts/verify.sh` runs the packaging,
+source/checksum, rootfs archive, ext4, and artifact-export gates. Workflow
+YAML should pass `actionlint` when available; otherwise at minimum parse it
+with a YAML parser. After pushing, inspect the actual GitHub Actions run and
+do not report it green without checking its result.
+
+## Change discipline
+
+- Use POSIX `sh` for scripts unless a file explicitly requires another shell;
+  retain `set -eu` and fail-closed validation in build paths.
+- Keep generated caches, downloaded firmware, Alpine APKs, and temporary
+  images out of Git. Check `git status` after every build.
+- Keep installer deployment code separate from package recipes and build
+  exporters. Builders must write regular output files only, never select slots
+  or write partitions.
+- When changing a boot image, re-check the v4 header, gzip kernel, legacy LZ4
+  ramdisk, signature page, DT swap payload, and exact artifact hashes. Treat a
+  hardware boot as expensive and preserve the known fallback path.
+- Update this file when package count, runner/toolchain, release contents,
+  partition behavior, or measured hardware invariants change. Keep the
+  instruction file operational and evidence-based; do not copy private lab
+  history into this public repository.
