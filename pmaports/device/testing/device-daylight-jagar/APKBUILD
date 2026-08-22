@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=57
+pkgrel=58
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -10,6 +10,13 @@ options="!check !archcheck"
 # MT7902 Wi-Fi/BT firmware comes from upstream linux-firmware
 # (mediatek/WIFI_RAM_CODE_MT7902_1.bin, WIFI_MT7902_patch_mcu_1_1_hdr.bin,
 # BT_RAM_CODE_MT7902_1_1_hdr.bin) and regulatory.db from wireless-regdb.
+#
+# pipewire-pulse: GNOME (gnome-shell / gnome-control-center) is a libpulse
+# client, and the image's pulseaudio backend never starts under systemd
+# (its autostart entry is hidden), so without this package there is no
+# PulseAudio server socket and the GNOME Sound panel lists no devices at
+# all. Its user socket unit is already enabled in sockets.target.wants by
+# the base install; only the binary/service package is needed.
 depends="
 	alsa-utils
 	curl
@@ -18,6 +25,7 @@ depends="
 	linux-firmware-mediatek
 	linux-postmarketos-mediatek-mt6789
 	openssh-server
+	pipewire-pulse
 	postmarketos-base
 	py3-dbus
 	python3
@@ -353,7 +361,7 @@ e9f0a80372e63be8a04a027326af59e565760c8f97640e2a6627cdf6386fedae2be4e25f4c888890
 647d8d29759af654b99688b986142a40927e47305006ff28a273c5dc91778f5819f8f0d2daa54f82b662897a908f0dd2866ff22406339f051bc9d0439a8f05bf  dc1-audio
 ee2d4697459ac2b57f5b0ca0521dda6bd51681b5d979bcde7f1f0c6268c4084426aee0cd19c6a8f66ea937a7500b3544753602c6394088a39d37fb98b40618ff  dc1-audio.service
 72c1f6c699d7858beffbe57ebfe0c62741915c4b703adf273eee9e604e34e0c6bc16b1178a4886eff171b01edee66ca6ea3710c6fa987cfd6491b9f11091da78  dc1-ucm-card.conf
-cad6e073062a13be8f624a2e5aed81c04d08df1a4b8a48e921f237664c5758fb7fb6254a98c78a5a7dc765d496aa0f76e246cbab4ce6b3f8168426ce277c7145  dc1-ucm-hifi.conf
+be91d966c1ba2b8621c668eb1617c0f94e7646fe6d058bb6352defd1cca24216c00f235403233fead474be5d1bd17058be869eb66402390b20af24b85467fe8b  dc1-ucm-hifi.conf
 d66f156ec79198795ca85f067a6c8eec28716eb249f17788a54dc0ff6e6230b7faa6646a1dbafd66099e95286496338298c5b71f92a62d30c5db67022f5c5fc6  55-dc1-audio.conf
 f05558dc1c813003e347cd37fb526ec464148d32143a697cd152bc489e98dec3ea6811e77899dfa8d42e4ffb0a2a135037d43644520cca7c04d5567fca24a13e  dc1-bluetooth
 2c0b0e3f6fe32b754521cc0022b6a1a5808f1b8c30f2e98bc4cd7c2f70a3a8c276d53f938a1fcb272f7130462f732b2a310d4d2ac53f8fc30be12968499e018d  dc1-bluetooth.service

@@ -196,6 +196,27 @@ glass. If a future DTS `rotation = <180>` property is added, remove the same
 180-degree compensation from the accelerometer `mount-matrix` in that change
 to avoid double rotation.
 
+Audio invariants (measured 2026-08-17..22):
+
+- Speakers: RT9101 amp behind the codec headphone buffers
+  (`HPL`/`HPR Mux` = `LoudSPK Playback`), enabled by the machine driver's
+  `Ext_Speaker_Amp` widget (VIBR rail + GPIO158/159). The known-good mixer
+  sequence lives in `dc1-audio` and is mirrored by the UCM verb; keep the
+  two in sync.
+- Microphones: two two-wire digital DMICs on AIN0/AIN2. Capture front end
+  is UL1 (ALSA device 9, `Capture_1`). `Mic Type Mux` must stay `DMIC`
+  (any other value records digital silence) and `MTKAIF_DMIC` must stay
+  `Off` — the codec delivers PCM over MTKAIF, and forcing raw-DMIC
+  interpretation does not change or improve capture. There is no headset
+  jack, no analog mic, and no JackControl; do not model ACC/DCC/PGA input
+  paths.
+- GNOME audio needs both: the `55-dc1-audio.conf` WirePlumber fragment
+  (Alpine's `pulseaudio-wireplumber` disables `hardware.audio`, which
+  stops ALSA enumeration entirely) and the `pipewire-pulse` package
+  (the image's PulseAudio backend never starts under systemd, so without
+  it there is no server at `$XDG_RUNTIME_DIR/pulse/native` and
+  gnome-shell/g-c-c get connection refused).
+
 ## Repository map
 
 - `pmaports/device/testing/` — the three local APKBUILD overlays and their
