@@ -148,7 +148,12 @@ verify_blob() {
 fetch() {   # fetch URL OUT -- cache-aware, fail-closed
 	[ -s "$2" ] && return 0
 	echo "  fetching $(basename "$2")"
-	curl -fsSL --retry 3 -o "$2.part" "$1" || fatal "download failed: $1"
+	# --retry alone does not cover TLS/TCP transport errors such as "Recv
+	# failure: Connection reset by peer" (curl 35), which killed a CI run
+	# mid-download from mirrors.edge.kernel.org; --retry-all-errors makes
+	# the retries apply to those too (needs curl >= 7.71).
+	curl -fsSL --retry 3 --retry-all-errors -o "$2.part" "$1" \
+		|| fatal "download failed: $1"
 	mv "$2.part" "$2"
 }
 
