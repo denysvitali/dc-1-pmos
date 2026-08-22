@@ -132,37 +132,40 @@ regression on those two.
 
 ## Device specification (stock DC-1 hardware)
 
-The most complete single spec sheet for the commercial device is Daylight's own
+The most complete *marketing* spec sheet is Daylight's own
 [press kit](https://support.daylightcomputer.com/daylight-dc-1-press-kit-1) —
-the only source that publishes the button set, per-speaker power, microphone
-configuration and dimensions. It is corroborated by the
-[product page](https://daylightcomputer.com/product), MediaTek's
-[Helio G99 blog](https://www.mediatek.com/tek-talk-blogs/daylight-computer-1-powered-by-mediatek-helio-g99),
-the [FCC filing 2BFTUDC1](https://fcc.report/FCC-ID/2BFTUDC1) (granted
-2024-09-11; ODM InnoComm Mobile Technology), and reviews from
+the only such source that publishes the button set, per-speaker power,
+microphone configuration and dimensions. The component-level detail below comes
+from the [FCC filing 2BFTUDC1](https://fcc.report/FCC-ID/2BFTUDC1) (granted
+2024-09-11), whose internal-board, antenna and battery photographs identify
+installed parts by marking; MediaTek's
+[blog](https://www.mediatek.com/tek-talk-blogs/daylight-computer-1-powered-by-mediatek-helio-g99)
+and [case study](https://www.mediatek.com/products/internet-of-things/case-studies/daylight-computer)
+corroborate the platform, and reviews from
 [Liliputing](https://liliputing.com/daylight-computer-dc-1-is-a-799-tablet-with-a-live-paper-display-designed-to-be-easy-on-the-eyes-but-not-the-wallet/)
 and [The Verge](https://www.theverge.com/2024/7/20/24201356/daylight-computer-dc-1-hands-on)
-(the community [awesome-daylight-computer](https://github.com/hermeticvm/awesome-daylight-computer)
+add hands-on detail (the community
+[awesome-daylight-computer](https://github.com/hermeticvm/awesome-daylight-computer)
 list indexes further coverage). Where a published claim contradicts something
 measured on this unit, the measurement wins and the cell says so.
 
 | Item | Specification (per sources above) | Against this port |
 | --- | --- | --- |
-| Identity | Daylight DC-1, FCC ID `2BFTUDC1`, grantee Daylight Computer Co. (Fremont, CA), ODM InnoComm; launched 2024 at $729, later $799 | Codename `jagar`; `/proc/device-tree/model` reads `Daylight Computer DC-1` on dtbswap boots |
-| SoC | MediaTek Helio G99 (= MT8781), octa-core: 2× Cortex-A76 up to 2.2 GHz + 6× Cortex-A55 up to 2.0 GHz | Matches measured DVFS: policy6 (A76 cluster, cpu6-7) 725–2200 MHz, policy0 (A55, cpu0-5) 500–2000 MHz — see Thermal |
-| GPU | Mali-G57 MC2 | Panfrost, native on the mainline DT — see GPU row |
-| RAM | 8 GB LPDDR4X | Type from reviews/G99 platform (press kit omits it); not separately verified |
-| Storage | 128 GB internal ("eMMC" in press kit); **no camera** | This unit's controller measures as **UFS** (see Internal storage row); treat "eMMC" as shorthand or error |
-| Expansion | microSD slot | Slot is real: MSDC0 node transcribed into the mainline board DTS with card-detect and a GPIO157 vqmmc regulator (`reg_vqmmc_sd`), pins from measured stock values; bring-up still pending (P6.2) and untested on this port |
-| Display | 10.5″ greyscale reflective LCD ("LivePaper™"; RLCD family, not E Ink, not bistable), 1200 × 1600 portrait (~190 PPI, 4:3), 60 Hz, matte anti-glare finish; panel reported as custom Sharp IGZO rLCD (community/review attribution only — Daylight names no panel maker); variable 6–120 Hz capability acknowledged by Daylight but not officially enabled | Port runs the panel at 60 Hz over DSI; scanout is 180° from the glass — see Display row |
-| Backlight | Two independent channels: white "Daylight" backlight plus Pure Amber backlight, DC dimming (no PWM), dimmable to zero light (pure reflective mode) | RT4539 pair: white on i2c-5, amber on i2c-2 — see Frontlight row |
-| Touch / pen | ILI2910 touch (10-point); Wacom EMR passive stylus (no battery) | Digitizer on i2c9 `0x09`, mainline `wacom_w9000` driver built since pkgrel=29 — see Pen digitizer row |
-| Battery / charging | 8000 mAh; "days per charge" claimed (backlight off); USB Type-C with PD | MT6366 FGADC gauge (vendor-corrected), BQ78Z100 pack gauge silent, MT6375 charger with TCPCI PD sink (5/9/12 V PDOs) — see Battery row |
-| Wireless | Wi-Fi 6; Bluetooth 5.0 | MT7902 SDIO combo driven by mainline mt7921s / btmtksdio — see Wi-Fi and Bluetooth rows |
-| Audio | Stereo speakers, 1 W each; stereo microphone | Two RT9101 amp-fed speakers; two digital DMICs on AIN0/AIN2 (the "stereo mic") — see Audio row |
-| Buttons | Power, Volume Up, Volume Down, plus two custom keys ("Walkie Talkie", "Quick Action") | Power + Vol-up via PMIC keys, Vol-down via KPD matrix; the two custom keys are matrix positions (0,1)/(1,1) mapped `KEY_F11`/`KEY_F12` verbatim from stock — mapping needs on-device confirmation |
-| Sensors | Not listed by Daylight anywhere | From this unit: MC3416 accelerometer (AP i2c6), ambient-light/proximity part at i2c1 `0x49` (MEMSic `mn29xxx` family, undeclared), AP-wired hall switch; no gyro or magnetometer — see Sensors row |
-| Ports | USB Type-C (PD), microSD slot, pogo pins (accessory purpose unpublished) | Pogo pins unused by this port; no headset jack (measured) |
+| Identity / boards | Daylight DC-1, FCC ID `2BFTUDC1`; ODM InnoComm Mobile Technology, whose internal project name for the platform is *Jagar* — hence this repo's codename; main PCB `Jagar-MB-R004` and button FPC `Jagar-Top_Key_FPC-R004` per FCC photos (certification sample dated 2023-11-28, which is not a production date); launched 2024 at $729, later $799 | `/proc/device-tree/model` reads `Daylight Computer DC-1` on dtbswap boots |
+| SoC | MediaTek **MT8781V** (Helio G99), octa-core: 2× Cortex-A76 up to 2.2 GHz + 6× Cortex-A55 up to 2.0 GHz, TSMC 6 nm-class. The G99 die also contains a Cat-13 modem, GNSS and camera ISP — silicon capabilities only: the DC-1 has neither SIM/cellular nor cameras, and its FCC grant covers Wi-Fi/BT exclusively | Matches measured DVFS: policy6 (A76 cluster, cpu6-7) 725–2200 MHz, policy0 (A55, cpu0-5) 500–2000 MHz — see Thermal |
+| GPU | Arm Mali-G57 MC2 | Panfrost, native on the mainline DT — see GPU row |
+| Memory + storage | SK hynix **H9QT0G6CN6-X146**, a single 254-FBGA uMCP holding both memories: 8 GB LPDDR4X (G99 platform max LPDDR4X-4266) + 128 GB UFS. This settles the press kit's "128 GB eMMC" line as marketing shorthand — the photographed package is UFS | Matches the unit: storage controller measures as UFS (see Internal storage row) |
+| Power silicon | PMIC **MT6366MW** (9 bucks + 33 LDOs, integrated audio codec, fuel-gauge and protection); charger/USB-PD IC **MT6375P** | Both already drive this port: MT6366 supplies the codec/FGADC (`mt6358-fg`) and PMIC keys, and the charger driver is `tcpci_mt6375` over the MT6375 TCPCI bank (Richtek VID `0x29cf`/PID `0x6375` probed live) — see Battery/Audio rows |
+| Battery pack | Pack model **U2687144PV** (Shenzhen Utility Energy Co., pack code `1ICP3/67/144-2`): Li-ion, 3.8 V nominal, rated 8000 mAh / 30.4 Wh, limited charge voltage 4.35 V | Capacity matches the ~8 Ah pack assumed by charge-rate math in the Battery row; "days per charge" is Daylight's claim with backlight off |
+| Charging port | USB Type-C with USB PD. Neither the accepted PDOs, maximum wattage, USB data speed, nor alt-modes are published by Daylight — do not quote figures like "USB 3.1" or a watt class without hardware evidence | Port's TCPM sink declares fixed PDOs 5 V/3 A, 9 V/3 A, 12 V/3 A; ~27 W input observed under contract — see Battery row |
+| Display | 10.5″ greyscale "LivePaper™" reflective LCD (not E Ink, not bistable), 1600 × 1200 (portrait 1200 × 1600), 4:3, ≈190 ppi (2000 diagonal px / 10.5″ = 190.48); 60 Hz product refresh (Daylight has acknowledged a 6–120 Hz panel capability without enabling it); IGZO TFT backplane and DC/CCR (PWM-free) LED driving confirmed by Daylight's engineering write-up; MIPI-DSI interface; matte anti-glare cover; no temporal dithering. Exact LCD module maker/P/N unpublished (more than one panel revision may exist) — community attribution to a custom Sharp IGZO panel is plausible but unconfirmed | Port runs the panel at 60 Hz over DSI; scanout is 180° from the glass — see Display row |
+| Backlight | Two independently exposed channels: white "Daylight" light plus Pure Amber light, DC dimming (no PWM), dimmable to zero (pure reflective mode) | RT4539 pair: white on i2c-5, amber on i2c-2 — see Frontlight row |
+| Touch / pen | Capacitive multitouch plus Wacom EMR passive digitizer (batteryless stylus, no Bluetooth pairing, palm rejection). Touch sampling rate, pressure levels and tilt spec are not publicly documented — do not attach guessed numbers (e.g. "4096 levels") | ILI2910 touch; digitizer on i2c9 `0x09` behind the mainboard's `Wacom`-marked connector, mainline `wacom_w9000` driver built since pkgrel=29 — see Pen digitizer row |
+| Wireless / RF | Radio: MediaTek **MT7902BSN**, dual-antenna (ANT1+ANT2, InnoComm TJG01/"Jagar" dual-PIFA). Shipping/certified spec: Wi-Fi 6 dual-band + Bluetooth 5.0. MediaTek's case study credits the platform with Wi-Fi 6E/BT 5.2, but the FCC grant authorizes 2.4 GHz (2402–2480 BT / 2412–2462 Wi-Fi) and 5 GHz (5180–5825) only — no 6 GHz — so treat 6E/5.2 as unexercised platform capability. Grant's max conducted output: BT 0.001 W; 2.4 GHz Wi-Fi 0.097 W; 5 GHz 8–12 mW by band. Antennas were characterized to 7.125 GHz (ANT2 avg efficiency 58.7 % / 3.6 dBi at 2.4 GHz) | MT7902 over SDIO driven by mainline mt7921s / btmtksdio — see Wi-Fi and Bluetooth rows |
+| Audio | Stereo speakers, 1 W each, on mainboard connectors labelled `SPK-L`/`SPK-R`; stereo microphone — two mic positions `MIC301`/`MIC302` on the top key FPC | Two RT9101 amp-fed speakers; two digital DMICs on AIN0/AIN2 (the "stereo mic") — see Audio row |
+| Buttons | Five physical controls: Power, Volume Up, Volume Down, plus custom keys "Walkie-Talkie" and "Quick Action" | Power + Vol-up via PMIC keys, Vol-down via KPD matrix; the two custom keys are matrix positions (0,1)/(1,1) mapped `KEY_F11`/`KEY_F12` verbatim from stock — mapping needs on-device confirmation |
+| Sensors | Daylight publishes nothing; the mainboard carries a connector explicitly labelled Light Sensor | From this unit: MC3416 accelerometer (AP i2c6), ambient-light/proximity part at i2c1 `0x49` (MEMSic `mn29xxx` family, undeclared), AP-wired hall switch; no gyro or magnetometer — see Sensors row |
+| Expansion / I/O | microSD slot (mainboard location marked `SD Card`; max card size unspecified by Daylight); rear accessory contacts — five pogo pads visible in FCC photos, silkscreened `POGO_VUSB_5V`; full pinout unpublished | microSD wired as MSDC0 in the board DTS (card-detect + GPIO157 vqmmc regulator, pins from measured stock values) with bring-up still pending (P6.2); pogo unused by this port; no headset jack (measured) |
 | Dimensions / weight | 253.5 mm × 184 mm × 9.75 mm; 550 g (1.2 lb) | — |
 | Stock software | Sol:OS (Android 13); auto-updates ~every two weeks | This repository replaces Sol:OS with postmarketOS/Alpine |
 
