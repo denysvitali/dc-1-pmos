@@ -356,18 +356,23 @@ jobs:
           moddir=$(sudo sh -c \
             'ls -d work/postmarketos/pmbootstrap-work/chroot_rootfs_daylight-jagar/lib/modules/* 2>/dev/null' \
             | head -n 1 || true)
+          # The full log is teed to a file and uploaded as an artifact on
+          # failure: the Actions log API needs authentication, but artifacts
+          # on a public repo do not, so a red run stays diagnosable from
+          # anywhere.
+          set -o pipefail
           if [ -n "$moddir" ]; then
             echo "staging kernel modules from $moddir"
             sudo env KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
               KERNEL_DTB="$GITHUB_WORKSPACE/out/boot/mt8781-daylight-jagar.dtb" \
               DTBSWAP_LLVM=/usr/bin/ DTBSWAP_LLD=/usr/bin/ld.lld \
-              MODDIR="$moddir" sh installer/build.sh
+              MODDIR="$moddir" sh installer/build.sh 2>&1 | tee boot-images.log
           else
             echo "no kernel modules directory found; building without MODDIR"
             sudo env KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
               KERNEL_DTB="$GITHUB_WORKSPACE/out/boot/mt8781-daylight-jagar.dtb" \
               DTBSWAP_LLVM=/usr/bin/ DTBSWAP_LLD=/usr/bin/ld.lld \
-              sh installer/build.sh
+              sh installer/build.sh 2>&1 | tee boot-images.log
           fi
           # The release must never silently regress to a stock-DT image:
           # prove the kernel slot is a dtbswap payload (stub magic at 56,
@@ -383,6 +388,14 @@ jobs:
           assert koff + klen == len(blob), "payload table inconsistent"
           print(f"jagar-boot.img is a dtbswap payload: dtb {dlen}B @ {doff}, kernel {klen}B @ {koff}")
           EOF
+
+      - name: Upload boot-image build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-images-build-log
+          path: boot-images.log
+          if-no-files-found: ignore
 
       # One directory holding exactly what the README promises users, with a
       # single regenerated SHA256SUMS: the exporter's manifest predates the
