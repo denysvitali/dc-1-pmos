@@ -149,9 +149,10 @@ The hardware-proven mainline route is `boot/dtbswap`:
 `installer-boot.img` deliberately remains a plain kernel image with the stock
 DT path; installation mode is proven there and does not need the mainline
 tree. The normal install therefore flashes only `jagar-boot.img` after the
-rootfs is written. The workflow also creates `jagar-vendor-boot.img` as a
-DTB-only compatibility artifact, but it is not part of the normal install and
-must not be flashed to deliver the mainline DT.
+rootfs is written. Nothing ships or writes `jagar-vendor_boot` images: LK
+ignores vendor_boot's DTB (see the invariant above), so a vendor_boot image
+cannot deliver a device tree, and every flash path structurally refuses a
+plain (non-dtbswap) `jagar-boot.img`.
 
 There are stale vendor_boot-as-DT comments in older prose and workflow/tooling
 comments. When touching those files, align them with `boot/dtbswap/README.md`,
@@ -270,7 +271,6 @@ zstd, exact-version copies of all three APKs, the kernel and DTB inputs under
 The final release directory contains:
 
 - `installer-boot.img` and `jagar-boot.img`;
-- the optional/non-normal-path `jagar-vendor-boot.img`;
 - `jagar-rootfs.ext4.zst` and `jagar-rootfs.tar.gz`;
 - the three exact-version APKs;
 - `dc1-install.sh`, `PROVENANCE`, `SOURCES`, `FILES.tsv`,

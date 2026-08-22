@@ -15,8 +15,10 @@
 #      only after the zstd stream ended cleanly -- an aborted download or
 #      truncated decompress can never leave a mountable jagar-root.
 #   4. resize + provision (shared wr_finalize / provision.sh).
-#   5. download jagar-boot.img, verify its SHA-256, write it to boot_a (the
-#      slot the user flashed the installer to), read it back and compare.
+#   5. download jagar-boot.img, verify its SHA-256, prove it is a dtbswap
+#      payload (its kernel slot must carry our device tree -- see
+#      assert_dtbswap below), write it to boot_a (the slot the user flashed
+#      the installer to), read it back and compare.
 #      This is what makes the install computer-free: after reboot the device
 #      boots the real system instead of the installer.
 #   6. reboot.
@@ -184,12 +186,60 @@ net_get_verified() {
 	fail "$1 does not match SHA256SUMS after re-download"
 }
 
+# le32at FILE OFFSET -> little-endian u32 as decimal, empty on short read.
+le32at() { od -An -tu4 -N4 -j"$2" "$1" 2>/dev/null | tr -d ' '; }
+
+# assert_dtbswap IMG -- refuse a boot image that would boot the device's own
+# device tree. LK builds the kernel's tree from its SIGNED lk_main_dtb + dtbo,
+# neither of which we can replace; a plain boot image therefore boots the
+# stock tree no matter what our kernel supports. jagar-boot.img must be a
+# dtbswap payload: kernel slot = gzip([stub | our dtb | kernel Image]), where
+# the stub swaps in OUR tree at handover (boot/dtbswap/README.md). CI asserts
+# this for every build; this is the same check at the last writable moment,
+# so a stale or regressed release asset fails the install instead of
+# silently depending on the device's DT.
+#
+# Structural only (arm64 magic, payload table at 0x40, FDT magic at the dtb
+# offset, kernel ending exactly at the blob end), so it holds for any kernel
+# build without pinning a hash. Same layout dc1-boot-sync unwraps.
+assert_dtbswap() {
+	img=$1
+	ksz=$(le32at "$img" 8)
+	case "$ksz" in ''|*[!0-9]*|0)
+		fail "$BOOTIMG_NAME: unreadable kernel size (not an Android v4 image?)" ;;
+	esac
+	blob="${TMPDIR:-/tmp}/dtbswap-check.$$"
+	if ! dd if="$img" bs=4096 skip=1 2>/dev/null | head -c "$ksz" \
+			| gunzip -c > "$blob" 2>/dev/null; then
+		rm -f "$blob"
+		fail "$BOOTIMG_NAME: kernel slot does not decompress (not a dtbswap payload)"
+	fi
+	doff=$(le32at "$blob" 64)   # payload table: dtb_off dtb_len kern_off kern_len
+	koff=$(le32at "$blob" 72)
+	klen=$(le32at "$blob" 76)
+	total=$(wc -c < "$blob")
+	ok=1
+	case "$doff" in ''|*[!0-9]*|0) ok=0 ;; esac
+	case "$koff" in ''|*[!0-9]*)   ok=0 ;; esac
+	case "$klen" in ''|*[!0-9]*|0) ok=0 ;; esac
+	if [ "$ok" = 1 ]; then
+		[ "$koff" -gt "$doff" ] \
+			&& [ $((koff + klen)) -eq "$total" ] \
+			&& [ "$(od -An -tx1 -N4 -j56 "$blob" | tr -d ' \n')" = 41524d64 ] \
+			&& [ "$(od -An -tx1 -N4 -j"$doff" "$blob" | tr -d ' \n')" = d00dfeed ] \
+			|| ok=0
+	fi
+	rm -f "$blob"
+	[ "$ok" = 1 ] || fail "$BOOTIMG_NAME is not a dtbswap payload (would boot the device's stock device tree); refusing to install it"
+}
+
 # net_write_boot_a IMG -- write the verified boot image to boot_a and read it
 # back. boot_a is the slot the installer itself was flashed to, so this is
 # the same write the fastboot step performed -- no other partition is ever
 # touched (preloader / lk / dtbo / vendor_boot stay out of reach).
 net_write_boot_a() {
 	img=$1
+	assert_dtbswap "$img"
 	img_bytes=$(wc -c < "$img" | tr -d ' ')
 	img_sha=$(sha256sum "$img" | cut -d' ' -f1)
 	bdev=${DC1_BOOT_DEV:-$(resolve_named_part boot_a \

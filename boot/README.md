@@ -4,7 +4,7 @@ Two tools own the LK boot-image invariants (header v4, gzip kernel,
 legacy-frame LZ4 ramdisk, non-zero 4096-byte AVB0 signature page):
 
 - `mkboot/` — Go tool: `info`, `verify` (byte-identical round-trip against
-  real vendor images), `pack`, `lkwrap`, `packvendor`. See `mkboot/README.md`.
+  real vendor images), `pack`, `lkwrap`. See `mkboot/README.md`.
 - `repack-boot.sh` — minimal POSIX-sh + python3 packer used by the build
   pipeline. Same invariants, fewer knobs.
 

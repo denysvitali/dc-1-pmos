@@ -273,10 +273,11 @@ is streamed over USB).
   kernel's DT from `lk_main_dtb` (a signed image inside the `lk` partition)
   merged with the signed `dtbo`; the DTB inside `vendor_boot` never reaches
   the kernel. This was measured from LK's own log on 2026-08-18 and corrects
-  what earlier revisions of this page said. `dc1-boot-sync`'s
-  `DC1_DEPLOY_VENDOR_BOOT=1` and `dc1-install.sh --vendor-boot-image` still
-  exist, but they cannot ship a device tree — treat them as no-ops for that
-  purpose.
+  what earlier revisions of this page said. The tooling that could still
+  write it (`dc1-boot-sync`'s old `DC1_DEPLOY_VENDOR_BOOT=1`,
+  `dc1-install.sh --vendor-boot-image`, the release's `jagar-vendor-boot.img`)
+  has been removed: it could not ship a device tree, so keeping it only
+  invited a flash that buys nothing.
 - **Never write `dtbo`.** LK authenticates it (`img_auth_required = 1`,
   `sbc_en = 1`, `dtbo cert chain vfy pass`). An unsigned overlay fails that
   check and LK marks the slot dead before the kernel runs — no log, no

@@ -153,9 +153,6 @@ jobs:
           GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o /tmp/dc1tools .
           ls -l /tmp/dc1tools
 
-      - name: Boot tooling helper syntax
-        run: python3 -m py_compile boot/mkboot/vendorboot_v4_verify.py
-
   build:
     runs-on: ubuntu-24.04-arm
     needs: verify
@@ -411,19 +408,11 @@ jobs:
           cp out/PROVENANCE out/SOURCES out/FILES.tsv release/
           grep -qx 'hardware_verified=false' release/PROVENANCE
 
-          # Wrap our mainline DTB in a vendor_boot image. LK reads the DTB
-          # from vendor_boot (not boot.img), so boot and vendor_boot must be
-          # deployed together from the same release. mkboot is not cached from
-          # the verify job (separate job), so rebuild it here; Go is already
-          # on PATH from the setup-go step above.
-          go build -C boot/mkboot -o "$RUNNER_TEMP/mkboot" .
-          "$RUNNER_TEMP/mkboot" packvendor \
-            -dtb out/boot/mt8781-daylight-jagar.dtb \
-            -o release/jagar-vendor-boot.img
-          # Verify VNDRBOOT magic (first 8 bytes = "VNDRBOOT").
-          [ "$(od -An -tx1 -N8 release/jagar-vendor-boot.img | tr -d ' \n')" \
-            = 564e4452424f4f54 ] || \
-            { echo "::error::jagar-vendor-boot.img has wrong magic" >&2; exit 1; }
+          # No jagar-vendor-boot.img on purpose. LK builds the kernel's tree
+          # from its SIGNED lk_main_dtb + dtbo and never reads vendor_boot's
+          # DTB, so a vendor_boot image cannot ship a device tree; the tree
+          # reaches the kernel through the dtbswap stub inside jagar-boot.img
+          # (asserted above). Writing vendor_boot buys nothing.
 
           (cd release && sha256sum -- *) | LC_ALL=C sort -k 2 > SHA256SUMS.tmp
           mv SHA256SUMS.tmp release/SHA256SUMS

@@ -1,0 +1,61 @@
+#!/bin/sh
+# Offline tests for installer/host/dc1-install.sh pure functions. The host
+# script is meant to be sourced with DC1_INSTALL_LIB=1; here we exercise
+# require_dtbswap -- the fastboot-side gate that refuses to flash a boot
+# image whose kernel slot does not carry our device tree.
+set -eu
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+pass=0
+failn=0
+ok()  { pass=$((pass + 1)); echo "  ok: $*"; }
+bad() { failn=$((failn + 1)); echo "  FAIL: $*"; }
+
+# Source the library portion; die() keeps its real definition (prints to
+# stderr, exit 1) so refusals are observable as subshell non-zero exits.
+DC1_INSTALL_LIB=1 . "$HERE/../host/dc1-install.sh"
+
+mkimg() { # OUT SLOTBYTESFILE
+	python3 - "$1" "$2" <<'PY'
+import struct, sys
+img, kern = sys.argv[1], open(sys.argv[2], 'rb').read()
+hdr = bytearray(1584)
+hdr[0:8] = b'ANDROID!'
+struct.pack_into('<I', hdr, 8, len(kern))
+open(img, 'wb').write(hdr + b'\0' * (4096 - 1584) + kern)
+PY
+}
+
+head -c 12345 /dev/zero | tr '\0' 'K' | gzip -c > "$TMP/plain.gz"
+mkimg "$TMP/plain.img" "$TMP/plain.gz"
+! (require_dtbswap "$TMP/plain.img") 2>/dev/null \
+	&& ok "plain (stock-DT) image refused" || bad "plain image accepted"
+
+head -c 12345 /dev/zero | tr '\0' 'K' > "$TMP/raw"
+python3 - "$TMP/dtbswap.img" "$TMP/raw" <<'PY'
+import struct, sys, gzip
+kern = open(sys.argv[2], 'rb').read()
+stub = bytearray(5904)
+stub[56:60] = b'ARM\x64'
+dtb = b'\xd0\x0d\xfe\xed' + b'D' * 996
+doff = len(stub); koff = doff + len(dtb)
+struct.pack_into('<4I', stub, 0x40, doff, len(dtb), koff, len(kern))
+gz = gzip.compress(bytes(stub) + dtb + kern)
+hdr = bytearray(1584)
+hdr[0:8] = b'ANDROID!'
+struct.pack_into('<I', hdr, 8, len(gz))
+open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + gz)
+PY
+require_dtbswap "$TMP/dtbswap.img" \
+	&& ok "dtbswap payload accepted" || bad "dtbswap payload refused"
+
+printf 'not an image at all' > "$TMP/garbage.img"
+! (require_dtbswap "$TMP/garbage.img") 2>/dev/null \
+	&& ok "garbage refused" || bad "garbage accepted"
+
+echo
+echo "test-dc1-install: $pass ok, $failn failed"
+[ "$failn" -eq 0 ]

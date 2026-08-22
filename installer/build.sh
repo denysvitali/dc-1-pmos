@@ -213,7 +213,7 @@ fi
 if "$BUSYBOX" true 2>/dev/null; then
 	applets=$("$BUSYBOX" --list)
 	for a in nc sha256sum base64 blkid awk mkfifo tee head dd chroot \
-	         switch_root cryptpw udhcpc rmdir df pidof; do
+	         switch_root cryptpw udhcpc rmdir df pidof gunzip; do
 		echo "$applets" | grep -qx "$a" || \
 			fatal "busybox at $BUSYBOX lacks required applet: $a"
 	done
@@ -328,7 +328,7 @@ for a in sh ash cat ls ln mount mountpoint umount insmod lsmod modprobe ip \
          dmesg setsid echo sleep mkdir rm cp mv chmod chown touch chroot tr \
          head tail wc grep sed cut sort od dd find blkid seq date uname sync \
          poweroff reboot cmp pidof ps basename readlink printf nc mkfifo \
-         sha256sum base64 awk tee stat cryptpw udhcpc rmdir df kill; do
+         sha256sum base64 awk tee stat cryptpw udhcpc rmdir df kill gunzip; do
 	ln -sf busybox "$d/bin/$a"
 done
 
@@ -577,9 +577,12 @@ if [ -n "$KERNEL_IMAGE" ]; then
 	# the kernel slot becomes gzip([dtbswap stub | dtb | Image]) -- see
 	# boot/dtbswap/README.md. LK's merged signed tree cannot be replaced, so
 	# the stub is the only route; hardware-proven 2026-08-19. Without
-	# KERNEL_DTB the image stays a plain (stock-DT) one. The installer image
-	# above deliberately stays plain either way -- installation mode is
-	# proven on the stock tree and needs nothing from the mainline one.
+	# KERNEL_DTB the image stays a plain (stock-DT) one -- and every flash
+	# path (netinstall.sh, dc1-boot-sync, dc1-install.sh) structurally
+	# REFUSES a plain image, so such a build cannot be installed by any
+	# supported flow. The installer image above deliberately stays plain
+	# either way -- installation mode is proven on the stock tree and needs
+	# nothing from the mainline one.
 	jagar_kernel="$KERNEL_IMAGE"
 	if [ -n "${KERNEL_DTB:-}" ]; then
 		[ -s "$KERNEL_DTB" ] || fatal "KERNEL_DTB missing: $KERNEL_DTB"

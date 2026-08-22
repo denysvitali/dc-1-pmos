@@ -117,4 +117,18 @@ open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + b'N' * 100)
 PY
 ! kernel_sha "$tmp/notgz.img" >/dev/null 2>&1 || fail "kernel_sha accepted a non-gzip kernel slot"
 
+echo "-- dtbswap refusal (deploy must never flash a stock-DT image)"
+
+# Same synthetic images the kernel_sha section built. The dtbswap payload
+# must pass; the plain image and the bogus-size one must fail -- a plain
+# image would boot LK's signed stock tree, which deploy() must never flash.
+export TMPDIR="$tmp"
+is_dtbswap_img "$tmp/dtbswap.img" || fail "is_dtbswap_img refused a dtbswap payload"
+is_dtbswap_img "$tmp/synth.img" 2>/dev/null && fail "is_dtbswap_img accepted a plain image" || :
+is_dtbswap_img "$tmp/notgz.img" 2>/dev/null && fail "is_dtbswap_img accepted a non-gzip slot" || :
+
+# deploy()-level guard exercised through the same function the installer
+# uses structurally; the layout facts are asserted once, here and in
+# test-netinstall.sh.
+
 echo "boot-sync resolver + kernel extraction tests passed"

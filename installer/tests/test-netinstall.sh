@@ -68,6 +68,91 @@ http_date_to_datespec "Thu, 14 Aug 20261 05:31:58 GMT" >/dev/null 2>&1 \
 http_date_to_datespec "Thu, 14 Foo 2026 05:31:58 GMT" >/dev/null 2>&1 \
 	&& bad "bad month accepted" || ok "bad month rejected"
 
+echo "== assert_dtbswap =="
+
+TMPDIR=$TMP
+export TMPDIR
+
+# Synthetic Android v4 image with a PLAIN gzip'd kernel: what a pre-dtbswap
+# or regressed release would look like. Must refuse -- a plain image boots
+# LK's signed stock tree, the dependency this check exists to prevent.
+mkbootimg() { # OUT KERNEL_SLOT_BYTES
+	python3 - "$1" "$2" <<'PY'
+import struct, sys
+img, kern = sys.argv[1], open(sys.argv[2], 'rb').read()
+hdr = bytearray(1584)
+hdr[0:8] = b'ANDROID!'
+struct.pack_into('<I', hdr, 8, len(kern))
+open(img, 'wb').write(hdr + b'\0' * (4096 - 1584) + kern)
+PY
+}
+head -c 12345 /dev/zero | tr '\0' 'K' | gzip -c > "$TMP/plain.gz"
+mkbootimg "$TMP/plain.img" "$TMP/plain.gz"
+! (assert_dtbswap "$TMP/plain.img") 2>/dev/null \
+	&& ok "plain (stock-DT) image refused" || bad "plain image accepted"
+
+# A dtbswap payload: gzip([stub | dtb | kernel]), stub arm64 magic at 56,
+# payload table at 0x40, FDT magic at the dtb offset. Must accept.
+head -c 12345 /dev/zero | tr '\0' 'K' > "$TMP/raw"
+want_sha=$(sha256sum "$TMP/raw" | cut -d' ' -f1)
+python3 - "$TMP/dtbswap.img" "$TMP/raw" <<'PY'
+import struct, sys, gzip
+kern = open(sys.argv[2], 'rb').read()
+stub = bytearray(5904)
+stub[56:60] = b'ARM\x64'
+dtb = b'\xd0\x0d\xfe\xed' + b'D' * 996
+doff = len(stub); koff = doff + len(dtb)
+struct.pack_into('<4I', stub, 0x40, doff, len(dtb), koff, len(kern))
+gz = gzip.compress(bytes(stub) + dtb + kern)
+hdr = bytearray(1584)
+hdr[0:8] = b'ANDROID!'
+struct.pack_into('<I', hdr, 8, len(gz))
+open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + gz)
+PY
+assert_dtbswap "$TMP/dtbswap.img" \
+	&& ok "dtbswap payload accepted" || bad "dtbswap payload refused"
+
+# Bogus kernel size in the header: refuse, never guess.
+python3 - "$TMP/bogus.img" <<'PY'
+import struct, sys
+hdr = bytearray(1584)
+hdr[0:8] = b'ANDROID!'
+struct.pack_into('<I', hdr, 8, 0x7fffffff)
+open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + b'x' * 4096)
+PY
+! (assert_dtbswap "$TMP/bogus.img") 2>/dev/null \
+	&& ok "implausible kernel size refused" || bad "implausible kernel size accepted"
+
+# Kernel slot that does not decompress: refuse.
+python3 - "$TMP/notgz.img" <<'PY'
+import struct, sys
+hdr = bytearray(1584)
+hdr[0:8] = b'ANDROID!'
+struct.pack_into('<I', hdr, 8, 100)
+open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + b'N' * 100)
+PY
+! (assert_dtbswap "$TMP/notgz.img") 2>/dev/null \
+	&& ok "non-gzip kernel slot refused" || bad "non-gzip kernel slot accepted"
+
+# A payload table whose kernel does not end exactly at the blob end: refuse
+# (koff+klen == len is what makes the table self-consistent).
+python3 - "$TMP/badtab.img" <<'PY'
+import struct, sys, gzip
+kern = open('/dev/null', 'rb').read()
+stub = bytearray(5904)
+stub[56:60] = b'ARM\x64'
+dtb = b'\xd0\x0d\xfe\xed' + b'D' * 996
+doff = len(stub); koff = doff + len(dtb)
+struct.pack_into('<4I', stub, 0x40, doff, len(dtb), koff, 1)  # klen lies
+gz = gzip.compress(bytes(stub) + dtb + kern)
+hdr = bytearray(1584)
+hdr[0:8] = b'ANDROID!'
+struct.pack_into('<I', hdr, 8, len(gz))
+open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + gz)
+PY
+! (assert_dtbswap "$TMP/badtab.img") 2>/dev/null \
+	&& ok "inconsistent payload table refused" || bad "inconsistent payload table accepted"
+
 echo
 echo "test-netinstall: $pass ok, $failn failed"
 [ "$failn" -eq 0 ]

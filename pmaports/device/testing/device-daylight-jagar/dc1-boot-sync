@@ -83,34 +83,12 @@ resolve_boot() {
 	echo "/dev/$found"
 }
 
-# resolve_vendor_boot a|b -> /dev/<node>. Same size window as boot_a/b;
-# the vendor_boot partitions are the same 64 MiB as the boot slots and carry
-# the DTB that LK actually passes to the kernel.
-resolve_vendor_boot() {
-	name="vendor_boot_$1"
-	sysblock=${DC1_SYSBLOCK:-/sys/class/block}
-	found=""
-	count=0
-	for u in "$sysblock"/*/uevent; do
-		[ -f "$u" ] || continue
-		grep -q "^PARTNAME=$name\$" "$u" || continue
-		count=$((count + 1))
-		found=${u%/uevent}
-		found=${found##*/}
-	done
-	[ "$count" -eq 1 ] || {
-		log "expected exactly 1 PARTNAME=$name, found $count"
-		return 1
-	}
-	sectors=$(cat "$sysblock/$found/size" 2>/dev/null || echo 0)
-	case "$sectors" in ''|*[!0-9]*) sectors=0 ;; esac
-	if [ "$sectors" -lt "$BOOT_MIN_SECTORS" ] || \
-	   [ "$sectors" -gt "$BOOT_MAX_SECTORS" ]; then
-		log "$name is $sectors sectors; refusing (mapping moved?)"
-		return 1
-	fi
-	echo "/dev/$found"
-}
+# resolve_vendor_boot was deleted: it existed to flash our DTB into
+# vendor_boot, on the belief that LK hands the kernel the vendor_boot DTB.
+# LK does not -- it merges its SIGNED lk_main_dtb with the SIGNED dtbo and
+# never reads vendor_boot's tree (measured from LK's own log 2026-08-18).
+# The device tree is delivered by the dtbswap stub inside jagar-boot.img;
+# vendor_boot stays stock and untouched.
 
 # active_slot -> a|b, from dc1-slotctl's own priority-based get_suffix decode.
 active_slot() {
@@ -165,12 +143,45 @@ kernel_sha() {
 	echo "$sha"
 }
 
+# is_dtbswap_img FILE -> 0 iff FILE's kernel slot is a dtbswap payload:
+# gzip([stub | our dtb | kernel Image]) with the payload table at 0x40, the
+# FDT magic at the dtb offset, and the kernel ending exactly at the blob end
+# (the layout boot/dtbswap/pack.sh writes). A plain image would boot LK's
+# SIGNED stock tree -- the device's DT -- which this device must never fall
+# back to. Same structural check the installer's netinstall.sh applies
+# before writing boot_a; CI asserts it for every build too.
+is_dtbswap_img() {
+	img=$1
+	ksz=$(u32at "$img" 8)
+	isnum "$ksz" && [ "$ksz" -gt 0 ] || return 1
+	blob="${TMPDIR:-/tmp}/dc1-boot-sync-dtbswap.$$"
+	if ! dd if="$img" bs=4096 skip=1 2>/dev/null | head -c "$ksz" \
+			| gunzip -c > "$blob" 2>/dev/null; then
+		rm -f "$blob"
+		return 1
+	fi
+	doff=$(u32at "$blob" 64); koff=$(u32at "$blob" 72); klen=$(u32at "$blob" 76)
+	total=$(wc -c < "$blob")
+	rc=1
+	if isnum "$doff" && isnum "$koff" && isnum "$klen" \
+		&& [ "$doff" -gt 0 ] && [ "$koff" -gt "$doff" ] && [ "$klen" -gt 0 ] \
+		&& [ $((koff + klen)) -eq "$total" ] \
+		&& [ "$(od -An -tx1 -N4 -j56 "$blob" | tr -d ' \n')" = 41524d64 ] \
+		&& [ "$(od -An -tx1 -N4 -j"$doff" "$blob" | tr -d ' \n')" = d00dfeed ]; then
+		rc=0
+	fi
+	rm -f "$blob"
+	return "$rc"
+}
+
 # deploy INSTALLED_SHA -- download, verify, flash the INACTIVE slot, arm it.
 # Sets the loop-guard marker. Returns 0 on success. Does NOT reboot.
 #
-# Both jagar-boot.img (kernel + initramfs) and jagar-vendor-boot.img (our
-# mainline DTB) are downloaded and verified BEFORE any partition is touched,
-# so a failed download never leaves a slot with a mismatched kernel/DT pair.
+# jagar-boot.img (kernel + initramfs + our DTB via the dtbswap stub) is
+# downloaded and verified BEFORE any partition is touched, so a failed
+# download never leaves a slot with a mismatched kernel/DT pair. Only the
+# active slot's counterpart is written; preloader / lk / dtbo / vendor_boot
+# stay out of reach.
 deploy() {
 	installed=$1
 	log "deploying boot image (kernel sha256 $installed) to the inactive slot"
@@ -191,42 +202,16 @@ deploy() {
 		|| { log "cannot fetch jagar-boot.img"; return 1; }
 	got=$(sha256sum jagar-boot.img | cut -d' ' -f1)
 	[ "$got" = "$want" ] || { log "jagar-boot.img sha256 mismatch"; return 1; }
-
-	# Our mainline DTB, and it is NOT deployed by default -- see below.
-	#
-	# LK reads the DTB from vendor_boot, not boot.img, so shipping our own
-	# tree means writing vendor_boot. That was switched on unconditionally
-	# while the board DTS still had no panel node and set
-	# `&dsi0 { status = "disabled"; }` -- i.e. it was deploying a device tree
-	# that gives no display at all, confirmed 2026-08-17 by decompiling the
-	# very image this function had just written and armed.
-	#
-	# The DTS describes the panel now (kernel a3a633ef9), so the tree is
-	# expected to light the screen. Expected, not observed: no boot on the
-	# mainline DTB has happened yet, and getting it wrong costs the display
-	# with only fastboot to recover through. Keep it opt-in until one does.
-	# Set DC1_DEPLOY_VENDOR_BOOT=1 to take it -- that is what reaches the
-	# accelerometer and LVTS thermal, which the stock tree cannot express --
-	# and keep a serial console or SSH open when you do.
-	if [ "${DC1_DEPLOY_VENDOR_BOOT:-0}" = 1 ]; then
-		want_vb=$(awk -v n=jagar-vendor-boot.img '{ f=$2; sub(/^\*/,"",f); if (f==n) print $1 }' SHA256SUMS)
-		[ -n "$want_vb" ] || { log "no jagar-vendor-boot.img entry in SHA256SUMS"; return 1; }
-		log "downloading jagar-vendor-boot.img (DC1_DEPLOY_VENDOR_BOOT=1)"
-		curl -fsSL --retry 3 --retry-delay 3 -o jagar-vendor-boot.img \
-			"$URL_BASE/jagar-vendor-boot.img" \
-			|| { log "cannot fetch jagar-vendor-boot.img"; return 1; }
-		got_vb=$(sha256sum jagar-vendor-boot.img | cut -d' ' -f1)
-		[ "$got_vb" = "$want_vb" ] || { log "jagar-vendor-boot.img sha256 mismatch"; return 1; }
-	else
-		log "not deploying vendor_boot (mainline DTB disables dsi0 -- no display);"
-		log "  set DC1_DEPLOY_VENDOR_BOOT=1 to override"
+	if ! is_dtbswap_img jagar-boot.img; then
+		log "release jagar-boot.img is not a dtbswap payload; refusing to flash"
+		log "  a plain image would boot the stock device tree"
+		return 1
 	fi
 
 	active=$(active_slot) || { log "cannot determine the active slot"; return 1; }
 	[ -z "$active" ] && { log "cannot determine the active slot"; return 1; }
 	inactive=$([ "$active" = a ] && echo b || echo a)
 	boot_dev=$(resolve_boot "$inactive") || return 1
-	vendor_boot_dev=$(resolve_vendor_boot "$inactive") || return 1
 
 	sysblock=${DC1_SYSBLOCK:-/sys/class/block}
 
@@ -238,16 +223,6 @@ deploy() {
 		return 1
 	fi
 
-	if [ -f jagar-vendor-boot.img ]; then
-		vb_bytes=$(wc -c < jagar-vendor-boot.img | tr -d ' ')
-		vb_sectors=$(cat "$sysblock/${vendor_boot_dev##*/}/size" 2>/dev/null || echo 0)
-		case "$vb_sectors" in ''|*[!0-9]*) vb_sectors=0 ;; esac
-		if [ "$vb_bytes" -gt $((vb_sectors * 512)) ]; then
-			log "jagar-vendor-boot.img ($vb_bytes bytes) larger than $vendor_boot_dev"
-			return 1
-		fi
-	fi
-
 	log "writing jagar-boot.img ($img_bytes bytes) to $boot_dev (inactive slot $inactive)"
 	dd if=jagar-boot.img of="$boot_dev" bs=1M conv=fsync 2>/dev/null \
 		|| { log "boot image write failed"; return 1; }
@@ -255,16 +230,6 @@ deploy() {
 	readback=$(head -c "$img_bytes" "$boot_dev" | sha256sum | cut -d' ' -f1)
 	[ "$readback" = "$got" ] || { log "boot image read-back mismatch"; return 1; }
 	log "boot image verified on $boot_dev"
-
-	if [ -f jagar-vendor-boot.img ]; then
-		log "writing jagar-vendor-boot.img ($vb_bytes bytes) to $vendor_boot_dev (inactive slot $inactive)"
-		dd if=jagar-vendor-boot.img of="$vendor_boot_dev" bs=1M conv=fsync 2>/dev/null \
-			|| { log "vendor_boot image write failed"; return 1; }
-		sync
-		readback_vb=$(head -c "$vb_bytes" "$vendor_boot_dev" | sha256sum | cut -d' ' -f1)
-		[ "$readback_vb" = "$got_vb" ] || { log "vendor_boot image read-back mismatch"; return 1; }
-		log "vendor_boot image verified on $vendor_boot_dev"
-	fi
 
 	# Arm the inactive slot for one try: priority 15/tries 1/successful 0, the
 	# other (proven) slot dropped to 14. On a failed boot the preloader
@@ -278,8 +243,8 @@ deploy() {
 	return 0
 }
 
-# Library mode for the offline tests: source this file to get resolve_boot,
-# resolve_vendor_boot, and active_slot without running the sync.
+# Library mode for the offline tests: source this file to get resolve_boot
+# and active_slot without running the sync.
 if [ -n "${DC1_BOOT_SYNC_LIB:-}" ]; then
 	return 0 2>/dev/null || exit 0
 fi

@@ -27,11 +27,12 @@
 #      5555 (DC1-INSTALL-V1 protocol; see installer/src/receive.sh). The
 #      device verifies the hash before the filesystem becomes mountable,
 #      resizes, provisions, and reboots into LK fastboot.
-#   5. (--boot-image) flash the real kernel boot image and the vendor_boot
-#      (our mainline DTB, required for the kernel to see the right device
-#      tree) to both A/B slots, then reboot into the installed system.
-#      jagar-vendor-boot.img is auto-detected next to --boot-image if
-#      present; both images must come from the same release.
+#   5. (--boot-image) prove jagar-boot.img is a dtbswap payload (its kernel
+#      slot carries OUR device tree -- a plain image would boot LK's signed
+#      stock tree), fastboot-flash it to boot_a, and reboot into the
+#      installed system. vendor_boot is never written: LK ignores its DTB
+#      (it builds the tree from its signed lk_main_dtb + dtbo), so the
+#      dtbswap stub in the boot image is the only DT delivery channel.
 #
 # Needs: fastboot (for steps 1/5), zstd (if the rootfs is .zst), ip, nc,
 # sha256sum, and one of mkpasswd / openssl / busybox for password hashing.
@@ -83,6 +84,45 @@ valid_timezone() {
 
 valid_psk() {
 	[ ${#1} -ge 8 ] && [ ${#1} -le 63 ]
+}
+
+# require_dtbswap IMG -- refuse a boot image that would boot the device's
+# own device tree. LK builds the kernel's tree from its SIGNED lk_main_dtb +
+# dtbo, so a plain boot image silently boots the stock tree; jagar-boot.img
+# must be a dtbswap payload (kernel slot = gzip([stub | our dtb | kernel
+# Image]), boot/dtbswap/README.md). Same structural check the on-device
+# installer and dc1-boot-sync apply before their writes -- here it runs
+# BEFORE fastboot, where a refusal costs nothing.
+require_dtbswap() {
+	img=$1
+	le32at() { od -An -tu4 -N4 -j"$1" "$img" 2>/dev/null | tr -d ' '; }
+	ksz=$(le32at 8)
+	case "$ksz" in ''|*[!0-9]*|0)
+		die "$img: unreadable kernel size (not an Android v4 image?)" ;;
+	esac
+	blob=$(mktemp)
+	if ! dd if="$img" bs=4096 skip=1 2>/dev/null | head -c "$ksz" \
+			| gunzip -c > "$blob" 2>/dev/null; then
+		rm -f "$blob"
+		die "$img: kernel slot does not decompress (not a dtbswap payload)"
+	fi
+	doff=$(od -An -tu4 -N4 -j64 "$blob" | tr -d ' ')
+	koff=$(od -An -tu4 -N4 -j72 "$blob" | tr -d ' ')
+	klen=$(od -An -tu4 -N4 -j76 "$blob" | tr -d ' ')
+	total=$(wc -c < "$blob")
+	ok=1
+	case "$doff" in ''|*[!0-9]*|0) ok=0 ;; esac
+	case "$koff" in ''|*[!0-9]*)   ok=0 ;; esac
+	case "$klen" in ''|*[!0-9]*|0) ok=0 ;; esac
+	if [ "$ok" = 1 ]; then
+		[ "$koff" -gt "$doff" ] \
+			&& [ $((koff + klen)) -eq "$total" ] \
+			&& [ "$(od -An -tx1 -N4 -j56 "$blob" | tr -d ' \n')" = 41524d64 ] \
+			&& [ "$(od -An -tx1 -N4 -j"$doff" "$blob" | tr -d ' \n')" = d00dfeed ] \
+			|| ok=0
+	fi
+	rm -f "$blob"
+	[ "$ok" = 1 ] || die "$img is not a dtbswap payload (would boot the device's stock device tree); refusing to flash it"
 }
 
 # hash_password PASSWORD -> crypt sha512 hash on stdout
@@ -154,11 +194,10 @@ fi
 ROOTFS=""
 INSTALLER_BOOT=""
 BOOT_IMAGE=""
-VENDOR_BOOT_IMAGE=""
 ANSWERS_IN=""
 SKIP_PROVISION=""
 usage() {
-	sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
 	exit 2
 }
 while [ $# -gt 0 ]; do
@@ -166,7 +205,6 @@ while [ $# -gt 0 ]; do
 		--rootfs)              ROOTFS=${2:?}; shift 2 ;;
 		--installer-boot)      INSTALLER_BOOT=${2:?}; shift 2 ;;
 		--boot-image)          BOOT_IMAGE=${2:?}; shift 2 ;;
-		--vendor-boot-image)   VENDOR_BOOT_IMAGE=${2:?}; shift 2 ;;
 		--answers)             ANSWERS_IN=${2:?}; shift 2 ;;
 		--skip-provision)      SKIP_PROVISION=1; shift ;;
 		--device-ip)           DEVICE_IP=${2:?}; shift 2 ;;
@@ -181,8 +219,7 @@ done
 	die "installer boot image missing: $INSTALLER_BOOT"
 [ -z "$BOOT_IMAGE" ] || [ -f "$BOOT_IMAGE" ] || \
 	die "boot image missing: $BOOT_IMAGE"
-[ -z "$VENDOR_BOOT_IMAGE" ] || [ -f "$VENDOR_BOOT_IMAGE" ] || \
-	die "vendor_boot image missing: $VENDOR_BOOT_IMAGE"
+[ -z "$BOOT_IMAGE" ] || require_dtbswap "$BOOT_IMAGE"
 command -v nc >/dev/null || die "need nc"
 command -v sha256sum >/dev/null || die "need sha256sum"
 
@@ -318,12 +355,6 @@ msg "device reports install OK; it is rebooting into LK fastboot"
 if [ -n "$BOOT_IMAGE" ]; then
 	command -v fastboot >/dev/null || die "need fastboot for --boot-image"
 
-	# vendor_boot is NOT auto-detected. It used to be picked up from beside
-	# the boot image and flashed to both slots, which meant that simply
-	# unpacking a release and running this script replaced the device tree on
-	# both slots with one that disables dsi0 -- a device with no display and
-	# no fallback. It is now opt-in via --vendor-boot-image only.
-
 	msg "waiting for fastboot (device rebooting)..."
 	n=0
 	while ! fastboot devices | grep -q .; do
@@ -333,22 +364,6 @@ if [ -n "$BOOT_IMAGE" ]; then
 	done
 	msg "flashing real boot image to boot_a"
 	fastboot flash boot_a "$BOOT_IMAGE"
-	if [ -n "$VENDOR_BOOT_IMAGE" ]; then
-		# Only vendor_boot_a, never both. The DTB in vendor_boot is what LK
-		# hands the kernel, so writing both slots at once removes the only
-		# fallback. This used to be flashed to both from an auto-detected
-		# file while the tree still disabled dsi0, i.e. a plain install left
-		# a device with no display and nothing to fall back to. The DTS
-		# describes the panel now (kernel a3a633ef9), but no boot on it has
-		# been observed, so leaving vendor_boot_b on the stock tree keeps one
-		# slot known-visible.
-		msg "flashing mainline DTB (vendor_boot) to vendor_boot_a only"
-		msg "  This tree is what reaches the accelerometer and LVTS thermal,"
-		msg "  which the stock tree cannot express. It has not yet been booted"
-		msg "  on hardware -- keep serial or SSH access to recover, and leave"
-		msg "  vendor_boot_b alone as the fallback."
-		fastboot flash vendor_boot_a "$VENDOR_BOOT_IMAGE"
-	fi
 	fastboot reboot
 	msg "done -- the DC-1 is booting the installed system."
 else
@@ -356,8 +371,7 @@ else
 	msg "    fastboot flash boot_a jagar-boot.img"
 	msg "    fastboot reboot"
 	msg ""
-	msg "jagar-vendor-boot.img (our mainline DTB) is deliberately not part of"
-	msg "that. It is what reaches the accelerometer and LVTS thermal, but it"
-	msg "has not been booted on hardware yet. If you take it, flash"
-	msg "vendor_boot_a only and leave vendor_boot_b on the stock tree."
+	msg "The boot image carries our device tree via the dtbswap stub in its"
+	msg "kernel slot. vendor_boot is never written: LK ignores its DTB, so"
+	msg "flashing it cannot change the tree the kernel boots with."
 fi

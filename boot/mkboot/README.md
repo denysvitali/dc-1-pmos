@@ -17,40 +17,6 @@ go build -o mkboot .
 | `mkboot verify <img>` | reparse + repack and prove byte-identical |
 | `mkboot pack -kernel K -o OUT` | build a boot image (header v3/v4) |
 | `mkboot lkwrap -in F -out G` | wrap a payload in an MTK `lk` partition header |
-| `mkboot packvendor -dtb D -o OUT` | build a DTB-only vendor_boot v4 image |
-
-## `packvendor` — putting a mainline DTB where LK looks for it
-
-With boot header v4 the kernel DTB does not live in `boot.img`; LK reads it from
-`vendor_boot` at `page_size + roundup(vendor_ramdisk_size, page_size)`, unwrapped
-from a 64-byte AOSP `dt_table` header (magic `0xd7b7ab1e`, big-endian). To boot a
-mainline kernel we must ship our own DTB there.
-
-`packvendor` builds a **DTB-only** vendor_boot: `vendor_ramdisk_size=0`, empty
-ramdisk table, empty bootconfig. With no vendor_ramdisk, the kernel's single
-ramdisk is entirely our `boot.img` initramfs (no legacy-LZ4 concat hazard), and
-the DTB lands at exactly `page_size` (`0x1000`) — LK's read offset when
-vendor_ramdisk_size is 0.
-
-```sh
-mkboot packvendor \
-  -dtb mt8781-daylight-jagar.dtb \
-  -cmdline "bootopt=64S3,32N2,64N2 rdinit=/init console=tty0 loglevel=8" \
-  -o vendor_boot.img
-# LK appends this cmdline to /chosen/bootargs, overriding the DTS fallback.
-```
-
-The header layout is transcribed from `vendorboot_v4_verify.py`, which re-packs
-a stock `vendor_boot_a` byte-for-byte. Cross-check any output with it:
-
-```sh
-python3 vendorboot_v4_verify.py vendor_boot.img
-# expect: header_version=4, vendor_ramdisk_size=0, dtb at file offset 0x1000,
-#         dt_table magic 0xd7b7ab1e
-```
-
-Addr/page-size defaults (`kernel-addr 0x40000000`, `ramdisk-addr 0x66f00000`,
-`tags/dtb-addr 0x47c80000`, `page-size 4096`) are the measured stock values.
 
 ## Why `verify` matters
 

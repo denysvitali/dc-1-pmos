@@ -555,163 +555,6 @@ func cmdLKWrap(args []string) error {
 	return nil
 }
 
-// --- vendor_boot v4 ---------------------------------------------------------
-//
-// Layout and every field/offset below are transcribed from
-// boot/mkboot/vendorboot_v4_verify.py, which re-packs the DC-1's stock
-// vendor_boot_a from its extracted sections to a byte-identical image. Source of
-// truth is AOSP system/tools/mkbootimg/mkbootimg.py (VNDRBOOT v4) and
-// system/libufdt dt_table.h (the dtb wrapper).
-//
-// For jagar's first boot we ship a DTB-only vendor_boot: no vendor_ramdisk (so
-// the kernel's single ramdisk is entirely our boot.img initramfs), an empty
-// ramdisk table, and empty bootconfig. LK reads the kernel DTB from
-// page_size + roundup(vendor_ramdisk_size, page_size); with vendor_ramdisk_size
-// == 0 that is exactly page_size (0x1000).
-const (
-	vndrMagic          = "VNDRBOOT"
-	vndrArgsSize       = 2048
-	vndrNameSize       = 16
-	vndrHdrV4Size      = 2128
-	dtTableMagic       = 0xD7B7AB1E
-	dtTableHdrSize     = 32
-	dtTableEntrySize   = 32
-	dtTableDefaultPage = 2048
-)
-
-// buildDTTable wraps one raw FDT in an AOSP/libufdt dt_table image (big-endian).
-func buildDTTable(dtbs [][]byte) []byte {
-	hdrLen := dtTableHdrSize + dtTableEntrySize*len(dtbs)
-	total := hdrLen
-	for _, d := range dtbs {
-		total += len(d)
-	}
-	var b bytes.Buffer
-	be := func(v uint32) { _ = binary.Write(&b, binary.BigEndian, v) }
-	be(dtTableMagic)
-	be(uint32(total))
-	be(dtTableHdrSize)
-	be(dtTableEntrySize)
-	be(uint32(len(dtbs)))
-	be(dtTableHdrSize) // dt_entries_offset
-	be(dtTableDefaultPage)
-	be(0) // version
-	off := hdrLen
-	for _, d := range dtbs {
-		be(uint32(len(d)))
-		be(uint32(off))
-		for i := 0; i < 6; i++ {
-			be(0)
-		}
-		off += len(d)
-	}
-	for _, d := range dtbs {
-		b.Write(d)
-	}
-	return b.Bytes()
-}
-
-func padTo(b []byte, a int) []byte {
-	if r := len(b) % a; r != 0 {
-		return append(b, make([]byte, a-r)...)
-	}
-	return b
-}
-
-type vendorOpts struct {
-	dtb         []byte // raw FDT, will be dt_table-wrapped
-	cmdline     string
-	name        string
-	pageSize    uint32
-	kernelAddr  uint32
-	ramdiskAddr uint32
-	tagsAddr    uint32
-	dtbAddr     uint64
-}
-
-func packVendor(o vendorOpts) ([]byte, error) {
-	if len(o.dtb) < 4 || binary.BigEndian.Uint32(o.dtb) != 0xd00dfeed {
-		return nil, errors.New("-dtb is not a raw FDT (magic d00dfeed); pass the compiled .dtb, not a dt_table")
-	}
-	if len(o.cmdline) >= vndrArgsSize {
-		return nil, fmt.Errorf("cmdline is %d bytes, max %d", len(o.cmdline), vndrArgsSize-1)
-	}
-	if len(o.name) >= vndrNameSize {
-		return nil, fmt.Errorf("name is %d bytes, max %d", len(o.name), vndrNameSize-1)
-	}
-	dtb := buildDTTable([][]byte{o.dtb})
-
-	var h bytes.Buffer
-	le := func(v any) { _ = binary.Write(&h, binary.LittleEndian, v) }
-	h.WriteString(vndrMagic)          // 0x000
-	le(uint32(4))                     // 0x008 header_version
-	le(o.pageSize)                    // 0x00c
-	le(o.kernelAddr)                  // 0x010
-	le(o.ramdiskAddr)                 // 0x014
-	le(uint32(0))                     // 0x018 vendor_ramdisk_size = 0
-	cmd := make([]byte, vndrArgsSize) // 0x01c cmdline
-	copy(cmd, o.cmdline)
-	h.Write(cmd)
-	le(o.tagsAddr)                   // 0x81c
-	nm := make([]byte, vndrNameSize) // 0x820 name
-	copy(nm, o.name)
-	h.Write(nm)
-	le(uint32(vndrHdrV4Size)) // 0x830 header_size
-	le(uint32(len(dtb)))      // 0x834 dtb_size (wrapped length)
-	le(o.dtbAddr)             // 0x838 dtb_addr (64-bit)
-	le(uint32(0))             // 0x840 vendor_ramdisk_table_size
-	le(uint32(0))             // 0x844 vendor_ramdisk_table_entry_num
-	le(uint32(108))           // 0x848 vendor_ramdisk_table_entry_size
-	le(uint32(0))             // 0x84c bootconfig_size
-	if h.Len() != vndrHdrV4Size {
-		return nil, fmt.Errorf("internal: header is %d bytes, want %d", h.Len(), vndrHdrV4Size)
-	}
-
-	// hdr | (no ramdisk) | dtb | (no table) | (no bootconfig), each page-padded.
-	out := padTo(h.Bytes(), int(o.pageSize))
-	out = append(out, padTo(dtb, int(o.pageSize))...)
-	return out, nil
-}
-
-func cmdPackVendor(args []string) error {
-	fs := flag.NewFlagSet("packvendor", flag.ContinueOnError)
-	dtbPath := fs.String("dtb", "", "raw compiled .dtb (FDT magic d00dfeed) (required)")
-	out := fs.String("o", "", "output vendor_boot image (required)")
-	cmdline := fs.String("cmdline", "", "vendor_boot cmdline; LK appends this to /chosen/bootargs")
-	name := fs.String("name", "", "board name field (stock is empty)")
-	pageSize := fs.Uint("page-size", 4096, "page size (stock: 4096)")
-	kernelAddr := fs.Uint("kernel-addr", 0x40000000, "stock: 0x40000000")
-	ramdiskAddr := fs.Uint("ramdisk-addr", 0x66f00000, "stock: 0x66f00000")
-	tagsAddr := fs.Uint("tags-addr", 0x47c80000, "stock: 0x47c80000")
-	dtbAddr := fs.Uint64("dtb-addr", 0x47c80000, "stock: 0x47c80000")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if *dtbPath == "" || *out == "" {
-		fs.Usage()
-		return errors.New("-dtb and -o are required")
-	}
-	dtb, err := os.ReadFile(*dtbPath)
-	if err != nil {
-		return err
-	}
-	img, err := packVendor(vendorOpts{
-		dtb: dtb, cmdline: *cmdline, name: *name,
-		pageSize: uint32(*pageSize), kernelAddr: uint32(*kernelAddr),
-		ramdiskAddr: uint32(*ramdiskAddr), tagsAddr: uint32(*tagsAddr),
-		dtbAddr: *dtbAddr,
-	})
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(*out, img, 0o644); err != nil {
-		return err
-	}
-	fmt.Printf("wrote %s: %d bytes (vendor_ramdisk_size=0, dtb wrapped %d->%d bytes at file offset 0x%x)\n",
-		*out, len(img), len(dtb), len(buildDTTable([][]byte{dtb})), *pageSize)
-	return nil
-}
-
 func usage() {
 	fmt.Fprint(os.Stderr, strings.TrimLeft(`
 mkboot - boot image tooling for the Daylight DC-1 (jagar, MT8781/MT6789)
@@ -720,7 +563,6 @@ mkboot - boot image tooling for the Daylight DC-1 (jagar, MT8781/MT6789)
   mkboot verify     <image>              reparse and repack, prove byte-identical
   mkboot pack       -kernel K -o OUT     build a boot image (v3/v4)
   mkboot lkwrap     -in F -out G         wrap a payload in an MTK lk header
-  mkboot packvendor -dtb D -o OUT        build a DTB-only vendor_boot v4 image
 
 Run a subcommand with -h for its flags.
 `, "\n"))
@@ -741,8 +583,6 @@ func main() {
 		err = cmdPack(os.Args[2:])
 	case "lkwrap":
 		err = cmdLKWrap(os.Args[2:])
-	case "packvendor":
-		err = cmdPackVendor(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
