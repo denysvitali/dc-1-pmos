@@ -65,6 +65,12 @@ const (
 	// fits ~19 lines above the OK button on the 1200x1600 panel; 12 keeps
 	// a comfortable margin and a visible title.
 	menuLinesPerPage = 12
+
+	// lkViewLines is how much of the LK ring tail the on-screen viewer
+	// pages through: 5 pages of OK taps. LK's interesting decisions (slot
+	// selection, fallback) are at the END of the ring; the full 256 KiB is
+	// always saved to /tmp/debug by Collect logs.
+	lkViewLines = 60
 )
 
 // env is every filesystem location the toolkit touches, hookable for the
@@ -365,7 +371,13 @@ func logsCollect(e env, which string) (string, bool) {
 	}
 
 	run("dmesg", func() (string, error) { return collectDmesg(dir) })
-	run("lk", func() (string, error) { return collectLK(e.devMem, dir) })
+	run("lk", func() (string, error) {
+		raw, err := readLKRing(e.devMem)
+		if err != nil {
+			return "", err
+		}
+		return saveLK(dir, raw)
+	})
 	run("pstore", func() (string, error) { return collectPstore(e.pstoreDir, dir) })
 	run("expdb", func() (string, error) { return collectExpdb(dir) })
 
@@ -415,18 +427,25 @@ var kmsgReadAll = func() ([]byte, error) {
 	return buf[:int(n)], nil
 }
 
-// collectLK pulls the LK current-boot ring out of physical memory via
-// /dev/mem and saves both the raw bytes and a printable-text view.
-func collectLK(devMem, dir string) (string, error) {
+// readLKRing reads the LK current-boot ring (lkPages pages at physical
+// lkBase) through /dev/mem. Strictly read-only: the handle is only ever
+// ReadAt-ed.
+func readLKRing(devMem string) ([]byte, error) {
 	f, err := os.Open(devMem)
 	if err != nil {
-		return "", fmt.Errorf("open %s: %w", devMem, err)
+		return nil, fmt.Errorf("open %s: %w", devMem, err)
 	}
 	defer f.Close()
 	raw := make([]byte, lkPages*pageSz)
 	if _, err := f.ReadAt(raw, lkBase); err != nil {
-		return "", fmt.Errorf("read %s at %#x: %w", devMem, lkBase, err)
+		return nil, fmt.Errorf("read %s at %#x: %w", devMem, lkBase, err)
 	}
+	return raw, nil
+}
+
+// saveLK persists the ring as collected by `logs`: raw bytes plus a
+// printable-text view, and a short report carrying the tail.
+func saveLK(dir string, raw []byte) (string, error) {
 	binPath := filepath.Join(dir, "lk-log.bin")
 	txtPath := filepath.Join(dir, "lk-log.txt")
 	if err := os.WriteFile(binPath, raw, 0o644); err != nil {
@@ -471,6 +490,15 @@ func tailLines(s string, n int) string {
 		lines = lines[len(lines)-n:]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// truncateLine clamps a one-line message (typically an error string) so it
+// cannot blow out an info screen.
+func truncateLine(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
 
 // collectPstore copies every pstore record to <dir>/pstore/. The kernel
@@ -589,7 +617,8 @@ func mkdirOut(dir string) (string, error) {
 func menuMain(e env, stderr io.Writer) int {
 	for {
 		resp, ok := ask.Forward([]string{"menu", "DC-1 DEBUG",
-			"Device info", "Partition checksums", "Collect logs", "Back"})
+			"Device info", "Partition checksums", "Collect logs",
+			"LK boot log", "Back"})
 		if !ok || resp.RC == 2 {
 			fmt.Fprintln(stderr, "dc1-debug: no display")
 			return 2
@@ -635,6 +664,31 @@ func menuMain(e env, stderr io.Writer) int {
 				if !showPages("LOGS COLLECTED", rep, stderr) {
 					return 2
 				}
+			}
+		case "3":
+			// On-panel LK log viewer: one read of the ring, saved in the
+			// same format Collect logs uses, then the tail paged on the
+			// screen. The tail is where LK records slot selection and any
+			// fallback decision.
+			raw, err := readLKRing(e.devMem)
+			if err != nil {
+				if !showInfo("LK LOG UNAVAILABLE", []string{
+					"Could not read the current-boot",
+					"ring via /dev/mem.",
+					"",
+					truncateLine(err.Error(), 60)}, stderr) {
+					return 2
+				}
+				continue
+			}
+			if dir, derr := mkdirOut(e.outDir); derr == nil {
+				_, _ = saveLK(dir, raw)
+			}
+			view := tailLines(printableText(raw), lkViewLines) +
+				"\n\nfull ring: /tmp/debug/lk-log.txt" +
+				"\n(refresh the saved copy: Collect logs)"
+			if !showPages("LK BOOT LOG", view, stderr) {
+				return 2
 			}
 		default:
 			return 0

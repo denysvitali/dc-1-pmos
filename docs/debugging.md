@@ -38,6 +38,12 @@ is also saved to `/tmp/debug/partition-hashes.txt`.
 shows a per-source summary. Individual sources may fail independently; the
 summary says which succeeded.
 
+**LK boot log** — reads the LittleKernel current-boot ring immediately and
+pages its last ~60 printable lines on the panel (LK records slot selection
+and fallback decisions at the end of the ring). It also saves the full ring
+to `/tmp/debug/lk-log.txt` in the same format Collect logs uses, so what you
+just read can be fetched over USB without a second trip.
+
 Equivalent shell commands (over the USB network or the debug shell):
 
 ```sh
@@ -55,7 +61,8 @@ Taken non-destructively (the kernel ring is not consumed).
 **LK bootloader log** — the LittleKernel current-boot log ring: 256 KiB of
 physical RAM at `0x7ffbf000`, read through `/dev/mem` (possible because
 `CONFIG_STRICT_DEVMEM` is off and the device tree keeps the region mapped).
-Saved as `lk-log.bin` plus a printable-text view `lk-log.txt`.
+Saved as `lk-log.bin` plus a printable-text view `lk-log.txt`; the **LK boot
+log** menu entry shows the tail of that text on the panel directly.
 
 This ring is reset before LK falls back to the other slot, so it normally
 contains the log of the boot that **succeeded**. To see why a slot *failed*,

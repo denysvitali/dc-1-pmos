@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -241,13 +242,21 @@ func TestCollectLKReadsTheRing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rep, err := collectLK(mem, e.outDir)
+	raw, err := readLKRing(mem)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(filepath.Join(e.outDir, "lk-log.bin"))
-	if err != nil || len(raw) != lkPages*pageSz {
-		t.Fatalf("raw ring is %d bytes (%v), want %d", len(raw), err, lkPages*pageSz)
+	if len(raw) != lkPages*pageSz {
+		t.Fatalf("ring read is %d bytes, want %d", len(raw), lkPages*pageSz)
+	}
+	rep, err := saveLK(e.outDir, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(filepath.Join(e.outDir, "lk-log.bin"))
+	if err != nil || len(saved) != lkPages*pageSz {
+		t.Fatalf("raw ring file is %d bytes (%v), want %d",
+			len(saved), err, lkPages*pageSz)
 	}
 	txt, err := os.ReadFile(filepath.Join(e.outDir, "lk-log.txt"))
 	if err != nil || !strings.Contains(string(txt), "second line") {
@@ -258,8 +267,35 @@ func TestCollectLKReadsTheRing(t *testing.T) {
 	}
 
 	// A missing memory device fails cleanly rather than panicking.
-	if _, err := collectLK(filepath.Join(e.devDir, "absent"), e.outDir); err == nil {
-		t.Fatal("collectLK succeeded without the mem device")
+	if _, err := readLKRing(filepath.Join(e.devDir, "absent")); err == nil {
+		t.Fatal("readLKRing succeeded without the mem device")
+	}
+}
+
+// The on-screen LK viewer pages exactly lkViewLines lines of the ring tail,
+// no matter how much printable text the 256 KiB ring carries.
+func TestLKViewTailIsBounded(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < lkViewLines*3; i++ {
+		fmt.Fprintf(&b, "line %d\n", i)
+	}
+	view := tailLines(printableText([]byte(b.String())), lkViewLines)
+	lines := strings.Split(view, "\n")
+	if len(lines) != lkViewLines {
+		t.Fatalf("viewer window is %d lines, want %d", len(lines), lkViewLines)
+	}
+	if lines[len(lines)-1] != fmt.Sprintf("line %d", lkViewLines*3-1) {
+		t.Fatalf("window does not end at the newest line: %q", lines[len(lines)-1])
+	}
+}
+
+func TestTruncateLineClamps(t *testing.T) {
+	if got := truncateLine("short", 60); got != "short" {
+		t.Fatalf("truncateLine altered a short line: %q", got)
+	}
+	got := truncateLine(strings.Repeat("x", 100), 60)
+	if len(got) != 63 || !strings.HasSuffix(got, "...") {
+		t.Fatalf("truncateLine produced %d chars: %q", len(got), got)
 	}
 }
 
