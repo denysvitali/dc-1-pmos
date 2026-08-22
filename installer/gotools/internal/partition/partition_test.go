@@ -85,3 +85,62 @@ func TestRefusesAPartitionBelowTheSizeFloor(t *testing.T) {
 		t.Fatal("accepted a userdata partition far below the size floor")
 	}
 }
+
+// ResolveNamed skips the floor: the read-only debug hasher needs the small
+// boot partitions, and applies its own cap instead.
+func TestResolveNamedHasNoSizeFloor(t *testing.T) {
+	fakeSysfs(t, map[string]part{
+		"sdc29": {"expdb", 16384},
+	})
+	got, err := ResolveNamed("expdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Device != "/dev/sdc29" || got.Bytes != 16384*512 {
+		t.Fatalf("got %+v, want sdc29 at 16384 sectors", got)
+	}
+}
+
+// DevDir is the hook the offline tests (and an unusual boot) use to point
+// the device nodes somewhere else than /dev.
+func TestDevDirOverride(t *testing.T) {
+	fakeSysfs(t, map[string]part{
+		"sdc29": {"expdb", 16384},
+	})
+	old := DevDir
+	DevDir = "/tmp/fakedev"
+	t.Cleanup(func() { DevDir = old })
+	got, err := ResolveNamed("expdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Device != "/tmp/fakedev/sdc29" {
+		t.Fatalf("resolved %s, want the DevDir override", got.Device)
+	}
+}
+
+// Inventory lists every NAMED partition, sorted, and skips the whole-disk
+// entries that carry no PARTNAME.
+func TestInventoryListsNamedPartitionsSorted(t *testing.T) {
+	fakeSysfs(t, map[string]part{
+		"sda":   {"", 0}, // whole disk: no PARTNAME line
+		"sdc57": {"userdata", MinUserdataSectors + 1},
+		"sdc29": {"dtbo_a", 16384},
+		"sdc1":  {"misc", 1024},
+	})
+	inv, err := Inventory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inv) != 3 {
+		t.Fatalf("got %d entries, want 3 (the disk itself is unnamed)", len(inv))
+	}
+	for i, want := range []string{"dtbo_a", "misc", "userdata"} {
+		if inv[i].Name != want {
+			t.Fatalf("entry %d is %s, want %s", i, inv[i].Name, want)
+		}
+	}
+	if inv[2].Sectors != MinUserdataSectors+1 {
+		t.Fatalf("userdata sectors = %d", inv[2].Sectors)
+	}
+}

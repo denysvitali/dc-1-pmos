@@ -276,6 +276,7 @@ while :; do
 	choice=$(ask menu "DC-1 INSTALLER" \
 		"Install from network (recommended)" \
 		"Install via USB from a computer" \
+		"Debug tools (info / checksums / logs)" \
 		"Reboot to fastboot") \
 		|| { log "dc1-ask unavailable; USB flow only"; exit 0; }
 	case "$choice" in
@@ -284,6 +285,9 @@ while :; do
 		   status "WAITING FOR HOST
 USB: 172.16.42.1
 RUN DC1-INSTALL.SH ON HOST" ;;
-		2) /bin/dc1-reboot-fastboot -f ;;
+		# dc1-debug runs its own dialog loop until Back. It is read-only on
+		# partitions and memory; its only writes are files under /tmp/debug.
+		2) /bin/dc1-debug menu ;;
+		3) /bin/dc1-reboot-fastboot -f ;;
 	esac
 done

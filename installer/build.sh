@@ -238,9 +238,11 @@ mkdir -p "$OUT" "$ROOT"
 # boot-mode nibble LK reads on the way up -- busybox `reboot` only does
 # RB_AUTOBOOT, which LK answers by booting the same slot again) and bootctl
 # (read-only A/B bootloader_control dump; all mutations refused by design),
-# plus dc1-installd (the USB byte path) and dc1-ask (the touch prompt client
+# plus dc1-installd (the USB byte path), dc1-ask (the touch prompt client
 # tui.sh drives -- it forwards each prompt to PID 1's in-process dialog
-# server, which draws into the panel PID 1 owns).
+# server, which draws into the panel PID 1 owns), and dc1-debug (the
+# read-only debugging toolkit: device info, partition checksums, log
+# collection; screen-first via the same dialog server).
 #
 # One binary with argv[0] dispatch, because the Go runtime is ~1.2 MB and this
 # initramfs is loaded into RAM: five separate binaries would pay for it five
@@ -248,8 +250,21 @@ mkdir -p "$OUT" "$ROOT"
 # against musl, and it cross-compiles without a toolchain.
 GOTOOLS_SRC="$HERE/gotools"
 [ -f "$GOTOOLS_SRC/go.mod" ] || fatal "missing $GOTOOLS_SRC/go.mod"
+
+# Stamp the installer identity into dc1tools (-ldflags -X): this is what
+# `dc1-debug version` and the on-screen debug report show, so a device can
+# answer "what is running on me". Short SHA, -dirty on an unclean tree,
+# "unknown" when git is not there (tarball builds).
+DC1_VER=$(git -C "$HERE/.." rev-parse --short HEAD 2>/dev/null || true)
+[ -n "$DC1_VER" ] || DC1_VER=unknown
+if [ -n "$(git -C "$HERE/.." status --porcelain 2>/dev/null)" ]; then
+	DC1_VER="${DC1_VER}-dirty"
+fi
+
 ( cd "$GOTOOLS_SRC" && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-	go build -trimpath -ldflags='-s -w' -o "$OUT/dc1tools" . ) \
+	go build -trimpath \
+	-ldflags="-s -w -X github.com/denysvitali/dc-1-pmos/installer/gotools/internal/debugtools.Version=$DC1_VER" \
+	-o "$OUT/dc1tools" . ) \
 	|| fatal "dc1tools build failed"
 
 # system-init: PID 1 of the SYSTEM boot initramfs (jagar-boot.img). Owns the
@@ -288,6 +303,7 @@ ln -sf dc1tools "$d/bin/dc1-reboot-fastboot"
 ln -sf dc1tools "$d/bin/bootctl"
 ln -sf dc1tools "$d/bin/dc1-installd"
 ln -sf dc1tools "$d/bin/dc1-ask"
+ln -sf dc1tools "$d/bin/dc1-debug"
 install -m 0755 "$BUSYBOX" "$d/bin/busybox"
 install -m 0755 "$SRC/rc.sh" "$d/etc/rc.sh"
 install -m 0755 "$SRC/receive.sh" "$d/etc/installer/receive.sh"
@@ -332,8 +348,10 @@ stage bin usr/bin/zstd              usr/bin/zstd
 stage bin sbin/e2fsck                sbin/e2fsck
 stage bin usr/sbin/resize2fs         usr/sbin/resize2fs
 stage lib etc/ssl/certs/ca-certificates.crt etc/ssl/certs/ca-certificates.crt
-# dropbear: SSH into the recovery environment (scp for pulling logs, a real
-# PTY, port forwarding) -- rc.sh binds it to the USB link only, never the LAN.
+# dropbear: SSH into the recovery environment (a real PTY, port forwarding;
+# no scp -- busybox has no scp applet and there is no sftp-server, so files
+# leave the device as `ssh ... cat`) -- rc.sh binds it to the USB link only,
+# never the LAN.
 stage bin usr/sbin/dropbear         usr/sbin/dropbear
 stage bin usr/bin/dropbearkey       usr/bin/dropbearkey
 # The musl loader plus every DT_NEEDED of the binaries above. Alpine keeps
@@ -430,6 +448,7 @@ install -m 0644 "$SRC/partlib.sh" "$s/etc/partlib.sh"
 # place to run two versions of anything.
 install -m 0755 "$OUT/dc1tools" "$s/bin/dc1tools"
 ln -sf dc1tools "$s/bin/dc1-reboot-fastboot"
+ln -sf dc1tools "$s/bin/dc1-debug"
 
 # MT7902 firmware + regulatory.db, same pinned set as the installer image.
 # The Wi-Fi driver is built in and its firmware request fires at ~2.8s --

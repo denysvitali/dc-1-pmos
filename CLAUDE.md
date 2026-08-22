@@ -239,8 +239,9 @@ Audio invariants (measured 2026-08-17..22):
 - `boot/dtbswap/` — freestanding arm64 DT handoff stub and packer.
 - `boot/mkboot/` — Go Android boot/vendor_boot v4 tooling and Python verifier.
 - `boot/repack-boot.sh` — minimal production boot-image packer.
-- `docs/` — installation, status, and the narrowly scoped preloader-recovery
-  procedure. `README.md` is the user-facing quickstart and safety warning.
+- `docs/` — installation, status, debugging (`docs/debugging.md`), and the
+  narrowly scoped preloader-recovery procedure. `README.md` is the
+  user-facing quickstart and safety warning.
 - `tools/i2cbb/` — hardware probe utility retained for controlled
   re-measurement; it is not a normal build dependency.
 - `.github/workflows/build.yml` — the complete verify/build/release contract.

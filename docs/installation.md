@@ -242,6 +242,11 @@ of `installer/host/dc1-install.sh` for the full usage.
   (`/dev/ttyACM0` on the host).
 - A debug shell listens on TCP port 4444 (`nc 172.16.42.1 4444`) and on the
   second USB serial port.
+- The installer's main menu has a **Debug tools** entry (device info,
+  partition checksums, log collection); everything it collects is strictly
+  read-only and lands in `/tmp/debug`. See
+  [docs/debugging.md](debugging.md) for what each tool shows and how to
+  pull the files off the device.
 
 If a download or transfer aborts partway, nothing is lost: the target
 filesystem is only made mountable after the full image hash verified, so

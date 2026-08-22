@@ -11,12 +11,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
 
 // SysBlock is the sysfs root; overridable for tests.
 var SysBlock = "/sys/class/block"
+
+// DevDir is where partition device nodes appear once devtmpfs is mounted;
+// overridable for tests.
+var DevDir = "/dev"
 
 // MinUserdataSectors is the floor for the userdata partition (32 GiB in
 // 512-byte sectors). A match far below this means the name mapping moved and
@@ -33,6 +38,15 @@ type Resolved struct {
 // ResolveUserdata finds the single partition named "userdata".
 func ResolveUserdata() (*Resolved, error) {
 	return resolveNamed("userdata", MinUserdataSectors)
+}
+
+// ResolveNamed finds the single partition named name with NO size floor.
+// Callers must apply their own sanity bound: userdata's floor is what keeps
+// the install writer away from the small authenticated partitions, and a
+// reader that skips that floor takes responsibility for one of its own --
+// e.g. the debug hasher's max-bytes cap.
+func ResolveNamed(name string) (*Resolved, error) {
+	return resolveNamed(name, 0)
 }
 
 func resolveNamed(name string, minSectors int64) (*Resolved, error) {
@@ -69,7 +83,7 @@ func resolveNamed(name string, minSectors int64) (*Resolved, error) {
 			name, dev, sectors)
 	}
 	return &Resolved{
-		Device:  "/dev/" + dev,
+		Device:  DevDir + "/" + dev,
 		Sectors: sectors,
 		Bytes:   sectors * 512,
 	}, nil
@@ -85,4 +99,55 @@ func hasPartName(uevent, name string) bool {
 		}
 	}
 	return false
+}
+
+// partName extracts the PARTNAME value from a uevent body, "" if none.
+func partName(uevent string) string {
+	for _, line := range strings.Split(uevent, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if v, ok := strings.CutPrefix(line, "PARTNAME="); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// Entry is one block device carrying a GPT partition name. Read-only facts;
+// the device path is what /dev/<node> will be once devtmpfs is mounted.
+type Entry struct {
+	Name    string
+	Device  string
+	Sectors int64
+}
+
+// Inventory lists every sysfs block entry that carries a PARTNAME, sorted by
+// name. It reads only uevent+size files -- never opens device nodes -- so it
+// is safe on any boot state, including one where resolving would fail because
+// a name appears twice or zero times.
+func Inventory() ([]Entry, error) {
+	uevents, err := filepath.Glob(filepath.Join(SysBlock, "*", "uevent"))
+	if err != nil {
+		return nil, err
+	}
+	var out []Entry
+	for _, u := range uevents {
+		data, err := os.ReadFile(u)
+		if err != nil {
+			continue
+		}
+		name := partName(string(data))
+		if name == "" {
+			continue
+		}
+		dev := filepath.Base(filepath.Dir(u))
+		e := Entry{Name: name, Device: DevDir + "/" + dev}
+		if raw, err := os.ReadFile(filepath.Join(SysBlock, dev, "size")); err == nil {
+			if s, err := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64); err == nil {
+				e.Sectors = s
+			}
+		}
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
 }

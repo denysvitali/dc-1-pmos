@@ -35,6 +35,14 @@ type DialogResponse struct {
 	Err string `json:"err"`
 }
 
+// Forward runs one dialog request against PID 1's server and reports whether
+// the exchange worked at all (ok=false: no server, no answer). It is what lets
+// a second applet -- dc1-debug -- drive the same on-panel screens tui.sh uses
+// without a second implementation of the socket protocol.
+func Forward(args []string) (DialogResponse, bool) {
+	return dialog(DialogSocket, args)
+}
+
 // dialog performs one request against the dialog server at path. ok is false
 // when the server is not reachable or the response cannot be read, which is
 // Main's signal to exit 2 -- the callers' "fall back to USB" path.

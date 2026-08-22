@@ -91,6 +91,23 @@ esac
 [ ! -e /tmp/ui-active ] ||
 	bad "ask() left /tmp/ui-active behind, which would gate PID 1's painting off"
 
+echo "== debug menu wiring =="
+
+# The on-screen debug toolkit lives in the dc1tools applet (Go); tui.sh only
+# has to keep offering it and launching it. Read-only on partitions either
+# way -- but a menu entry that silently vanished would take the toolkit's
+# screen-first interface with it.
+if grep -q 'Debug tools' "$HERE/../src/tui.sh"; then
+	ok "main menu offers Debug tools"
+else
+	bad "main menu lost the Debug tools entry"
+fi
+if grep -q '/bin/dc1-debug menu' "$HERE/../src/tui.sh"; then
+	ok "Debug tools launches dc1-debug's on-screen menu"
+else
+	bad "Debug tools entry does not invoke dc1-debug"
+fi
+
 echo
 echo "test-tui: $pass ok, $failn failed"
 [ "$failn" -eq 0 ]

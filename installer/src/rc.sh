@@ -112,7 +112,8 @@ RUN DC1-INSTALL.SH ON HOST"
       </dev/null >/dev/null 2>&1 &
   log "debug shell listening on 172.16.42.1:4444"
 
-  # SSH: a real PTY, scp for pulling logs off the device, and port forwarding.
+  # SSH: a real PTY and port forwarding. No scp exists in this image (no
+  # scp applet, no sftp-server); pull files with `ssh ... cat`.
   # -R generates a host key on first use (into the tmpfs initramfs, so it is
   # per-boot and never shipped); -B permits the blank-password root login this
   # image deliberately carries (see build.sh).

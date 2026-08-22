@@ -133,6 +133,16 @@ cp "$sources_file" "$output_dir/SOURCES"
 	echo "device=daylight-jagar"
 	echo "architecture=aarch64"
 	echo "kernel_release=$kernel_release"
+	# The identity stamped into dc1tools (dc1-debug version/info): short SHA,
+	# -dirty on an unclean tree, unknown without git -- same rule as
+	# installer/build.sh, computed independently so the exporter also works
+	# when re-run against exported inputs.
+	installer_version=$(git -C "$script_dir/.." rev-parse --short HEAD 2>/dev/null || true)
+	if [ -n "$(git -C "$script_dir/.." status --porcelain 2>/dev/null)" ] &&
+		[ -n "$installer_version" ]; then
+		installer_version="${installer_version}-dirty"
+	fi
+	echo "installer_version=${installer_version:-unknown}"
 	echo "rootfs_label=jagar-root"
 	echo "user=dc1"
 	echo "user_password=build placeholder, change on first boot"

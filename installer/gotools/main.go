@@ -21,6 +21,7 @@ import (
 
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/ask"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/bootctl"
+	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/debugtools"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/installd"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/installerinit"
 	"github.com/denysvitali/dc-1-pmos/installer/gotools/internal/rebootfastboot"
@@ -37,6 +38,12 @@ func applets() map[string]func([]string) int {
 		},
 		"dc1-ask": func(a []string) int {
 			return ask.Main(a, os.Stdout, os.Stderr)
+		},
+		// The on-device debugging toolkit: screen-first (its own menu
+		// drives PID 1's dialog server), with plain subcommands for the
+		// USB shells. Strictly read-only on partitions and memory.
+		"dc1-debug": func(a []string) int {
+			return debugtools.Main(a, os.Stdout, os.Stderr)
 		},
 		"dc1-installd": installd.Main,
 		// The installer image stages this binary AS /init (a symlink), so the
