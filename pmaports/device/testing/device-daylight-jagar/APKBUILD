@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=56
+pkgrel=57
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -66,6 +66,9 @@ source="
 	dc1-gpu.service
 	dc1-audio
 	dc1-audio.service
+	dc1-ucm-card.conf
+	dc1-ucm-hifi.conf
+	55-dc1-audio.conf
 	dc1-bluetooth
 	dc1-bluetooth.service
 	dc1-frontlight
@@ -169,6 +172,18 @@ package() {
 		"$pkgdir"/usr/lib/systemd/system/dc1-gpu.service
 	install -Dm644 "$srcdir"/dc1-audio.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-audio.service
+	# UCM2 profile for the MT6366 card, plus the WirePlumber fragment that
+	# re-enables audio enumeration (Alpine's pulseaudio-wireplumber ships
+	# 51-pulseaudio.conf, which disables hardware.audio in WirePlumber's
+	# main profile). With a UCM profile present, ACP adopts its "Speaker"
+	# device instead of labelling the only output port "Headphones", and
+	# the HiFi EnableSequence mirrors /usr/libexec/dc1-audio's routing.
+	install -Dm644 "$srcdir"/dc1-ucm-card.conf \
+		"$pkgdir"/usr/share/alsa/ucm2/conf.d/mt6789-mt6366/mt6789-mt6366.conf
+	install -Dm644 "$srcdir"/dc1-ucm-hifi.conf \
+		"$pkgdir"/usr/share/alsa/ucm2/conf.d/mt6789-mt6366/HiFi.conf
+	install -Dm644 "$srcdir"/55-dc1-audio.conf \
+		"$pkgdir"/usr/share/wireplumber/wireplumber.conf.d/55-dc1-audio.conf
 	install -Dm644 "$srcdir"/dc1-bluetooth.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-bluetooth.service
 	# D-Bus activation for iio-sensor-proxy, which Alpine's aport omits -- see
@@ -337,6 +352,9 @@ cbcfc899118ba9076315a16987f470473f7031184d1daa5e16554342227e2b66370f55ba8b9a2a05
 e9f0a80372e63be8a04a027326af59e565760c8f97640e2a6627cdf6386fedae2be4e25f4c8888908cbf3ad246ccf5f0748d2f42038ee5ba5735f8ae344963ef  dc1-gpu.service
 647d8d29759af654b99688b986142a40927e47305006ff28a273c5dc91778f5819f8f0d2daa54f82b662897a908f0dd2866ff22406339f051bc9d0439a8f05bf  dc1-audio
 ee2d4697459ac2b57f5b0ca0521dda6bd51681b5d979bcde7f1f0c6268c4084426aee0cd19c6a8f66ea937a7500b3544753602c6394088a39d37fb98b40618ff  dc1-audio.service
+72c1f6c699d7858beffbe57ebfe0c62741915c4b703adf273eee9e604e34e0c6bc16b1178a4886eff171b01edee66ca6ea3710c6fa987cfd6491b9f11091da78  dc1-ucm-card.conf
+cad6e073062a13be8f624a2e5aed81c04d08df1a4b8a48e921f237664c5758fb7fb6254a98c78a5a7dc765d496aa0f76e246cbab4ce6b3f8168426ce277c7145  dc1-ucm-hifi.conf
+d66f156ec79198795ca85f067a6c8eec28716eb249f17788a54dc0ff6e6230b7faa6646a1dbafd66099e95286496338298c5b71f92a62d30c5db67022f5c5fc6  55-dc1-audio.conf
 f05558dc1c813003e347cd37fb526ec464148d32143a697cd152bc489e98dec3ea6811e77899dfa8d42e4ffb0a2a135037d43644520cca7c04d5567fca24a13e  dc1-bluetooth
 2c0b0e3f6fe32b754521cc0022b6a1a5808f1b8c30f2e98bc4cd7c2f70a3a8c276d53f938a1fcb272f7130462f732b2a310d4d2ac53f8fc30be12968499e018d  dc1-bluetooth.service
 f29500ad474be305cd8934aa059a50921a403b0922451a8a36fce295186cbd01bde2972616857bc32d4970161be136c9b09549010c6284f69da6f9c027285b24  dc1-frontlight
