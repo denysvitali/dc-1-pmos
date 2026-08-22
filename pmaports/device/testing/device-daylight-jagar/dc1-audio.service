@@ -3,7 +3,14 @@ Description=Bring up the MT6789 AFE and the MT6366 sound card
 After=local-fs.target
 # alsa-restore restores the saved mixer state (which is mute -- the codec
 # ramps to mute on stop and alsactl stores that), so it must run first or it
-# clobbers the speaker gain this unit sets. Order strictly after it.
+# clobbers the speaker gain this unit sets. An After= between two units only
+# holds inside ONE transaction, and alsa-restore is WantedBy=sound.target:
+# udev pulls sound.target when the card registers, which on this device
+# happens after multi-user has already started this unit. Measured
+# 2026-08-22: restore ran one second after these gains and re-imported the
+# stored mute over them (Headphone/Lineout caught at 0,0 mid-session, and
+# ADDA_DL_GAIN dragged back to a stale value). This unit now joins the
+# sound.target transaction, which makes the After= below enforceable.
 After=alsa-restore.service
 # The user session's audio daemons enumerate cards when they start; bring the
 # card up before the greeter so the first session sees it.
@@ -15,4 +22,4 @@ RemainAfterExit=yes
 ExecStart=/usr/libexec/dc1-audio
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=sound.target

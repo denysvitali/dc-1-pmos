@@ -28,6 +28,16 @@ fi
 
 glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true
 
+# dc1-audio moved from multi-user.target to sound.target (pkgrel 59) so its
+# After=alsa-restore.service finally holds: both units are wanted by
+# sound.target, which udev pulls when the card registers -- often after
+# multi-user already started the old symlink, which is exactly how the
+# restore-of-mute landed on top of the calibrated gains. reenable recreates
+# the enablement symlink from the new [Install]; an upgraded device would
+# otherwise keep starting the unit from the stale multi-user link, outside
+# the sound.target transaction, and the race would survive the upgrade.
+systemctl reenable dc1-audio.service 2>/dev/null || true
+
 # Keep in step with post-install: rebuild the udev hwdb for the side-button
 # remap and re-trigger the input devices. Best-effort, as above.
 systemd-hwdb update 2>/dev/null || true

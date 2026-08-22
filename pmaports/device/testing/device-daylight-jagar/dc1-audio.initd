@@ -60,15 +60,22 @@ start() {
 	# line-out (LOL) buffer gain stage the other does not, and +2 dB is the
 	# by-ear trim that matches them (0 dB = quieter, +8 dB = louder + clips).
 	local c="amixer -c mt6789mt6366 -q"
-	$c sset 'ADDA_DL_CH1 DL1_CH1' on \
+	if $c sset 'ADDA_DL_CH1 DL1_CH1' on \
 	&& $c sset 'ADDA_DL_CH2 DL1_CH2' on \
 	&& $c sset 'HPL Mux' 'LoudSPK Playback' \
 	&& $c sset 'HPR Mux' 'LoudSPK Playback' \
 	&& $c sset 'Ext_Speaker_Amp' on \
 	&& $c sset 'Headphone' 18 \
 	&& $c sset 'Lineout' 12 \
-	&& $c sset 'ADDA_DL_GAIN' 100% \
-	|| ewarn "speaker path amixer commands failed"
+	&& $c sset 'ADDA_DL_GAIN' 100%; then
+		# Persist the calibrated gains so every later mixer-state restore
+		# converges on this working path instead of the stale mute zeros
+		# the codec ramps to on stop (see dc1-audio for the full story).
+		alsactl store mt6789mt6366 2>/dev/null \
+			|| ewarn "could not persist the calibrated mixer state"
+	else
+		ewarn "speaker path amixer commands failed"
+	fi
 
 	eend 0
 }

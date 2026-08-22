@@ -57,4 +57,14 @@ _set_speaker_path() {
 	&& $c sset 'Lineout' 12 \
 	&& $c sset 'ADDA_DL_GAIN' 100%
 }
-_set_speaker_path || echo "dc1-audio: speaker path amixer commands failed" >&2
+if _set_speaker_path; then
+	# Persist the calibrated gains so every later mixer-state restore --
+	# boot-time alsa-restore, an alsactl daemon refresh, a udev card
+	# re-add -- converges on this working path instead of the stale
+	# mute zeros the codec ramps to on stop. The gains caught sitting at
+	# 0,0 on 2026-08-22 were a restore of exactly such stale zeros.
+	alsactl store mt6789mt6366 2>/dev/null \
+		|| echo "dc1-audio: could not persist the calibrated mixer state" >&2
+else
+	echo "dc1-audio: speaker path amixer commands failed" >&2
+fi
