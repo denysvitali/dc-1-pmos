@@ -108,7 +108,17 @@ apkbuild_field() {
 	' "$1"
 }
 
+# Gate A: the rootfs must contain exactly the builds we are about to ship.
+# pmbootstrap silently reuses an unchanged pkgver-pkgrel from cache, and
+# nothing else here would notice the shipped .apk set and the installed
+# database drifting apart -- the release would describe packages the image
+# does not have, and dc1-update's parity report would compare against air.
+installed_db="$rootfs_dir/lib/apk/db/installed"
+as_root [ -s "$installed_db" ] ||
+	fail "no installed package database at $installed_db"
+
 mkdir "$output_dir/packages"
+package_provenance=""
 for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
 	device-daylight-jagar; do
 	apkbuild="$overlay/$package/APKBUILD"
@@ -122,6 +132,18 @@ for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
 	[ -n "$built" ] ||
 		fail "no $wanted in the local package repository (stale cache?)"
 	cp -p "$built" "$output_dir/packages/$wanted"
+
+	installed=$(as_root awk -v pkg="$package" '
+		/^P:/ { p = substr($0, 3) }
+		/^V:/ && p == pkg { print substr($0, 3); exit }
+	' "$installed_db")
+	[ -n "$installed" ] ||
+		fail "package $package is not recorded in the rootfs database"
+	[ "$installed" = "$pkgver-r$pkgrel" ] ||
+		fail "rootfs holds $package $installed but the release ships $pkgver-r$pkgrel (stale package cache?)"
+	# Space-separated: $(...) strips the trailing newline a printf-per-entry
+	# would produce, so the lines are split again where they are written.
+	package_provenance="$package_provenance package_$(echo "$package" | tr - _)=$installed"
 done
 
 cp "$sources_file" "$output_dir/SOURCES"
@@ -133,6 +155,10 @@ cp "$sources_file" "$output_dir/SOURCES"
 	echo "device=daylight-jagar"
 	echo "architecture=aarch64"
 	echo "kernel_release=$kernel_release"
+	# Exact package builds this rootfs was verified (Gate A) to contain.
+	for provenance_entry in $package_provenance; do
+		echo "$provenance_entry"
+	done
 	# The identity stamped into dc1tools (dc1-debug version/info): short SHA,
 	# -dirty on an unclean tree, unknown without git -- same rule as
 	# installer/build.sh, computed independently so the exporter also works

@@ -1,0 +1,14 @@
+[Unit]
+Description=Weekly DC-1 package update
+
+[Timer]
+# Shortly after every boot, then weekly. Persistent=true catches a missed
+# weekly run while the device was powered off. Opt out per device with
+# /var/lib/dc1/no-auto-update or: systemctl mask dc1-update.timer
+OnBootSec=15min
+OnUnitActiveSec=7d
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

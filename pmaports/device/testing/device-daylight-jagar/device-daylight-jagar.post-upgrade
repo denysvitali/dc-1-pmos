@@ -38,6 +38,12 @@ glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true
 # the sound.target transaction, and the race would survive the upgrade.
 systemctl reenable dc1-audio.service 2>/dev/null || true
 
+# The update timer arrives with pkgrel 61; presets are never re-run on an
+# upgrade, so without this it stays DISABLED on exactly the frozen devices
+# that need it most. Enable only -- no start mid-transaction; the first run
+# happens OnBootSec after the next boot.
+systemctl reenable dc1-update.timer 2>/dev/null || true
+
 # Keep in step with post-install: rebuild the udev hwdb for the side-button
 # remap and re-trigger the input devices. Best-effort, as above.
 systemd-hwdb update 2>/dev/null || true

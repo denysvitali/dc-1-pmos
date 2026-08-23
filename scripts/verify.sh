@@ -32,6 +32,12 @@ sh -n "$mutter_dir/APKBUILD"
 python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' \
 	"$script_dir/make-rootfs-archive.py"
 python3 "$script_dir/tests/test_make_rootfs_archive.py"
+# The apk version comparator backs the staleness gates below; its semantics
+# were transcribed from the apk-tools the devices actually run, so its test
+# suite rides the same verify pass.
+python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' \
+	"$script_dir/apk_version_compare.py"
+python3 "$script_dir/tests/test_apk_version_compare.py"
 
 (
 	cd "$device_dir"

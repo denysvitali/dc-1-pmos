@@ -405,6 +405,12 @@ jobs:
           cp out/jagar-rootfs.tar.gz out/jagar-rootfs.ext4.zst release/
           cp installer/out/installer-boot.img installer/out/jagar-boot.img release/
           cp installer/host/dc1-install.sh release/
+
+          # Rescue path for pre-key installs: the repair script plus the
+          # public key it installs (hash-verified against this same
+          # release's SHA256SUMS at run time).
+          cp installer/host/dc1-repair-apk.sh release/
+          cp pmaports/device/testing/device-daylight-jagar/dc1-apk.rsa.pub release/
           cp out/PROVENANCE out/SOURCES out/FILES.tsv release/
           grep -qx 'hardware_verified=false' release/PROVENANCE
 

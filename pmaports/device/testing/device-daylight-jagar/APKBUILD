@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=60
+pkgrel=61
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -104,6 +104,9 @@ source="
 	dc1-apk.rsa.pub
 	dc1-pmos.list
 	gdm-custom.conf
+	dc1-update
+	dc1-update.service
+	dc1-update.timer
 "
 
 build() {
@@ -321,6 +324,15 @@ package() {
 		"$pkgdir"/usr/libexec/dc1-boot-sync
 	install -Dm644 "$srcdir"/dc1-boot-sync.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-boot-sync.service
+	# Release convergence: the timer runs dc1-update shortly after each boot
+	# and weekly, so an installed device tracks the rolling release without
+	# a reflash. See dc1-update for the opt-out and the parity report.
+	install -Dm755 "$srcdir"/dc1-update \
+		"$pkgdir"/usr/libexec/dc1-update
+	install -Dm644 "$srcdir"/dc1-update.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-update.service
+	install -Dm644 "$srcdir"/dc1-update.timer \
+		"$pkgdir"/usr/lib/systemd/system/dc1-update.timer
 	# apk trigger script: apk runs it when /boot/vmlinuz or /usr/share/kernel/*
 	# changes (i.e. a kernel package upgrade). Installed explicitly so it does
 	# not depend on abuild auto-installing the $pkgname.trigger from $source.
@@ -371,7 +383,7 @@ bcbea953414f25402e10e3596f0968ab0f4308f170247f07590ea2ddd289297b41d727eba7c832f3
 51c547dff77fe30aa8459ff2fbc64856ad2ad05fad2d050901fed169d72960deeb22b21e212e5e529a78044b2a62e661efb9c9de44cb3f152c37a5876889a0a7  dc1-screen-backlight.service
 7d241e69a4aaf124d949a6dc04c1ce16fc38532759f7643952b3df8645c3483bf74318c09c2eaf05742b071acbf8a5cbb4f475c96390272975efd614d2052f21  dc1-rtcsync.service
 e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99cfa9065ee15298c54054f83f997c95a99a03346d73f92d5b7  dc1-rtcsync.timer
-5a4af57abbb3a7c84447d445ce3bf87601e35e8fefc1d8f5ead722cb34c24d0db8651b67ebdf30d92ffbca00972b5997374fc18ab860416d580af34fe6a27c7c  80-device-daylight-jagar.preset
+600ec4b336e7b98658f1835dc7c776152a4208b451774b7d71a02defc49b8a1c48f85c40cf6ecb9146672ac1d083fb8dfad33af73dae7212a47f625a78ffafeb  80-device-daylight-jagar.preset
 bd385f9e00a6b72922567c567698ee9ab8aea5de2d21c1fe2d373b0c361376570202c79c1ed3a7f021c5b5684ffcea7d99d1afb21c70924f19fc0eeef1fa7119  90-device-daylight-jagar.rules
 0e7762a93506f1ec322ed7ca16469f1705d0e712716d87edbc121061ce7e3f2185d1b7beaf52c6c9380375accc7f038b37f52662515a4a981a781304d433e8d2  10-dc1-watchdog.conf
 d9ef2429685864eeca018bbecafa28b1c2123a930016307d1b7b2bc5b405f4276de1233659e3fb924f40fc6e0255e4d192d26542c854faa67def33fe77be67bd  10-dc1-gnome.gschema.override
@@ -390,4 +402,7 @@ b3f2c3dd4ff5de3a98038661a95b12572ce6e68a4f5b895c951d1be9cf0f2da20a88039d34c707d4
 db4d369e81942ec05a3843b02f2c029a6ce585c5b5e6e5d2036e5f99344b31c2b056729fcf3cd84acd679e2556bac7513aa80e7bc36c2c012b9c1e09631ea655  dc1-apk.rsa.pub
 f3e3ef43fe119e376ce3462d69cabd5ce6b4907b5135736c99792b2d35c4be5136f7f8d170e17c09ed094924cba217314c8a66a653715433b8a540c3a6e325f0  dc1-pmos.list
 353598a3b9f8225bea0a7f091d43d7301789ba0323f5cb4b8f9d26783c039c0bf5b0293cd1dae0bcdd3da50f647ca6160f448f3cfc00565bdef0bba4477939c6  gdm-custom.conf
+9944510afa5385cf2e9d9ba7276dccf2a762c654e876a0ad7a796193ce6217667e8a2afdb25291eb6cd8cc3c190f42933f37957c3f3e9e9018238533d3df6902  dc1-update
+c82499840dadc121164874a8cc3050ac7a1f6e12a551b0cf154bc0af562fb883d0d5cdd48f9f92047e7b78ae3cf521011922ebe7c86cb3ca1701aa6d7893a8b8  dc1-update.service
+133f5dda6febe7682f1650584886c672847796d865f3e5d87bc6e52b5ef822d3ca368d5352a96e59853ed9f324bf1a65a8a88ff4252b1e5aeefa01efc329ec91  dc1-update.timer
 "

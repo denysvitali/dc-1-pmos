@@ -273,11 +273,36 @@ The final release directory contains:
 - `installer-boot.img` and `jagar-boot.img`;
 - `jagar-rootfs.ext4.zst` and `jagar-rootfs.tar.gz`;
 - the three exact-version APKs;
-- `dc1-install.sh`, `PROVENANCE`, `SOURCES`, `FILES.tsv`,
+- `dc1-install.sh`, `dc1-repair-apk.sh`, `dc1-apk.rsa.pub`,
+  `PROVENANCE`, `SOURCES`, `FILES.tsv`,
   signed `APKINDEX.tar.gz`, and one final `SHA256SUMS` covering all files.
 
 Do not claim that a green CI run proves booting. Releases deliberately say
 `hardware_verified=false` until a separate hardware test has been performed.
+
+### Installed-device convergence
+
+Installed devices converge on the release without reflashing, and CI keeps
+that path honest:
+
+- `dc1-update.timer` (device package) runs `apk update`/`apk upgrade`
+  after boot and weekly; its parity report compares the three overlay
+  packages against the published `APKINDEX.tar.gz`. Opt-out is
+  `/var/lib/dc1/no-auto-update`.
+- `installer/host/dc1-repair-apk.sh` repairs pre-key installs
+  (device package pkgrel < 45): it fetches `dc1-apk.rsa.pub` from the
+  release and verifies it against that release's `SHA256SUMS`, installs it,
+  writes `/etc/apk/repositories.d/dc1-pmos.list` only if absent, restores
+  Alpine key links, then upgrades. It must never silently replace an
+  existing differing key or repo list — both are trust decisions.
+- Gate A (`scripts/export-artifacts.sh`) fails if the rootfs's installed
+  versions of the three overlay packages differ from the shipped APKs, and
+  records them in `PROVENANCE` as `package_*` lines. Gate B
+  (`scripts/build-rootfs.sh`) fails if any upstream postmarketOS mirror
+  serves one of the three packages at a version that does not strictly lose
+  to ours — bump pkgrel rather than bypassing it. Version ordering for both
+  comes from `scripts/apk_version_compare.py`, which matches apk-tools 3.x
+  exactly (validated against on-device `apk version -t`).
 
 ## CI contract
 
@@ -318,7 +343,6 @@ sh installer/tests/run-tests.sh
 (cd boot/mkboot && go build ./... && go vet ./... && go test ./...)
 (cd installer/gotools && CGO_ENABLED=0 go build ./... && \
   go vet ./... && go test ./...)
-python3 -m py_compile boot/mkboot/vendorboot_v4_verify.py
 make -C boot/dtbswap
 ```
 

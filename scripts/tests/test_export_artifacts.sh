@@ -27,6 +27,19 @@ printf '\320\015\376\355synthetic device tree\n' \
 printf '7.2.0-rc5-postmarketos-mediatek-mt6789\n' \
 	>"$root/usr/share/kernel/postmarketos-mediatek-mt6789/kernel.release"
 
+# The installed-package database Gate A reads. Versions must match the
+# overlay APKBUILDs exactly -- that is the contract under test.
+# write_installed_db ROOT MUTTER_V KERNEL_V DEVICE_V   ("-" omits a block)
+write_installed_db() {
+	mkdir -p "$1/lib/apk/db"
+	: >"$1/lib/apk/db/installed"
+	[ "$2" = - ] || printf 'P:mutter-mobile\nV:%s\n\n' "$2" >>"$1/lib/apk/db/installed"
+	[ "$3" = - ] || printf 'P:linux-postmarketos-mediatek-mt6789\nV:%s\n\n' "$3" \
+		>>"$1/lib/apk/db/installed"
+	[ "$4" = - ] || printf 'P:device-daylight-jagar\nV:%s\n\n' "$4" \
+		>>"$1/lib/apk/db/installed"
+}
+
 packages="$tmp/packages/aarch64"
 mkdir -p "$packages"
 # Names must match the overlay APKBUILDs exactly; the exporter selects by
@@ -45,6 +58,8 @@ mutter_ver=$(awk -F= '$1=="pkgver" { print $2; exit }' \
 	"$overlay/mutter-mobile/APKBUILD")
 mutter_rel=$(awk -F= '$1=="pkgrel" { print $2; exit }' \
 	"$overlay/mutter-mobile/APKBUILD")
+write_installed_db "$root" \
+	"$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel"
 kernel_apk="linux-postmarketos-mediatek-mt6789-$kernel_ver-r$kernel_rel.apk"
 device_apk="device-daylight-jagar-$device_ver-r$device_rel.apk"
 mutter_apk="mutter-mobile-$mutter_ver-r$mutter_rel.apk"
@@ -77,11 +92,41 @@ zstd -t "$out/jagar-rootfs.ext4.zst" >/dev/null 2>&1 ||
 for line in flash_method=none boot_image_included=false \
 	hardware_verified=false rootfs_label=jagar-root \
 	deployable=rootfs-image-only device=daylight-jagar \
-	kernel_release=7.2.0-rc5-postmarketos-mediatek-mt6789; do
+	kernel_release=7.2.0-rc5-postmarketos-mediatek-mt6789 \
+	"package_mutter_mobile=$mutter_ver-r$mutter_rel" \
+	"package_linux_postmarketos_mediatek_mt6789=$kernel_ver-r$kernel_rel" \
+	"package_device_daylight_jagar=$device_ver-r$device_rel"; do
 	grep -qx "$line" "$out/PROVENANCE" || fail "PROVENANCE lacks $line"
 done
 grep -qE '^rootfs_uuid=[0-9a-f]{8}-' "$out/PROVENANCE" ||
 	fail "PROVENANCE lacks a filesystem UUID"
+
+# Gate A refusals: an installed database that disagrees with the shipped
+# packages, or that lost a package entirely, must stop the export.
+check_gate_a_refusal() { # LABEL MUTTER_V KERNEL_V DEVICE_V
+	label=$1
+	root_bad="$tmp/root-gatea-$label"
+	rm -rf "$root_bad"
+	cp -a "$root" "$root_bad"
+	write_installed_db "$root_bad" "$2" "$3" "$4"
+	mkdir "$tmp/out-gatea-$label"
+	if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$root_bad" "$tmp/packages" \
+		"$tmp/SOURCES" "$tmp/out-gatea-$label" >/dev/null 2>&1; then
+		fail "Gate A accepted a $label installed database"
+	fi
+}
+check_gate_a_refusal stale "0.9-r1" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel"
+check_gate_a_refusal kernel-stale "$mutter_ver-r$mutter_rel" "0.1-r0" "$device_ver-r$device_rel"
+check_gate_a_refusal missing-device-block "$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" -
+check_gate_a_refusal missing-database "" "" ""
+rm -rf "$root/lib/apk/db/installed"
+mkdir -p "$tmp/out-nodb"
+if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$root" "$tmp/packages" \
+	"$tmp/SOURCES" "$tmp/out-nodb" >/dev/null 2>&1; then
+	fail "Gate A accepted a rootfs without an installed database"
+fi
+write_installed_db "$root" \
+	"$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel"
 
 # Refusals: a non-empty output directory, a kernel that is not a kernel, and a
 # missing device package must each stop the export rather than publish.

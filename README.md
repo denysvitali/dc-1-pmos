@@ -59,9 +59,15 @@ rolling prerelease on GitHub, so the latest build is always fetchable:
 - `jagar-rootfs.ext4.zst` — the postmarketOS root filesystem as a raw ext4
   image (label `jagar-root`), zstd-compressed.
 - `jagar-rootfs.tar.gz` — the same rootfs as a tarball.
-- The two overlay packages as `.apk` files, a `PROVENANCE` file recording
+- The three packages as `.apk` files, a `PROVENANCE` file recording
   exact source pins and `hardware_verified=false`, and `SHA256SUMS` covering
   everything.
+- `dc1-repair-apk.sh` and the repository public key, for updating
+  installations made before the signed package repository existed.
+
+Installed devices update themselves: `dc1-update.timer` runs
+`apk upgrade` after boot and weekly — see
+[docs/installation.md](docs/installation.md#staying-current).
 
 No secrets, credentials, or proprietary Android blobs are ever baked into
 published artifacts. MT7902 Wi-Fi/Bluetooth firmware comes exclusively from

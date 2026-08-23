@@ -1,0 +1,11 @@
+[Unit]
+Description=Update DC-1 packages toward the published release
+# After first-boot (which may still be installing apps) and boot-sync (which
+# may still be flashing the inactive slot), and only with a network.
+After=dc1-first-boot.service dc1-boot-sync.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/dc1-update
+TimeoutStartSec=2h

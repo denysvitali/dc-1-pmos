@@ -254,6 +254,45 @@ you can simply run the installer again. Wi-Fi diagnostics stay on the
 device under `/tmp/wifi` (they are never written to the kernel log, which
 is streamed over USB).
 
+## Staying current
+
+An installed device keeps itself converging on the published release; a
+re-flash is never needed for userland fixes.
+
+- `dc1-update.timer` runs `apk update` + `apk upgrade` about 15 minutes
+  after every boot and weekly thereafter (`Persistent=true` catches a
+  missed week while the device was powered off). Kernel packages arm the
+  inactive slot exactly like a manual upgrade — the new kernel applies on
+  the next reboot.
+- Each run writes a summary to `/var/lib/dc1/update-state` and the journal
+  (`journalctl -u dc1-update.service`), including how far the three overlay
+  packages (`mutter-mobile`, the kernel, the device package) are from the
+  rolling release.
+- Opt out per device with `touch /var/lib/dc1/no-auto-update`, or
+  `systemctl mask dc1-update.timer`.
+
+### Updating an old (pre-August-2026) installation
+
+Devices installed before the signed package repository existed (device
+package pkgrel < 45) cannot upgrade even by hand: apk fails with
+`UNTRUSTED signature` because they have neither the repository key nor the
+repository list. The release ships a one-shot repair script; run it ON THE
+DEVICE as root (over ssh or the debug shell):
+
+    curl -fsSL -o /tmp/dc1-repair-apk.sh \
+      https://github.com/denysvitali/dc-1-pmos/raw/main/installer/host/dc1-repair-apk.sh
+    sh /tmp/dc1-repair-apk.sh
+
+(on a device without curl, busybox `wget -O` works too). Each release
+directory also contains the script alongside `dc1-apk.rsa.pub`. The script
+fetches the repository public key from the release, verifies it against
+that release's `SHA256SUMS`, installs it — **refusing to overwrite a
+*different* already-installed key** instead of silently replacing a trust
+anchor — writes the repository list only if absent, restores missing
+Alpine key links into `/etc/apk/keys`, then runs `apk update` +
+`apk upgrade` and prints the resulting package versions. Afterwards the
+normal `dc1-update.timer` path takes over.
+
 ## Recovery notes
 
 - **There is no general recovery channel without a working kernel.** The DC-1's

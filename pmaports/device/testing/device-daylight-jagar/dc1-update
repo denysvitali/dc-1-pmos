@@ -1,0 +1,212 @@
+#!/bin/sh
+# dc1-update -- keep an installed DC-1 converging on the published release.
+#
+# A device that never runs `apk upgrade` is frozen on its install day: every
+# userland fix that lands after it (mutter rotation, UCM audio, WirePlumber
+# fragments, ...) never reaches it. The dc1-update.timer runs this script
+# ~15 min after every boot and weekly thereafter (Persistent=true catches
+# missed weeks while powered off). Opt out with:
+#
+#	touch /var/lib/dc1/no-auto-update	(systemctl mask dc1-update.timer
+#					 works too)
+#
+# Steps:
+#   1. `apk update` with a bounded retry (3x15 s). Failure is a warning, not
+#      an abort: apk refreshes the reachable indexes even when one repo
+#      fails, and `apk upgrade` decides what actually resolves (the same
+#      partial-refresh tolerance dc1-first-boot learned the hard way).
+#   2. Plain `apk upgrade`. World constraints stay sticky (e.g. the
+#      accountsservice<999 pin rides along), and a kernel upgrade arms the
+#      inactive A/B slot through the device package's apk trigger -- no
+#      reboot happens here; it lands on the next reboot behind the
+#      boot-watchdog fallback.
+#   3. Best-effort parity report: fetch SHA256SUMS + APKINDEX.tar.gz from
+#      the rolling release, verify the index hash strictly, and compare the
+#      three overlay packages installed-vs-candidate with `apk version -t`.
+#      The summary lands in the journal and /var/lib/dc1/update-state.
+#
+# Library mode for the offline tests: DC1_UPDATE_LIB=1 sources this file for
+# the pure functions without running any of the steps.
+set -eu
+
+MARK_NO_UPDATE=/var/lib/dc1/no-auto-update
+APK_DB=${DC1_APK_DB:-/lib/apk/db/installed}
+STATE_FILE=${DC1_UPDATE_STATE:-/var/lib/dc1/update-state}
+URL_BASE=${DC1_URL_BASE:-https://github.com/denysvitali/dc-1-pmos/releases/download/latest}
+VERSION_CMP=${DC1_VERSION_CMP:-apk version -t}
+
+# The overlay packages whose versions define "converged". Keep in step with
+# scripts/export-artifacts.sh, which publishes exactly these three.
+OVERLAY_PACKAGES="mutter-mobile linux-postmarketos-mediatek-mt6789 \
+device-daylight-jagar"
+
+log() { echo "dc1-update: $*" >&2; }
+
+# sums_digest SUMS_FILE NAME -> the 64-hex SHA-256 recorded for NAME, or
+# return 1. Refuses duplicates, short and non-hex digests (fail closed,
+# never guess). Same parser as the installer's netinstall.sh.
+sums_digest() {
+	sd_hits=$(awk -v n="$2" \
+		'{ f = $2; sub(/^\*/, "", f); if (f == n) print $1 }' "$1")
+	[ -n "$sd_hits" ] || return 1
+	[ "$(printf '%s\n' "$sd_hits" | wc -l)" -eq 1 ] || return 1
+	case "$sd_hits" in
+		*[!0-9a-f]*) return 1 ;;
+	esac
+	[ ${#sd_hits} -eq 64 ] || return 1
+	printf '%s\n' "$sd_hits"
+}
+
+# installed_version PKG -> the version recorded in the local apk database.
+installed_version() {
+	[ -r "$APK_DB" ] || return 1
+	awk -v pkg="$1" '
+		/^P:/ { p = substr($0, 3) }
+		/^V:/ && p == pkg { print substr($0, 3); exit }
+	' "$APK_DB"
+}
+
+# cmp_versions A B -> "<", "=" or ">" on stdout (apk version -t by default;
+# DC1_VERSION_CMP substitutes any two-argument relation printer in tests).
+# Both relation vocabularies are normalized -- apk prints < = >, the
+# repository's apk_version_compare.py prints -1 0 1.
+cmp_versions() {
+	# Intentional word split: the override may be
+	# "python3 scripts/apk_version_compare.py cmp"-style.
+	# shellcheck disable=SC2086
+	local_rel=$($VERSION_CMP "$1" "$2" 2>/dev/null) || return 1
+	case "$local_rel" in
+		"<"|"-1") printf '<\n' ;;
+		"="|"0") printf '=\n' ;;
+		">"|"1") printf '>\n' ;;
+		*) return 1 ;;
+	esac
+}
+
+# index_max INDEX_TEXT_FILE PKG -> highest version among the P: blocks, or
+# nothing when the package is absent. Folds with cmp_versions so the
+# ordering is apk's, not sort's.
+index_max() {
+	max=""
+	for v in $(awk -v pkg="$2" '
+		/^P:/ { p = substr($0, 3) }
+		/^V:/ && p == pkg { print substr($0, 3) }
+	' "$1"); do
+		[ -n "$max" ] || { max=$v; continue; }
+		# rel is the relation of candidate $v to the running maximum.
+		rel=$(cmp_versions "$v" "$max" 2>/dev/null) || continue
+		[ "$rel" = ">" ] && max=$v
+	done
+	printf '%s\n' "$max"
+}
+
+# report_parity -- compare installed versions against the release index and
+# persist the summary. Best-effort: every failure degrades to "unknown",
+# never blocks the upgrade that already happened.
+report_parity() {
+	work=$(mktemp -d)
+	trap 'rm -rf "$work"' EXIT
+	curl -fsSL --retry 3 --retry-delay 3 --retry-all-errors \
+		-o "$work/SHA256SUMS" "$URL_BASE/SHA256SUMS" || {
+		log "parity: cannot fetch SHA256SUMS (offline?)"
+		return 1
+	}
+	curl -fsSL --retry 3 --retry-delay 3 --retry-all-errors \
+		-o "$work/APKINDEX.tar.gz" "$URL_BASE/APKINDEX.tar.gz" || {
+		log "parity: cannot fetch APKINDEX.tar.gz"
+		return 1
+	}
+	want=$(sums_digest "$work/SHA256SUMS" APKINDEX.tar.gz) || {
+		log "parity: no usable APKINDEX.tar.gz entry in SHA256SUMS"
+		return 1
+	}
+	got=$(sha256sum "$work/APKINDEX.tar.gz" | cut -d' ' -f1)
+	[ "$got" = "$want" ] || {
+		log "parity: APKINDEX.tar.gz does not match SHA256SUMS; ignoring it"
+		return 1
+	}
+	tar -xzOf "$work/APKINDEX.tar.gz" APKINDEX >"$work/index" 2>/dev/null || {
+		log "parity: cannot unpack APKINDEX.tar.gz"
+		return 1
+	}
+
+	behind=0
+	summary=""
+	for package in $OVERLAY_PACKAGES; do
+		inst=$(installed_version "$package")
+		cand=$(index_max "$work/index" "$package")
+		if [ -z "$cand" ]; then
+			state="$package: absent from release index"
+		elif [ -z "$inst" ]; then
+			state="$package: not installed"
+			behind=$((behind + 1))
+		else
+			rel=$(cmp_versions "$inst" "$cand" 2>/dev/null) || rel=""
+			case "$rel" in
+				"<") state="$package: $inst -> $cand"; behind=$((behind + 1)) ;;
+				"=") state="$package: $inst (in sync)" ;;
+				">") state="$package: $inst (newer than release)" ;;
+				*) state="$package: $inst vs $cand (incomparable)" ;;
+			esac
+		fi
+		log "parity: $state"
+		summary="$summary$state
+"
+	done
+	if [ "$behind" -eq 0 ]; then
+		log "parity: in sync with the release"
+	else
+		log "parity: $behind of 3 behind the release"
+	fi
+
+	{
+		echo "last_run=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+		echo "apk_upgrade=ok"
+		echo "parity_behind=$behind"
+		printf '%s' "$summary"
+	} >"$STATE_FILE"
+	return 0
+}
+
+# Library mode for the offline tests.
+if [ -n "${DC1_UPDATE_LIB:-}" ]; then
+	return 0 2>/dev/null || exit 0
+fi
+
+if [ -e "$MARK_NO_UPDATE" ]; then
+	log "disabled by $MARK_NO_UPDATE; skipping"
+	exit 0
+fi
+mkdir -p /var/lib/dc1
+
+update_rc=1
+for attempt in 1 2 3; do
+	if apk update; then
+		update_rc=0
+		break
+	fi
+	log "apk update failed (attempt $attempt/3);" \
+		"continuing with the indexes that did refresh"
+	[ "$attempt" -lt 3 ] && sleep 15
+done
+
+# Plain upgrade: no --force, no reboot. Kernel changes arm the inactive slot
+# via the package trigger and land on the next reboot.
+if apk upgrade; then
+	log "apk upgrade completed"
+	upgrade_ok=yes
+else
+	log "apk upgrade FAILED; the parity report below still runs"
+	upgrade_ok=no
+fi
+
+# The state file records whichever upgrade result preceded it.
+if ! report_parity; then
+	{
+		echo "last_run=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+		echo "apk_upgrade=$upgrade_ok"
+		echo "parity_behind=unknown"
+	} >"$STATE_FILE"
+fi
+
+[ "$upgrade_ok" = yes ]

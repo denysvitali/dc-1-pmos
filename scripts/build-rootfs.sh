@@ -30,7 +30,7 @@ output_dir=$(mkdir -p -- "$2" && CDPATH= cd -- "$2" && pwd)
 }
 
 if [ "$validate_only" = no ]; then
-	for tool in python3 zstd sha256sum od find awk; do
+	for tool in python3 curl tar zstd sha256sum od find awk; do
 		command -v "$tool" >/dev/null || {
 			echo "missing required tool: $tool" >&2
 			exit 1
@@ -123,6 +123,48 @@ if [ "$validate_only" = yes ]; then
 	echo "validated pinned postmarketOS package metadata"
 	exit 0
 fi
+
+# Gate B: upstream may not outrank us. The pmOS mirrors serve same-name
+# packages (mutter-mobile lives in both `main` and the systemd repo); if any
+# upstream version is >= ours, a plain on-device `apk upgrade` silently
+# replaces our patched package and installed devices lose the overlay work.
+# Compare with the apk-tools-exact comparator (scripts/apk_version_compare.py)
+# and fail the build instead -- the fix is a pkgrel bump, never a gate bypass.
+# Build job only: --validate-only exited above and verify.sh stays offline.
+overlay_dir="$script_dir/../pmaports/device/testing"
+for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
+	device-daylight-jagar; do
+	apkbuild="$overlay_dir/$package/APKBUILD"
+	pkgver=$(awk -F= -v field=pkgver '
+		$1 == field { gsub(/"/, "", $2); print $2; exit }' "$apkbuild")
+	pkgrel=$(awk -F= -v field=pkgrel '
+		$1 == field { gsub(/"/, "", $2); print $2; exit }' "$apkbuild")
+	ours="$pkgver-r$pkgrel"
+	for repo in main extra-repos/systemd/main; do
+		repo_slug=$(echo "$repo" | tr / _)
+		index_url="http://mirror.postmarketos.org/postmarketos/$repo/aarch64/APKINDEX.tar.gz"
+		index_file="$work_dir/gateb-$package-$repo_slug-APKINDEX.tar.gz"
+		curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
+			-o "$index_file" "$index_url" || {
+			echo "Gate B: cannot fetch $index_url" >&2
+			exit 1
+		}
+		upstream=$(tar -xzOf "$index_file" APKINDEX |
+			python3 "$script_dir/apk_version_compare.py" index-max - "$package") &&
+			rc=0 || rc=$?
+		case "$rc" in
+			0) : ;;
+			1) continue ;;  # not published in this repo: nothing to outrank
+			*) echo "Gate B: unusable index for $package from $repo" >&2; exit 1 ;;
+		esac
+		cmp_result=$(python3 "$script_dir/apk_version_compare.py" cmp "$ours" "$upstream")
+		[ "$cmp_result" = 1 ] || {
+			echo "Gate B: upstream $repo serves $package $upstream, which does not lose to our $ours" >&2
+			echo "       (bump pkgrel; do not bypass this gate)" >&2
+			exit 1
+		}
+	done
+done
 
 pmb build --arch=aarch64 mutter-mobile
 pmb build --arch=aarch64 linux-postmarketos-mediatek-mt6789
