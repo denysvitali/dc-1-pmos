@@ -19,16 +19,19 @@
 # 2026-08-17: rebinding mmc1:0001:2 completed setup in 2.75 s and brought the
 # controller up as "Daylight DC-1".
 #
-# The rebind is unconditional rather than conditional on a "is it broken?"
-# probe: the race has no winning side (the firmware cannot be present that
-# early on any boot), and the driver exposes no attribute that distinguishes a
-# set-up controller from a stalled one -- hci0 looks the same either way. This
-# runs before bluetoothd, so nothing is using the controller yet, and a rebind
-# of an already-working controller would only cost the same 2.75 s.
+# The race DOES have a winning side now: jagar-boot.img stages the blob in the
+# system initramfs (installer/build.sh), so on a current boot image btmtksdio's
+# single attempt succeeds and there is nothing to repair. The rebind therefore
+# runs only when the kernel actually logged the failure it repairs -- hci0
+# itself still looks identical either way, so the log line is the only honest
+# discriminator, and rebinding a healthy controller would drop and re-setup a
+# working one for no reason. Kept as the repair path for boot images that
+# predate the staging, and for any future regression in it.
 
 description="Recover the MT7902 Bluetooth controller after the firmware race"
 
 DRV=/sys/bus/sdio/drivers/btmtksdio
+FAIL_SIG="Failed to setup 79xx firmware"
 
 depend() {
 	need localmount
@@ -37,6 +40,14 @@ depend() {
 
 start() {
 	ebegin "Rebinding the MT7902 Bluetooth controller"
+
+	# dmesg is the discriminator. If the ring has already wrapped past the
+	# message (long uptime, manual re-run) this does nothing -- the same
+	# outcome as a healthy boot, which is the safe direction to fail.
+	if ! dmesg 2>/dev/null | grep -q "$FAIL_SIG"; then
+		eend 0
+		return 0
+	fi
 
 	# No Bluetooth SDIO function bound: nothing to recover, and not an error
 	# (the driver may be absent, or the chip already rebound by an earlier run).

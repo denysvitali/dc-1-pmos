@@ -82,6 +82,13 @@ WIFI_RAM_SHA256=b5958ac72c71fb8405e080f52d378d02b484812b9f1010c8843727056bbfc998
 WIFI_PATCH_NAME="WIFI_MT7902_patch_mcu_1_1_hdr.bin"
 WIFI_PATCH_SIZE=119328
 WIFI_PATCH_SHA256=d73ba9e982f781221a2b9f10c42031f20a9dce046929fc0d55c791a417efe30a
+# The Bluetooth half of the same chip. btmtksdio requests this one at
+# t=1.75 s -- earlier than mt7921s asks for its pair, and unlike mt7921s it
+# makes exactly one attempt -- so it only ever loads if it is already in the
+# initramfs (see the system-initramfs staging below).
+BT_RAM_NAME="BT_RAM_CODE_MT7902_1_1_hdr.bin"
+BT_RAM_SIZE=509320
+BT_RAM_SHA256=4f53b5e02fbd933172e18caf952bda410a877eaad00561781528cb4aff58dc38
 
 # Signed regulatory database pair: official wireless-regdb 2026.05.30
 # release (CONFIG_CFG80211_REQUIRE_SIGNED_REGDB -- never stage half a pair).
@@ -163,10 +170,14 @@ fetch "$LINUX_FIRMWARE_URL/mediatek/$WIFI_RAM_NAME?h=$LINUX_FIRMWARE_TAG" \
 	"$DL/firmware/$WIFI_RAM_NAME"
 fetch "$LINUX_FIRMWARE_URL/mediatek/$WIFI_PATCH_NAME?h=$LINUX_FIRMWARE_TAG" \
 	"$DL/firmware/$WIFI_PATCH_NAME"
+fetch "$LINUX_FIRMWARE_URL/mediatek/$BT_RAM_NAME?h=$LINUX_FIRMWARE_TAG" \
+	"$DL/firmware/$BT_RAM_NAME"
 verify_blob "MT7902 RAM firmware" "$DL/firmware/$WIFI_RAM_NAME" \
 	"$WIFI_RAM_SIZE" "$WIFI_RAM_SHA256"
 verify_blob "MT7902 ROM patch" "$DL/firmware/$WIFI_PATCH_NAME" \
 	"$WIFI_PATCH_SIZE" "$WIFI_PATCH_SHA256"
+verify_blob "MT7902 Bluetooth firmware" "$DL/firmware/$BT_RAM_NAME" \
+	"$BT_RAM_SIZE" "$BT_RAM_SHA256"
 
 if [ ! -f "$DL/firmware/regulatory.db" ] || [ ! -f "$DL/firmware/regulatory.db.p7s" ]; then
 	fetch "$REGDB_URL" "$DL/firmware/wireless-regdb.tar.xz"
@@ -466,6 +477,14 @@ ln -sf dc1tools "$s/bin/dc1-debug"
 mkdir -p "$s/lib/firmware/mediatek"
 install -m 0644 "$DL/firmware/$WIFI_RAM_NAME" "$s/lib/firmware/mediatek/$WIFI_RAM_NAME"
 install -m 0644 "$DL/firmware/$WIFI_PATCH_NAME" "$s/lib/firmware/mediatek/$WIFI_PATCH_NAME"
+# Bluetooth loses the same race harder: btmtksdio is built in too and asks for
+# its blob at t=1.75 s, a full second earlier than mt7921s, and it makes ONE
+# attempt -- no retry, so on every boot without this file hci0 registers,
+# "Failed to setup 79xx firmware (-2)" lands in dmesg, and the controller stays
+# half-initialised (bluetoothctl: "No default controller available"). Staging
+# it here is what dc1-bluetooth's unbind/bind was working around; that service
+# stays as a repair path, now gated on the failure signature.
+install -m 0644 "$DL/firmware/$BT_RAM_NAME" "$s/lib/firmware/mediatek/$BT_RAM_NAME"
 install -m 0644 "$DL/firmware/regulatory.db" "$s/lib/firmware/regulatory.db"
 install -m 0644 "$DL/firmware/regulatory.db.p7s" "$s/lib/firmware/regulatory.db.p7s"
 
