@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=61
+pkgrel=62
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -107,6 +107,7 @@ source="
 	dc1-update
 	dc1-update.service
 	dc1-update.timer
+	99-dc1-pen-calibration.rules
 "
 
 build() {
@@ -234,6 +235,12 @@ package() {
 	# bind in GNOME Settings; defaults live in the gschema override above.
 	install -Dm644 "$srcdir"/61-daylight-jagar-keyboard.hwdb \
 		"$pkgdir"/usr/lib/udev/hwdb.d/61-daylight-jagar-keyboard.hwdb
+
+	# Pen digitizer active-area calibration (see the rule file for the
+	# measurement). Lives in /usr/lib so a local /etc copy of the same name
+	# keeps precedence as an admin override.
+	install -Dm644 "$srcdir"/99-dc1-pen-calibration.rules \
+		"$pkgdir"/usr/lib/udev/rules.d/99-dc1-pen-calibration.rules
 
 	# The amber frontlight's quick-settings slider. GNOME binds exactly one
 	# backlight device to the internal display, so the second RT4539 is
@@ -405,4 +412,5 @@ f3e3ef43fe119e376ce3462d69cabd5ce6b4907b5135736c99792b2d35c4be5136f7f8d170e17c09
 9944510afa5385cf2e9d9ba7276dccf2a762c654e876a0ad7a796193ce6217667e8a2afdb25291eb6cd8cc3c190f42933f37957c3f3e9e9018238533d3df6902  dc1-update
 c82499840dadc121164874a8cc3050ac7a1f6e12a551b0cf154bc0af562fb883d0d5cdd48f9f92047e7b78ae3cf521011922ebe7c86cb3ca1701aa6d7893a8b8  dc1-update.service
 133f5dda6febe7682f1650584886c672847796d865f3e5d87bc6e52b5ef822d3ca368d5352a96e59853ed9f324bf1a65a8a88ff4252b1e5aeefa01efc329ec91  dc1-update.timer
+08368aa77633c89756132498d86dbc1cb2ef17c2c814d5f372e5d39253c58d026d822b4b54df70cf4391226fef8a636ba581f545808e995245eed6b0b8a00224  99-dc1-pen-calibration.rules
 "

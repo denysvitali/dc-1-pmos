@@ -1,0 +1,7 @@
+# The digitizer's active area extends ~1.5-2 mm past the visible glass on
+# every side (corner-tap measurement 2026-08-23: pen-visible raw envelope
+# x 180..15800 of 0..16008, y 160..21220 of 0..21344). This matrix maps
+# raw device coordinates onto the visible area before libinput normalises
+# them, so the cursor lands under the pen tip instead of a few mm toward
+# the top-left. Applied by libinput; mutter consumes the calibrated values.
+ACTION=="add|change", SUBSYSTEM=="input", ATTRS{name}=="Wacom I2C Digitizer", ENV{LIBINPUT_CALIBRATION_MATRIX}="0.00006402 0 -0.0115237 0 0.00004748 -0.0075973"
