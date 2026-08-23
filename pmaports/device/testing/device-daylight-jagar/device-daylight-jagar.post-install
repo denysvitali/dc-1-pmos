@@ -25,8 +25,8 @@ if [ -x /etc/init.d/sshd ]; then
 	rc-update add sshd default 2>/dev/null || true
 fi
 
-# Compile the gschema overrides (including ours: the power key opens the power
-# menu instead of blanking, and nothing idle-blanks or sleeps) so the GNOME
+# Compile the gschema overrides (including ours: the power key locks and
+# blanks the screen, nothing idle-blanks or sleeps) so the GNOME
 # power defaults take effect. Best-effort: only relevant when a GNOME desktop
 # is installed.
 glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true

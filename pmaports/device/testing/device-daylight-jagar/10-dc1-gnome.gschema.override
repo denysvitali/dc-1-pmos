@@ -1,21 +1,25 @@
 [org.gnome.settings-daemon.plugins.power]
 # gnome-shell-mobile handles the power key itself -- it grabs it as a mutter
 # keybinding ("DBus: disallowing the grabbing of power key accelerator"), so
-# neither logind's HandlePowerKey nor gnome-settings-daemon ever sees it. Its
-# misc/powerManager.js then maps our old value onto the very action we were
-# trying to avoid:
+# neither logind's HandlePowerKey nor gnome-settings-daemon ever sees it. On
+# key release its misc/powerManager.js maps this setting:
 #
 #     let action = this._powerSettings.get_string('power-button-action');
 #     if (action === 'nothing') { // FIXME: get rid of this in favor of new action
 #         action = 'blank';
 #     } else if (action === 'interactive') { this._showInteractivePowerMenu(); return; }
 #
-# 'interactive' is the only value that returns without blanking; it opens the
-# quick-settings power menu. Suspend and hibernate are masked system-wide (see
-# the sleep-target masks in the APKBUILD), so logind reports CanSuspend=no and
-# the menu offers only restart/power off -- the s2idle path that aborts with
-# unfreezable tasks stays unreachable.
-power-button-action='interactive'
+# 'nothing' is remapped to 'blank', which is the phone-like sleep/wake toggle
+# we want: a short press locks the shield (see lock-enabled below) and
+# DPMS-offs the panel, and the next short press cancels the running blank
+# action and turns the screen back on at the lock screen -- powerManager
+# swallows that wake press after cancelling, so one press toggles exactly
+# once and cannot flap into an immediate re-blank. A >=2 s hold opens the
+# quick-settings power menu. Suspend and hibernate are masked system-wide
+# (see the sleep-target masks in the APKBUILD), so logind reports
+# CanSuspend=no and the menu offers only restart/power off -- the s2idle path
+# that aborts with unfreezable tasks stays unreachable.
+power-button-action='nothing'
 sleep-inactive-ac-type='nothing'
 sleep-inactive-battery-type='nothing'
 
@@ -39,21 +43,26 @@ show-screenshot-ui=['Print', 'XF86Launch1']
 toggle-overview=['XF86Launch2']
 
 [org.gnome.desktop.session]
-# Never idle-blank: this key is what powerManager arms its screensaver idle
-# watch from, and 0 disables the watch entirely.
+# No spontaneous idle-blanking while unlocked: this key is what powerManager
+# arms its screensaver idle watch from, and while the shield is down 0
+# disables the watch entirely. With the shield up, powerManager ignores this
+# value and uses a hardcoded 10 s timeout instead -- see the screensaver
+# section below.
 idle-delay=0
 
 [org.gnome.desktop.screensaver]
-# Locking on blank raises the screen shield, and powerManager then arms a
-# *hardcoded* 10 s idle watch instead of honouring idle-delay:
+# Lock on blank: the power button's blank action consults this key
+# (powerManager.js case 'blank' calls screenShield.lock() before fading the
+# panel out when this is true), so true is what turns a short press into
+# "sleep" that also secures the device. Raising the shield makes powerManager
+# arm a *hardcoded* 10 s idle watch instead of honouring idle-delay:
 #
 #     const idleTimeoutMs = Main.screenShield.active
 #         ? 10 * 1000
 #         : this._sessionSettings.get_uint('idle-delay') * 1000;
 #
-# so a screen woken from a blank went dark again 10 s later, which reads as
-# "the power button does nothing". With the shield down, a blank is a plain
-# screen-off that stays off until the user wakes it. Manual locking is
-# unaffected: screenShield.lock() consults org.gnome.desktop.lockdown
-# disable-lock-screen, not this key.
-lock-enabled=false
+# so an untouched lock screen goes dark again 10 s after the last input,
+# phone-style; any touch or keystroke (PIN entry included) resets it. Manual
+# locking is unaffected: screenShield.lock() consults
+# org.gnome.desktop.lockdown disable-lock-screen, not this key.
+lock-enabled=true
