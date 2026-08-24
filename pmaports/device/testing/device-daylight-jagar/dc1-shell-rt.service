@@ -1,0 +1,14 @@
+[Unit]
+Description=DC-1 mutter KMS thread realtime restore
+# No After=graphical-session.target: in the gdm greeter manager that target
+# never activates (see dc1-orientation.service), and the script polls for
+# the shell anyway, so ordering would only delay the first grant.
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/dc1-shell-rt
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
