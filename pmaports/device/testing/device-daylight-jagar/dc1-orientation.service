@@ -1,6 +1,11 @@
 [Unit]
 Description=DC-1 accelerometer display orientation
 After=graphical-session.target
+# The bridge exits until Mutter's bus name resolves, which can take longer
+# than the default 5-starts-in-10s limit allows at session startup (and in
+# the gdm greeter graphical-session.target never activates, so After= gives
+# no ordering there). Restarting until the compositor appears is the design.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

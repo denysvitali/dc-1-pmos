@@ -1,10 +1,14 @@
-// The DC-1 desktop user owns the device's graphical session. Alpine's polkit
-// setup does not reliably mark the GNOME/Mutter caller active, which otherwise
-// makes iio-sensor-proxy reject ClaimAccelerometer() and leaves
-// AccelerometerOrientation at "undefined".
+// Any caller may claim iio-sensor-proxy sensors. Alpine's polkit setup does
+// not reliably mark the GNOME/Mutter caller's session active (or even local),
+// which otherwise makes iio-sensor-proxy reject ClaimAccelerometer() and
+// leaves AccelerometerOrientation at "undefined". Username matching is no
+// better: the installer renames the provisioned account (provision.sh
+// apply_user), and gdm's greeter session runs as gdm-greeter and needs the
+// same claim, or the login screen shown after a logout ignores orientation.
+// Claiming only powers sensor polling; the readings are already
+// world-readable through /sys/bus/iio, so this grants nothing sysfs does not.
 polkit.addRule(function(action, subject) {
-    if (action.id == "net.hadess.SensorProxy.claim-sensor" &&
-        subject.user == "dc1") {
+    if (action.id == "net.hadess.SensorProxy.claim-sensor") {
         return polkit.Result.YES;
     }
 });

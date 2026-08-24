@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=70
+pkgrel=71
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -221,6 +221,15 @@ package() {
 		"$pkgdir"/usr/libexec/dc1-orientation
 	install -Dm644 "$srcdir"/dc1-orientation.service \
 		"$pkgdir"/usr/lib/systemd/user/dc1-orientation.service
+	# Statically enabled for every systemd user manager. Per-user enablement
+	# cannot be baked in (the installer renames the provisioned account), and
+	# gdm's greeter session (gdm-greeter) needs the same bridge: without it
+	# the login screen shown after a logout renders the raw scanout -- 180
+	# degrees from the glass -- and ignores orientation, because mutter's own
+	# orientation manager never claims the sensor on this port.
+	mkdir -p "$pkgdir"/usr/lib/systemd/user/default.target.wants
+	ln -s ../dc1-orientation.service \
+		"$pkgdir"/usr/lib/systemd/user/default.target.wants/dc1-orientation.service
 
 	# The power key must not reach a sleep path, and must not blank a panel
 	# whose frontlight stays lit: logind ignores the keys, and the gschema
@@ -402,9 +411,9 @@ bd385f9e00a6b72922567c567698ee9ab8aea5de2d21c1fe2d373b0c361376570202c79c1ed3a7f0
 9932082182d5ae7a6c2155643e55485b3cac1209776893a2c8bb1b323c3b317cc2952b0f2e319b8641b48df197e5f6e397e25207285ac0a137930b4d86dc9548  10-dc1-gnome.gschema.override
 35ed4afb186d649ece52f36dc2d1b9df640f07aaf796f3ea4a63805b7aa24674fba9b945694d0e6863f15908de91931e8766010a2e34b19bbea52e2f2006dbfd  61-daylight-jagar-keyboard.hwdb
 50dfd0ea25c80a97c1625dbf6dc42a8c114148cadafa20e21d210a9ea8c224e0069a75251ce11e427b51b50896929c833166988855a2c96deef03e6d3b94eb58  10-dc1-power.conf
-c7cb091033e7c169d30ece81da335fcd47355e1a93661bfc07dcdee144a28b7e3828359d3d6b7307bf84dfa315b6c84f564e27e5c4ecf99b0fd9e012dc8410d0  49-device-daylight-jagar-sensors.rules
-c1c2d3cb63d413e8de49e5137a2dfa97fb10837a2e223d20c0ddff30047ec5aa251365b240189c779488496777043d9e18faa886635ec6665c6b46bf523646c0  dc1-orientation
-6e87612caf150110b4d2ee09ab949c0ea2ed61f0b9241262cbd13bde484ee9068fb05a27d0f40b76c854bd2f35080470ebe5e252c392aaa296b3f451d9054aa2  dc1-orientation.service
+27d1223ba673ee4639d12a7eb2bf7b24e8baf549c3eca7dc943d2e26d30aa094fcb3d22db7d15ac150329100e4af68443ef8324e4af919612bc43b262734abec  49-device-daylight-jagar-sensors.rules
+933a723de2bc889cff35cd190d000b3b1656b0ba17b987ba6f7e9f9de41ab9c16a26b87cbf2adee5ff5d841de9068d7ac60a0177e789736c21b98591c292a9ba  dc1-orientation
+8049055e585a55f5c9ea488eb7e082e062d973d38c3aba0c50f7e1f6f1e649429b7b98c8532d5097712e0b6dbfa4b73a1456415de7189e1bf9ec34bd99b85d7e  dc1-orientation.service
 9ba63fe59f355b45cfc5dbad15a9e4a94d571b28eaf6b09af040be110f080ba01fccc79f96f5ff40beabc9a76e1677fb1e0fd6359f1c03f4465543cad710026b  net.hadess.SensorProxy.service
 ab9c9f540817f46f3b760cd3dc12b51502038cbf419c76628661a217fed8f51204372be8136f802b60700171989c9e64a839524eaa309ec59ec965016fb2d525  dc1-warmth-extension.js
 97be64b0f2b506c5874fea54235bae0cc1a28838fbd82f75f469ea630af2e34444a363294c6f46b7451a5a654db2984955e64c45a7e0af438957dc37d1a98230  dc1-warmth-metadata.json

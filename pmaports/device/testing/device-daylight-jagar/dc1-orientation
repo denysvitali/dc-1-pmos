@@ -23,6 +23,13 @@ TRANSFORMS = {
     "right-up": 3,
 }
 
+# The panel scanout is 180 degrees from the glass, so glass-upright reads as
+# bottom-up through the compensating accelerometer mount matrix. SensorProxy
+# reports "undefined" until the accelerometer first settles (e.g. the device
+# lying flat when a session starts); default to the glass-upright transform
+# rather than leaving the raw, inverted scanout on screen.
+DEFAULT_TRANSFORM = TRANSFORMS["bottom-up"]
+
 
 def main():
     session_address = None
@@ -56,16 +63,20 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
 
-    previous = None
+    # Compare against Mutter's live state instead of a cached last-applied
+    # value: the compositor this bridge drives can be replaced under it (gdm
+    # respawns the greeter shell), and the replacement comes up on the raw
+    # scanout. A cache would then never reapply until the orientation changed.
+    failing = False
     try:
         while running:
             orientation = str(sensor_props.Get(SENSOR_IFACE,
                                                 "AccelerometerOrientation"))
-            transform = TRANSFORMS.get(orientation)
-            if transform is not None and transform != previous:
-                try:
-                    serial, monitors, logical, _props = \
-                        display_api.GetCurrentState()
+            transform = TRANSFORMS.get(orientation, DEFAULT_TRANSFORM)
+            try:
+                serial, monitors, logical, _props = \
+                    display_api.GetCurrentState()
+                if any(int(entry[3]) != transform for entry in logical):
                     mode_by_connector = {}
                     for monitor_spec, modes, _monitor_props in monitors:
                         connector = str(monitor_spec[0])
@@ -95,12 +106,16 @@ def main():
                     display_api.ApplyMonitorsConfig(
                         dbus.UInt32(serial), dbus.UInt32(1), configured,
                         {})
-                    previous = transform
                     print("dc1-orientation: %s -> transform %d" %
                           (orientation, transform), flush=True)
-                except dbus.DBusException as error:
+                failing = False
+            except dbus.DBusException as error:
+                # Print once per failure streak; the compositor being down
+                # (session start, greeter respawn) fails every 0.25 s tick.
+                if not failing:
                     print("dc1-orientation: Mutter update failed: %s" %
                           error, file=sys.stderr, flush=True)
+                failing = True
             time.sleep(0.25)
     finally:
         try:
