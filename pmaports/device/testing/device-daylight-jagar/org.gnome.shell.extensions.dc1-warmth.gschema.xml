@@ -2,15 +2,37 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.dc1-warmth"
           path="/org/gnome/shell/extensions/dc1-warmth/">
+    <key name="temperature" type="d">
+      <default>-1.0</default>
+      <range min="-1.0" max="1.0"/>
+      <summary>Frontlight colour temperature</summary>
+      <description>
+        Position of the temperature crossfade between the two frontlights.
+        The lower half ramps the amber channel from off to the full luminance
+        over an untouched white channel; the upper half dims the white channel,
+        reaching pure amber (white off) at 1. -1 means unset: the extension
+        migrates the legacy warmth ratio on first start.
+      </description>
+    </key>
+    <key name="luminance" type="d">
+      <default>-1.0</default>
+      <range min="-1.0" max="1.0"/>
+      <summary>Frontlight luminance</summary>
+      <description>
+        The overall frontlight level both channels are mixed from, as set by
+        GNOME's own brightness controls. Persisted by the extension because
+        the white channel's sysfs value stops being the luminance once the
+        temperature scales it down. -1 means unset: the extension adopts the
+        white channel's current level on first start.
+      </description>
+    </key>
     <key name="warmth" type="d">
       <default>0.0</default>
       <range min="0.0" max="1.0"/>
-      <summary>Amber frontlight ratio</summary>
+      <summary>Legacy amber frontlight ratio</summary>
       <description>
-        The amber frontlight as a fraction of the white one: the amber channel
-        is driven to this share of the white channel's current level, so the
-        tint holds while GNOME's brightness slider moves. 0 keeps the amber
-        light off, which is how the device boots.
+        The pre-temperature model: amber driven to this share of the white
+        channel. Read once to seed the temperature key; no longer written.
       </description>
     </key>
   </schema>

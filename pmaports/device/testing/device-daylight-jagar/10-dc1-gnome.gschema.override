@@ -27,8 +27,10 @@ sleep-inactive-battery-type='nothing'
 # The amber frontlight is a second RT4539 that GNOME cannot see: gsd-power
 # binds one backlight device per internal display (firmware > platform > raw,
 # first match), which is always the white channel. dc1-warmth adds the second
-# quick-settings slider for it, as a share of the white level so it reads as a
-# colour temperature. Enabled by default here; it is a user setting, so
+# quick-settings slider as a colour-temperature crossfade over one shared
+# luminance: pure white at 0, pure amber (white off) at 1, with GNOME's own
+# brightness controls setting the overall level. Enabled by default here; it
+# is a user setting, so
 # anything the user does in Extensions still wins.
 enabled-extensions=['dc1-warmth@denv.it']
 
