@@ -1,0 +1,22 @@
+# Daylight DC-1 built-in Wacom EMR digitizer, driven by the mainline
+# wacom_i2c driver (i2c9 address 0x09). The driver reports vendor 0x056a
+# with product 0; without this entry libwacom knows nothing about the
+# device, so mutter cannot classify it as display-integrated and GNOME
+# Settings shows an anonymous tablet. The pen is a passive EMR stylus
+# with one barrel button, pressure, and an eraser end (reported via
+# BTN_TOOL_RUBBER); no tilt, no distance, no touch (capacitive touch is
+# the separate ILI2910 controller).
+[Device]
+Name=Daylight DC-1 Pen
+ModelName=
+DeviceMatch=i2c|056a|0000
+Class=ISDV4
+Width=6
+Height=8
+IntegratedIn=Display;System
+Styli=@generic-with-eraser;
+
+[Features]
+Reversible=false
+Stylus=true
+Touch=false

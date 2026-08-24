@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=73
+pkgrel=74
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -90,6 +90,7 @@ source="
 	10-dc1-watchdog.conf
 	10-dc1-gnome.gschema.override
 	61-daylight-jagar-keyboard.hwdb
+	daylight-dc1.tablet
 	10-dc1-power.conf
 	49-device-daylight-jagar-sensors.rules
 	dc1-orientation
@@ -245,6 +246,12 @@ package() {
 	# bind in GNOME Settings; defaults live in the gschema override above.
 	install -Dm644 "$srcdir"/61-daylight-jagar-keyboard.hwdb \
 		"$pkgdir"/usr/lib/udev/hwdb.d/61-daylight-jagar-keyboard.hwdb
+
+	# libwacom entry for the built-in EMR digitizer: without it mutter
+	# cannot classify the pen as display-integrated and GNOME Settings
+	# shows an anonymous tablet with no stylus/eraser model.
+	install -Dm644 "$srcdir"/daylight-dc1.tablet \
+		"$pkgdir"/usr/share/libwacom/daylight-dc1.tablet
 
 
 	# The amber frontlight's quick-settings slider. GNOME binds exactly one
@@ -410,6 +417,7 @@ b1174064ea306ae9a6ba19b96d8f14fc54a704d58c33ff0acc29e25e3feee60c981953d8e5bfacb9
 0e7762a93506f1ec322ed7ca16469f1705d0e712716d87edbc121061ce7e3f2185d1b7beaf52c6c9380375accc7f038b37f52662515a4a981a781304d433e8d2  10-dc1-watchdog.conf
 9932082182d5ae7a6c2155643e55485b3cac1209776893a2c8bb1b323c3b317cc2952b0f2e319b8641b48df197e5f6e397e25207285ac0a137930b4d86dc9548  10-dc1-gnome.gschema.override
 35ed4afb186d649ece52f36dc2d1b9df640f07aaf796f3ea4a63805b7aa24674fba9b945694d0e6863f15908de91931e8766010a2e34b19bbea52e2f2006dbfd  61-daylight-jagar-keyboard.hwdb
+d6aec155af0def9a5b480a60e713aeee0738271bfe85c397ec1f23fda73359e9280b6f3332f02e4801d940005610b4c71a82820afb3e7865ca4345cb32ff6105  daylight-dc1.tablet
 50dfd0ea25c80a97c1625dbf6dc42a8c114148cadafa20e21d210a9ea8c224e0069a75251ce11e427b51b50896929c833166988855a2c96deef03e6d3b94eb58  10-dc1-power.conf
 27d1223ba673ee4639d12a7eb2bf7b24e8baf549c3eca7dc943d2e26d30aa094fcb3d22db7d15ac150329100e4af68443ef8324e4af919612bc43b262734abec  49-device-daylight-jagar-sensors.rules
 933a723de2bc889cff35cd190d000b3b1656b0ba17b987ba6f7e9f9de41ab9c16a26b87cbf2adee5ff5d841de9068d7ac60a0177e789736c21b98591c292a9ba  dc1-orientation
