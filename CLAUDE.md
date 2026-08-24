@@ -218,6 +218,30 @@ Audio invariants (measured 2026-08-17..22):
   it there is no server at `$XDG_RUNTIME_DIR/pulse/native` and
   gnome-shell/g-c-c get connection refused).
 
+Display/DSI invariants (measured 2026-08-24):
+
+- **Kernel logs do not prove the panel is lit.** Short DCS writes complete
+  host-side without a panel ACK, so the whole pipeline can report a clean
+  power-on -- `production power sequence complete`, `first DSI frame
+  complete`, frame-done IRQs -- while the glass is uniformly white. White
+  is the resting state of this normally-white LCD with the backlight on
+  and no drive.
+- The only trustworthy liveness signals are the TE line on GPIO83
+  (`gpiomon -c gpiochip0 83`; ~200 edges/2 s when the panel TCON runs, 0
+  when it does not) and a DCS read of `0x0a`, where `0x9c` is
+  booster|sleep-out|normal|display-on. Verify display work against those,
+  never against dmesg.
+- A DCS read that times out latches the DSI handoff state machine into its
+  failed phase, and the pipeline then refuses every re-enable until
+  reboot. Only probe a state you are willing to lose.
+- `DSI_SW_CTL_EN` in MIPI-TX must be **clear** while the link is running:
+  it parks a lane under software control and disconnects its pad from the
+  DSI controller. All five lanes matter -- D0/D1/D2/CK and the real D3
+  block at `0x0544`. LK leaves the PLL running, so
+  `mtk_mipi_tx_pll_prepare()` early-returns on boot and its cold path is
+  exercised only by a DPMS off/on cycle; a bug living there is invisible
+  until something relights the panel.
+
 ## Repository map
 
 - `pmaports/device/testing/` — the three local APKBUILD overlays and their
