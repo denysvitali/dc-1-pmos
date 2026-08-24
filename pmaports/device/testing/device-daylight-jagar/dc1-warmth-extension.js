@@ -11,13 +11,24 @@
 //
 // Two channels over one panel are physically a luminance and a mix, so the
 // controls are factored that way: GNOME's brightness slider is the luminance,
-// this slider is the temperature. The temperature is a piecewise crossfade --
-// the lower half ramps the amber channel from off to the full luminance over
-// an untouched white channel, the upper half then dims the white channel,
-// reaching pure amber with the white ("blue") light fully OFF at the top.
+// this slider is the temperature. The temperature is a crossfade -- the lower
+// half ramps the amber channel up over an untouched white channel, the upper
+// half dims the white channel, reaching pure amber with the white ("blue")
+// light fully OFF at the top:
 //
-//   amberShare(t) = min(2t, 1)         whiteShare(t) = min(2(1-t), 1)
-//   amber = L * amberShare * amberMax  white = L * whiteShare * whiteMax
+//   amber = clamp(2t * L, 0, 1) * amberMax
+//   white = clamp(min(2(1-t), 1) * L, 0, 1) * whiteMax
+//
+// One formula covers both halves, and through the upper half the channel SUM
+// is constant at 2L: every count the white channel loses, the amber channel
+// gains. Without that compensation (amber capped at L) the top of the slider
+// halved the total light and read as "the backlight turned off" rather than
+// "the light turned amber" -- measured 2026-08-25, L=0.384: white 98 + amber
+// 98 at mid, amber 98 alone at max; now amber reaches 196 at max. When
+// 2L > 1 the amber channel saturates before the top and the total dips over
+// the last stretch; that is the hardware ceiling, not a bug. t above 0.98
+// snaps to 1 because slider drags rarely land exactly on the end stop, and a
+// residual white of 1-2 counts defeats the whole point of "white off".
 //
 // The luminance L cannot simply be read back from the white channel: once the
 // upper half of the slider scales white down, the sysfs value is L*whiteShare,
@@ -30,9 +41,11 @@
 // writes (the backlight core emits a change uevent on every sysfs store, and
 // gsd tracks it). Every white write this extension makes therefore comes back
 // as a PropertiesChanged echo. Echoes are told apart from genuine gsd writes
-// by value: if the white sysfs file still holds exactly what we last wrote,
+// by value: if the white sysfs file still holds a value we recently wrote,
 // the signal is our own reflection and is dropped; anything else means gsd
-// (slider, brightness keys) wrote it and carries a new luminance. Two costs
+// (slider, brightness keys) wrote it and carries a new luminance. While our
+// own white writes are still in flight the comparison is meaningless, so the
+// follow pass defers until the queue drains. Two costs
 // follow from gsd's echo-tracking and are accepted: with the temperature past
 // half, GNOME's slider displays the scaled white value rather than L, and at
 // full amber a GNOME brightness change flashes white for ~SETTLE_MS before
@@ -98,6 +111,22 @@ class Channel {
         this.written = null;
         this._writing = false;
         this._queued = null;
+        // Values we recently stored, kept so their uevent echoes can be told
+        // apart from genuine external writes. Each echo consumes its entry;
+        // the cap only bounds leftovers from coalesced echoes.
+        this._recent = [];
+    }
+
+    get busy() {
+        return this._writing || this._queued !== null;
+    }
+
+    consumeEcho(value) {
+        const index = this._recent.indexOf(value);
+        if (index < 0)
+            return false;
+        this._recent.splice(index, 1);
+        return true;
     }
 
     write(value) {
@@ -112,10 +141,14 @@ class Channel {
         this._writing = true;
         this._controller.setBrightness(this.name, value, retry => {
             this._writing = false;
-            if (retry)
+            if (retry) {
                 this._queued = value;
-            else
+            } else {
                 this.written = value;
+                this._recent.push(value);
+                if (this._recent.length > 16)
+                    this._recent.shift();
+            }
 
             const queued = this._queued;
             this._queued = null;
@@ -172,25 +205,37 @@ class WarmthController {
 
     // A gsd Brightness change landed. Either it is the echo of our own white
     // write coming back through the backlight uevent, or gsd really wrote the
-    // white channel and the value is the user's new luminance.
+    // white channel and the value is the user's new luminance. Returns true
+    // when the caller should try again later: while our own writes are in
+    // flight the sysfs value proves nothing.
     followGsd() {
+        if (this.white.busy)
+            return true;
         const white = backlightValue(WHITE, 'brightness');
         if (white === null)
-            return;
-        if (white === this.white.written)
-            return;
+            return false;
+        if (white === this.white.written || this.white.consumeEcho(white))
+            return false;
+        // Genuine external write. Forget our stale last-written value, or a
+        // recomputed white that happens to equal it would be skipped and
+        // gsd's value would be left standing.
+        this.white.written = null;
         this.adoptLuminanceFromWhite();
+        return false;
     }
 
     apply() {
-        const t = this._temperature;
-        const amberShare = Math.min(2 * t, 1);
-        const whiteShare = Math.min(2 * (1 - t), 1);
+        // Drags rarely land exactly on the end stop; a residual white of a
+        // count or two defeats "white off at max".
+        const t = this._temperature > 0.98 ? 1 : this._temperature;
+        const L = this._luminance;
 
-        const amber = Math.round(this._luminance * amberShare * this.amber.max);
-        const white = Math.round(this._luminance * whiteShare * this.white.max);
-        this.amber.write(Math.min(Math.max(amber, 0), this.amber.max));
-        this.white.write(Math.min(Math.max(white, 0), this.white.max));
+        // Constant-sum crossfade (see the header): amber gains every count
+        // white loses, so warmth never reads as the light dying.
+        const amber = Math.round(clamp01(2 * t * L) * this.amber.max);
+        const white = Math.round(clamp01(Math.min(2 * (1 - t), 1) * L) * this.white.max);
+        this.amber.write(Math.min(amber, this.amber.max));
+        this.white.write(Math.min(white, this.white.max));
     }
 
     setBrightness(name, value, done) {
@@ -398,7 +443,8 @@ export default class DC1WarmthExtension extends Extension {
             GLib.source_remove(this._followId);
         this._followId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SETTLE_MS, () => {
             this._followId = 0;
-            this._controller?.followGsd();
+            if (this._controller?.followGsd())
+                this._scheduleFollow();
             return GLib.SOURCE_REMOVE;
         });
     }
