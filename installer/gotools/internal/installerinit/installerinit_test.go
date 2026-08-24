@@ -233,6 +233,25 @@ func TestGateBindsGCEBeforeTouchingThePanel(t *testing.T) {
 	}
 }
 
+func TestGateUsesMainlineGCEPlatformDeviceName(t *testing.T) {
+	f := newFake()
+	f.present[panelParams] = true
+	f.present[mainlineGCEDevice] = true
+	if err := OpenGate(f, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	probe := indexOf(t, f.calls, "write /sys/bus/platform/drivers_probe="+mainlineGCEName)
+	wait := indexOf(t, f.calls, "wait "+mainlineGCEDevice+"/driver")
+	if probe > wait {
+		t.Fatalf("waited for mainline GCE before probing it:\n%s", strings.Join(f.calls, "\n"))
+	}
+	for _, call := range f.calls {
+		if strings.Contains(call, "drivers_probe="+stockGCEName) {
+			t.Fatalf("used stock GCE name on the mainline tree:\n%s", strings.Join(f.calls, "\n"))
+		}
+	}
+}
+
 // A gate failure must name the step, because "gate failed" alone has cost
 // debugging time.
 func TestGateFailureNamesTheStep(t *testing.T) {

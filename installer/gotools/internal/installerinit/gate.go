@@ -26,15 +26,19 @@ import (
 // Nothing here touches storage: the gate is module parameters and
 // deferred-probe pokes, and it resets on every reboot.
 const (
-	panelParams = "/sys/module/panel_novatek_nt36523/parameters"
-	skipClient  = "/sys/module/mediatek_drm/parameters/jagar_skip_drm_client"
-	gceParam    = "/sys/module/mtk_cmdq_mailbox/parameters/jagar_mt6789_probe_stage"
-	gceDriver   = "/sys/bus/platform/devices/10228000.gce/driver"
-	dsiDevice   = "/sys/bus/mipi-dsi/devices/14013000.dsi.0"
-	prodSeq     = "/sys/module/panel_novatek_nt36523/parameters/jagar_production_sequence"
-	probeStage  = "/sys/module/panel_novatek_nt36523/parameters/jagar_probe_stage"
-	cardNode    = "/dev/dri/card0"
-	backlight   = "/sys/class/backlight/lcd-backlight/brightness"
+	panelParams       = "/sys/module/panel_novatek_nt36523/parameters"
+	skipClient        = "/sys/module/mediatek_drm/parameters/jagar_skip_drm_client"
+	gceParam          = "/sys/module/mtk_cmdq_mailbox/parameters/jagar_mt6789_probe_stage"
+	platformDevices   = "/sys/bus/platform/devices/"
+	stockGCEName      = "10228000.gce"
+	mainlineGCEName   = "10228000.mailbox"
+	gceDriver         = platformDevices + stockGCEName + "/driver"
+	mainlineGCEDevice = platformDevices + mainlineGCEName
+	dsiDevice         = "/sys/bus/mipi-dsi/devices/14013000.dsi.0"
+	prodSeq           = "/sys/module/panel_novatek_nt36523/parameters/jagar_production_sequence"
+	probeStage        = "/sys/module/panel_novatek_nt36523/parameters/jagar_probe_stage"
+	cardNode          = "/dev/dri/card0"
+	backlight         = "/sys/class/backlight/lcd-backlight/brightness"
 )
 
 // GateStep is one action in the sequence. Exactly one of Write/WaitFor is set.
@@ -57,10 +61,17 @@ type GateStep struct {
 	SkipIfExists string
 }
 
-// GateSequence is the gate in the order the C performed it. Kept as data so a
-// test can assert the order without a panel: get this wrong and the device
-// does not boot, which is not a thing to discover on hardware.
-func GateSequence() []GateStep {
+// GateSequence is the stock-tree gate in the order the C performed it. Kept as
+// data so a test can assert the order without a panel: get this wrong and the
+// device does not boot, which is not a thing to discover on hardware.
+func GateSequence() []GateStep { return gateSequence(stockGCEName) }
+
+// gateSequence also serves the mainline tree used by dtbswap. The same GCE
+// hardware is named 10228000.gce by the stock tree and 10228000.mailbox by the
+// mainline tree; probing the wrong platform-device name fails with ENODEV
+// before the panel gate can open.
+func gateSequence(gceName string) []GateStep {
+	gceDriverPath := platformDevices + gceName + "/driver"
 	return []GateStep{
 		{
 			Why:  "tell mediatek-drm to skip its intermediate DRM client, so no fbdev helper performs the first modeset and the first real KMS client (us) gets the panel",
@@ -68,16 +79,16 @@ func GateSequence() []GateStep {
 		},
 		{
 			Why:  "bind GCE/CMDQ before the panel gate: opening the panel first pulls the dependent DRM chain in synchronously and can wedge the interconnect",
-			Path: gceParam, Value: "4\n", SkipIfExists: gceDriver,
+			Path: gceParam, Value: "4\n", SkipIfExists: gceDriverPath,
 		},
 		{
 			Why:  "poke the deferred probe for GCE",
-			Path: "/sys/bus/platform/drivers_probe", Value: "10228000.gce\n",
-			SkipIfExists: gceDriver,
+			Path: "/sys/bus/platform/drivers_probe", Value: gceName + "\n",
+			SkipIfExists: gceDriverPath,
 		},
 		{
 			Why:  "GCE must actually bind before the panel is touched",
-			Path: gceDriver, WaitFor: 5 * time.Second, SkipIfExists: gceDriver,
+			Path: gceDriverPath, WaitFor: 5 * time.Second, SkipIfExists: gceDriverPath,
 		},
 		{
 			Why:  "the DSI panel device has to enumerate before it can be gated on",
@@ -112,7 +123,11 @@ func OpenGate(ops Ops, log io.Writer) error {
 	if !ops.Exists(panelParams) {
 		return fmt.Errorf("no panel driver at %s (wrong kernel?)", panelParams)
 	}
-	for _, step := range GateSequence() {
+	gceName := stockGCEName
+	if ops.Exists(mainlineGCEDevice) {
+		gceName = mainlineGCEName
+	}
+	for _, step := range gateSequence(gceName) {
 		if step.SkipIfExists != "" && ops.Exists(step.SkipIfExists) {
 			continue
 		}
