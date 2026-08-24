@@ -1,0 +1,8 @@
+{
+  "uuid": "dc1-safe-area@denv.it",
+  "name": "DC-1 Safe Area",
+  "description": "Pads the top bar and on-screen keyboard away from the DC-1 bezel, which overlaps the outer ~10 device pixels of the panel on every edge.",
+  "shell-version": ["48"],
+  "session-modes": ["user", "unlock-dialog"],
+  "url": "https://github.com/denysvitali/dc-1-pmos"
+}

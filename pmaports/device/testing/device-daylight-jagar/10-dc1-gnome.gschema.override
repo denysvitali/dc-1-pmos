@@ -37,7 +37,11 @@ sleep-inactive-battery-type='nothing'
 # 48-based fork running against gnome-session >= 50 (CanShutdown reply
 # changed from boolean to a uint32 availability enum). Drop it together
 # with the extension when gnome-shell-mobile rebases onto GNOME >= 50.
-enabled-extensions=['dc1-warmth@denv.it', 'dc1-session-compat@denv.it']
+#
+# dc1-safe-area pads the top bar and on-screen keyboard away from the
+# bezel, which overlaps the outer ~10 device px of the panel on every edge
+# (measured 2026-08-25 with on-glass calibration rulers).
+enabled-extensions=['dc1-warmth@denv.it', 'dc1-session-compat@denv.it', 'dc1-safe-area@denv.it']
 
 [org.gnome.shell.keybindings]
 # The two spare side buttons, remapped by 61-daylight-jagar-keyboard.hwdb to

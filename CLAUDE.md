@@ -241,6 +241,13 @@ Display/DSI invariants (measured 2026-08-24):
   `mtk_mipi_tx_pll_prepare()` early-returns on boot and its cold path is
   exercised only by a DPMS off/on cycle; a bug living there is invisible
   until something relights the panel.
+- The bezel overlaps the outer ~10 device px of the 1200x1600 panel on
+  every edge, and the lit area's corners are rounded (~30-40 px radius);
+  measured 2026-08-25 with on-glass calibration rulers. The full mode is
+  correct -- do not shrink the DSI timings to compensate. Edge-flush UI is
+  handled by the `dc1-safe-area` shell extension in the device package;
+  other shipped UI should keep a >=12 device px margin (~40 px in
+  corners).
 
 ## Repository map
 
