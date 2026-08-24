@@ -73,3 +73,17 @@ idle-delay=0
 # locking is unaffected: screenShield.lock() consults
 # org.gnome.desktop.lockdown disable-lock-screen, not this key.
 lock-enabled=true
+
+[org.gnome.desktop.a11y.applications]
+# The DC-1 has no built-in keyboard, and GDM's greeter has no other text
+# input: its dconf profile reads only the gdm user db and gdm's own
+# greeter-dconf-defaults (which carries no a11y keys), so the greeter falls
+# back to this schema default. Left at false, any logout strands the device
+# on a password prompt that cannot be typed -- autologin only fires once per
+# gdm daemon start, so it does not re-trigger after a normal logout
+# (recovery is `systemctl restart gdm`, which needs a root shell the greeter
+# cannot give you). Measured 2026-08-25 on this device. As a schema default
+# it also gives the dc1 session an on-screen keyboard, which is correct for
+# a keyboard-less tablet; GNOME suppresses it while a physical keyboard is
+# attached, and Settings > Accessibility still wins.
+screen-keyboard-enabled=true
