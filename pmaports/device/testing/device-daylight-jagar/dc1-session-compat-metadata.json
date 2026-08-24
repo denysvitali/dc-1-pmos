@@ -1,0 +1,8 @@
+{
+  "uuid": "dc1-session-compat@denv.it",
+  "name": "DC-1 Session Compat",
+  "description": "Restores Power Off / Restart when a 48-based shell runs against gnome-session >= 50, whose CanShutdown reply changed from a boolean to a uint32 availability enum.",
+  "shell-version": ["48"],
+  "session-modes": ["user", "unlock-dialog"],
+  "url": "https://github.com/denysvitali/dc-1-pmos"
+}

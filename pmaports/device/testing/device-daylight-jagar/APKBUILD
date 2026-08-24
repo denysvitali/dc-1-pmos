@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=66
+pkgrel=67
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -98,6 +98,8 @@ source="
 	dc1-warmth-extension.js
 	dc1-warmth-metadata.json
 	org.gnome.shell.extensions.dc1-warmth.gschema.xml
+	dc1-session-compat-extension.js
+	dc1-session-compat-metadata.json
 	dc1-link-apk-keys.service
 	dc1-first-boot
 	dc1-first-boot.service
@@ -249,6 +251,16 @@ package() {
 	install -Dm644 "$srcdir"/org.gnome.shell.extensions.dc1-warmth.gschema.xml \
 		"$pkgdir"/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.dc1-warmth.gschema.xml
 
+	# gnome-session 50 changed CanShutdown to return a uint32 availability
+	# enum; the 48-based mobile shell expects a boolean, rejects the reply,
+	# and loses Power Off / Restart. This extension patches the one broken
+	# method (the rest of the shutdown flow is version-compatible). Drop it
+	# when gnome-shell-mobile rebases onto GNOME >= 50.
+	install -Dm644 "$srcdir"/dc1-session-compat-extension.js \
+		"$pkgdir"/usr/share/gnome-shell/extensions/dc1-session-compat@denv.it/extension.js
+	install -Dm644 "$srcdir"/dc1-session-compat-metadata.json \
+		"$pkgdir"/usr/share/gnome-shell/extensions/dc1-session-compat@denv.it/metadata.json
+
 	# Suspend is not merely unsupported here, it is harmful: the s2idle path
 	# aborts after ~20 s with user-space tasks refusing to freeze and returns
 	# with the panel dark. Masking the sleep targets makes logind answer
@@ -387,7 +399,7 @@ e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99c
 600ec4b336e7b98658f1835dc7c776152a4208b451774b7d71a02defc49b8a1c48f85c40cf6ecb9146672ac1d083fb8dfad33af73dae7212a47f625a78ffafeb  80-device-daylight-jagar.preset
 bd385f9e00a6b72922567c567698ee9ab8aea5de2d21c1fe2d373b0c361376570202c79c1ed3a7f021c5b5684ffcea7d99d1afb21c70924f19fc0eeef1fa7119  90-device-daylight-jagar.rules
 0e7762a93506f1ec322ed7ca16469f1705d0e712716d87edbc121061ce7e3f2185d1b7beaf52c6c9380375accc7f038b37f52662515a4a981a781304d433e8d2  10-dc1-watchdog.conf
-ea98bf039f21b873d5530121f4354e1b999fcb352e9830b4744f266490fe1467f20285266a9d5e6a90103fa4cf26ed63b75398b4961342162bb85b01137a57d6  10-dc1-gnome.gschema.override
+fe0c8f6e508672aa3ceead06165267936d57e5f70a2bee1cff69ad86d1f127569145ad4de29808dc6ac91e5d2d6860433a4c533883b1486406451f75def1c73a  10-dc1-gnome.gschema.override
 35ed4afb186d649ece52f36dc2d1b9df640f07aaf796f3ea4a63805b7aa24674fba9b945694d0e6863f15908de91931e8766010a2e34b19bbea52e2f2006dbfd  61-daylight-jagar-keyboard.hwdb
 50dfd0ea25c80a97c1625dbf6dc42a8c114148cadafa20e21d210a9ea8c224e0069a75251ce11e427b51b50896929c833166988855a2c96deef03e6d3b94eb58  10-dc1-power.conf
 c7cb091033e7c169d30ece81da335fcd47355e1a93661bfc07dcdee144a28b7e3828359d3d6b7307bf84dfa315b6c84f564e27e5c4ecf99b0fd9e012dc8410d0  49-device-daylight-jagar-sensors.rules
@@ -395,8 +407,10 @@ c1c2d3cb63d413e8de49e5137a2dfa97fb10837a2e223d20c0ddff30047ec5aa251365b240189c77
 6e87612caf150110b4d2ee09ab949c0ea2ed61f0b9241262cbd13bde484ee9068fb05a27d0f40b76c854bd2f35080470ebe5e252c392aaa296b3f451d9054aa2  dc1-orientation.service
 9ba63fe59f355b45cfc5dbad15a9e4a94d571b28eaf6b09af040be110f080ba01fccc79f96f5ff40beabc9a76e1677fb1e0fd6359f1c03f4465543cad710026b  net.hadess.SensorProxy.service
 ff74a6f88c075b77aa9b8adec49fc3f8fa1cca4f5073a794c62b46364585f6d9c6b7f44259a459c0c428cbf55db6ed3191d39a6c5ab1340aaf5196d5b4af4fa9  dc1-warmth-extension.js
-90979c3b358c57256eed9a577b159725c2711e94f20e38e76528f8d527aece42c8ea2cb38ec2c3bda00e08682908e8b499453394d36ba176a9ec10f8274bc27c  dc1-warmth-metadata.json
+97be64b0f2b506c5874fea54235bae0cc1a28838fbd82f75f469ea630af2e34444a363294c6f46b7451a5a654db2984955e64c45a7e0af438957dc37d1a98230  dc1-warmth-metadata.json
 d891928b58bbac1db36cbe2c9d0b182e24d69f4e65cb88817aa42b6be066d989c068528269e23387225d3590f412616525a486969f389bb54408d369687ce578  org.gnome.shell.extensions.dc1-warmth.gschema.xml
+fea6f2c93ed019f7f987859d4af37db05781589bac81503f0ace0c69350f9608e3b55afaa3fc52fd5db29265fd79806bb5acb31a49c80ebf7ac10259dce2ccba  dc1-session-compat-extension.js
+6496fb546585b9668788f91858817a16f3efb28a3fb4676fff5676153a0699288fbdfc38603be46535ebf937357599401276962e1cd7b5c79bae0f8be22c0eb2  dc1-session-compat-metadata.json
 a5f6eac3097cd87c93b44334716c27b1110e9ebdd548abaa66c4afd63ba3c62ad4375859819a85254b69da0432d5279e81cb0f07453e00054efa9d7499b44aa0  dc1-link-apk-keys.service
 b3f2c3dd4ff5de3a98038661a95b12572ce6e68a4f5b895c951d1be9cf0f2da20a88039d34c707d4ebf39d359347bb3a759e5d9ab44e3c35c09ce718612a847a  dc1-first-boot
 128fecc2dc6a293971c8e3694505895e2a4a76be6d1866f78c37ba0f472aa3e01d01298f3d7dada6efd291149a41dfc3d4efd686b70d756c346ca95a44349b3d  dc1-first-boot.service

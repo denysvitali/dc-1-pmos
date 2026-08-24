@@ -32,7 +32,12 @@ sleep-inactive-battery-type='nothing'
 # brightness controls setting the overall level. Enabled by default here; it
 # is a user setting, so
 # anything the user does in Extensions still wins.
-enabled-extensions=['dc1-warmth@denv.it']
+#
+# dc1-session-compat restores Power Off / Restart while the shell is a
+# 48-based fork running against gnome-session >= 50 (CanShutdown reply
+# changed from boolean to a uint32 availability enum). Drop it together
+# with the extension when gnome-shell-mobile rebases onto GNOME >= 50.
+enabled-extensions=['dc1-warmth@denv.it', 'dc1-session-compat@denv.it']
 
 [org.gnome.shell.keybindings]
 # The two spare side buttons, remapped by 61-daylight-jagar-keyboard.hwdb to
