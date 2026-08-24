@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=65
+pkgrel=66
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -219,6 +219,9 @@ package() {
 		"$pkgdir"/usr/libexec/dc1-orientation
 	install -Dm644 "$srcdir"/dc1-orientation.service \
 		"$pkgdir"/usr/lib/systemd/user/dc1-orientation.service
+	install -d "$pkgdir"/usr/lib/systemd/user/default.target.wants
+	ln -s ../dc1-orientation.service \
+		"$pkgdir"/usr/lib/systemd/user/default.target.wants/dc1-orientation.service
 
 	# The power key must not reach a sleep path, and must not blank a panel
 	# whose frontlight stays lit: logind ignores the keys, and the gschema
