@@ -45,11 +45,21 @@
 // the signal is our own reflection and is dropped; anything else means gsd
 // (slider, brightness keys) wrote it and carries a new luminance. While our
 // own white writes are still in flight the comparison is meaningless, so the
-// follow pass defers until the queue drains. Two costs
+// follow pass defers until the queue drains.
+//
+// gsd cannot be stopped from writing its percentage straight into the white
+// channel before we ever see it, so at high temperature every GNOME
+// brightness change starts as a flash of blue. To keep that flash short the
+// extension does not wait for the change stream to go idle: each
+// PropertiesChanged carries the new percent in its payload, and a genuine one
+// (percent not matching any recent write of ours) is adopted as the luminance
+// immediately, followed by a short burst of re-asserts (~0/80/160/280 ms)
+// that overwrite gsd's white value as soon as it lands. The idle, sysfs-based
+// follow pass remains the final authority after the stream stops. Two costs
 // follow from gsd's echo-tracking and are accepted: with the temperature past
 // half, GNOME's slider displays the scaled white value rather than L, and at
-// full amber a GNOME brightness change flashes white for ~SETTLE_MS before
-// the follow-up write turns it back off.
+// full amber a GNOME brightness change still flashes white for the few tens
+// of milliseconds it takes the first re-assert to overwrite it.
 //
 // Writes go through logind's Session.SetBrightness, which any process in an
 // active seat session may call -- no root, no setuid helper, no udev rule, and
@@ -78,6 +88,10 @@ const SETTLE_MS = 200;
 // Drag emits notify::value per frame. The hardware follows every one of them;
 // only the dconf writes are debounced.
 const PERSIST_MS = 400;
+// After a genuine gsd brightness change, overwrite gsd's white value as soon
+// as it lands: it may arrive before or after our first corrective write, so a
+// short burst of re-asserts brackets the landing window.
+const REASSERT_DELAYS_MS = [0, 80, 160, 280];
 
 function readInt(path) {
     try {
@@ -129,6 +143,18 @@ class Channel {
         return true;
     }
 
+    // Would gsd's percent-granular Brightness property, tracking one of our
+    // own recent writes, read as this percent? Tolerance covers gsd's
+    // rounding; a genuine change that lands within it is only delayed, not
+    // lost -- the idle sysfs pass compares exact counts.
+    matchesPercent(percent) {
+        if (this.max <= 0)
+            return false;
+        const candidates = this.written === null
+            ? this._recent : [this.written, ...this._recent];
+        return candidates.some(v => Math.abs(v * 100 / this.max - percent) <= 1.5);
+    }
+
     write(value) {
         if (value === this.written)
             return;
@@ -169,7 +195,14 @@ class WarmthController {
         this._temperature = 0;
         this._luminance = 0;
         this._sessionPath = null;
+        this._reassertIds = new Set();
         this.onLuminanceAdopted = null;
+    }
+
+    destroy() {
+        for (const id of this._reassertIds)
+            GLib.source_remove(id);
+        this._reassertIds.clear();
     }
 
     get available() {
@@ -201,6 +234,32 @@ class WarmthController {
         this._luminance = clamp01(white / this.white.max);
         this.onLuminanceAdopted?.(this._luminance);
         this.apply();
+    }
+
+    // A Brightness percent arrived in a PropertiesChanged payload. If it is
+    // not the reflection of one of our own writes, it is gsd acting on the
+    // user (slider, brightness keys): adopt it as the luminance right away
+    // and burst-re-assert so gsd's white write is overwritten as soon as it
+    // lands, instead of standing in full blue until the stream goes idle.
+    followGsdPercent(percent) {
+        if (this.white.matchesPercent(percent))
+            return;
+        this._luminance = clamp01(percent / 100);
+        this.onLuminanceAdopted?.(this._luminance);
+        for (const id of this._reassertIds)
+            GLib.source_remove(id);
+        this._reassertIds.clear();
+        for (const delay of REASSERT_DELAYS_MS) {
+            const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
+                this._reassertIds.delete(id);
+                // Drop the write cache: gsd may have overwritten sysfs with a
+                // value equal to our cached one, which write() would skip.
+                this.white.written = null;
+                this.apply();
+                return GLib.SOURCE_REMOVE;
+            });
+            this._reassertIds.add(id);
+        }
     }
 
     // A gsd Brightness change landed. Either it is the echo of our own white
@@ -385,13 +444,24 @@ export default class DC1WarmthExtension extends Extension {
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
 
         // Follow GNOME's own brightness: gsd writes the white channel, the
-        // extension adopts it as the new luminance (followGsd drops the
-        // echoes of our own writes).
+        // extension adopts it as the new luminance. The percent in the signal
+        // payload drives the immediate reaction (followGsdPercent); the
+        // debounced sysfs pass (followGsd) verifies once the stream is idle.
         this._brightnessId = Gio.DBus.session.signal_subscribe(
             'org.gnome.SettingsDaemon.Power', 'org.freedesktop.DBus.Properties',
             'PropertiesChanged', '/org/gnome/SettingsDaemon/Power',
             'org.gnome.SettingsDaemon.Power.Screen', Gio.DBusSignalFlags.NONE,
-            () => this._scheduleFollow());
+            (connection, sender, path, iface, signal, params) => {
+                try {
+                    const [, changed] = params.deepUnpack();
+                    const percent = changed['Brightness']?.deepUnpack();
+                    if (typeof percent === 'number')
+                        this._controller?.followGsdPercent(percent);
+                } catch (e) {
+                    logError(e, 'dc1-warmth: unreadable Brightness change');
+                }
+                this._scheduleFollow();
+            });
     }
 
     disable() {
@@ -413,6 +483,7 @@ export default class DC1WarmthExtension extends Extension {
         this._indicator?.quickSettingsItems.forEach(item => item.destroy());
         this._indicator?.destroy();
         this._indicator = null;
+        this._controller?.destroy();
         this._controller = null;
         this._settings = null;
     }
