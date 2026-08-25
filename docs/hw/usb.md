@@ -1,0 +1,60 @@
+# USB gadget and configfs — measurement record
+
+Deep-dive for the status-table rows *USB gadget* and *configfs teardown*
+in [docs/status.md](../status.md). The exposure/ownership consequences of
+these channels are documented in [../security.md](../security.md).
+
+## USB gadget
+
+Serial console works (`/dev/ttyGS0`, `ttyGS1`); USB ethernet and SSH over
+USB did **not** at first, and an earlier "Works" here was wrong.
+`dc1-usb-gadget` reused the gadget the initramfs leaves behind on the
+assumption that it is "identical" to the one it builds. It is not: on a
+plain (non-installer) boot the handed-off `g1` carried `acm.0` and
+`acm.1` and no `ecm.0` at all (observed 2026-08-17), so rebinding the UDC
+produced the two ACM ttys and never a `usb0`. The service still reported
+success, because the wait for `usb0` ran in a background subshell that
+`exit 0`-ed when the interface was missing. Both are fixed in device
+pkgrel=34: the existing tree is completed in place (`ensure_ecm`) before
+the bind, and the `usb0` wait is in the foreground and fatal.
+
+It must be the **only** UDC owner: `usb-signaller` (from
+`postmarketos-usb-moded`) starts afterwards, cannot classify our
+functions, tries to switch the UDC to its own gadget, and wedges in
+configfs; the device package masks it and its three mode units.
+
+**2026-08-22 evening: the fix confirmed itself on a real boot** — the
+handed-off tree was completed in place to `acm.0`+`acm.1`+`ecm.0`, all
+linked into `c.1`; the UDC bound cleanly at t=7.26 s after the initramfs
+unbind; `usb0` came up UP at 172.16.42.1/24 with the pinned MAC pair;
+`usb-signaller` and its three mode units all masked; configfs healthy
+(shallow single-level listings only — the D-state wedge is avoided, never
+provoked).
+
+**Re-measured 2026-08-26 (running r76/r37 boot):** `usb0` exists and is
+administered (NO-CARRIER with no host attached — expected on battery
+without a USB peer), and the interface set survived the boot intact.
+
+What remains for ✅ is plugging a USB host into the port and proving SSH
+over ECM end-to-end — tracked in [../roadmap.md](../roadmap.md).
+
+## configfs teardown
+
+The gadget teardown used to unbind the UDC, unlink the functions, then
+`rmdir` bottom-up, on the theory that the uninterruptible hangs came from
+removals arriving out of order. They do not. Measured on hardware
+2026-08-17: with the UDC cleanly unbound, every function unlinked from
+`c.1`, the configs already removed, and **no process holding
+`/dev/ttyGS0` or `ttyGS1` open**, `rmdir functions/acm.0` still entered D
+state and stayed there. It cannot be signalled (`SIGKILL` was ignored),
+so the mount is wedged for the rest of the boot, and because it holds the
+parent directory's lock every later configfs access blocks behind it — a
+plain recursive `find` over `usb_gadget/` hung immediately. That is the
+same wedge previously blamed on `usb-signaller`'s removal order, and it
+is what failed the suspend freezer, since a D-state task can never be
+frozen. So nothing removes gadget objects any more: `stop` unbinds the
+UDC and leaves the tree standing, and `start` reuses and completes it.
+Rebuilding the tree, if it is ever actually needed, means a reboot.
+
+Operational rule derived from this: never walk the configfs gadget tree
+recursively on this device; inspect only shallow single-level listings.

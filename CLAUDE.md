@@ -289,8 +289,15 @@ Display/DSI invariants (measured 2026-08-24):
 - `boot/mkboot/` — Go Android boot/vendor_boot v4 tooling and Python verifier.
 - `boot/repack-boot.sh` — minimal production boot-image packer.
 - `docs/` — installation, status, debugging (`docs/debugging.md`), and the
-  narrowly scoped preloader-recovery procedure. `README.md` is the
-  user-facing quickstart and safety warning.
+  narrowly scoped preloader-recovery procedure. `docs/status.md` is the
+  compact verdict table plus board reference; the per-subsystem
+  measurement records live in `docs/hw/` (`display`, `input`, `audio`,
+  `wireless`, `usb`, `power`, `suspend`, `thermal`, `sensors`, `storage`)
+  and `docs/gnome.md` (desktop stack). `docs/roadmap.md` is the
+  definition-of-done with hardware-session runbooks, `docs/verification.md`
+  the verified-at ledger, `docs/security.md` the debug-channel exposure
+  matrix, and `docs/power.md` the user-facing battery/charging guide.
+  `README.md` is the user-facing quickstart and safety warning.
 - `tools/i2cbb/` — hardware probe utility retained for controlled
   re-measurement; it is not a normal build dependency.
 - `.github/workflows/build.yml` — the complete verify/build/release contract.

@@ -5,233 +5,61 @@ means it has functioned on real hardware in earlier bring-up; it does **not**
 mean the artifacts built by any given CI run were booted — releases carry
 `hardware_verified=false`, and CI only proves the build compiles.
 
-Every row below was re-checked against a running device on 2026-08-17. Two
-rows that claimed "Works" did not survive that (Bluetooth and USB gadget); the
-notes say what was actually measured. Most rows were tested at kernel pkgrel=20
-/ device pkgrel=31. **The audio row was hardware-verified on 2026-08-17 at
-kernel pkgrel=24 / device pkgrel=38**, which is the current pin: built-in
-speakers produce audio, and the AFE survives multiple play cycles without
-entering PM error state.
+This page is the **index**: the verdict table and the board reference.
+The measurement history, root-cause narratives, and per-subsystem
+invariants live one level down and are linked from every row:
 
-**As of 2026-08-19 the device boots the mainline device tree**, via the
-`boot/dtbswap` stub: LK still builds its merged tree from the *signed*
-`lk_main_dtb` + `dtbo` (neither replaceable — an unsigned `dtbo` fails
+- [hw/display.md](hw/display.md) · [hw/input.md](hw/input.md) ·
+  [hw/audio.md](hw/audio.md) · [hw/wireless.md](hw/wireless.md) ·
+  [hw/usb.md](hw/usb.md) · [hw/power.md](hw/power.md) (battery, charging,
+  charging mode) · [hw/suspend.md](hw/suspend.md) ·
+  [hw/thermal.md](hw/thermal.md) · [hw/sensors.md](hw/sensors.md) ·
+  [hw/storage.md](hw/storage.md) · [gnome.md](gnome.md) (desktop stack).
+- What is still open, with runbooks, is [roadmap.md](roadmap.md); the
+  per-subsystem verification ledger is [verification.md](verification.md).
+
+## How the port boots (load-bearing facts)
+
+The device boots through MediaTek LK with A/B slots and exposes fastboot
+from LK. There is no general recovery channel without a running kernel.
+The kernel DT does **not** come from `vendor_boot`: LK constructs the
+runtime tree from its *signed* `lk_main_dtb` inside `lk` merged with
+signed `dtbo` (neither replaceable — an unsigned `dtbo` fails
 authentication and kills the slot before the kernel starts; both slots of
-the development device were lost that way once), but `boot.img` is
-unauthenticated, so a stub in its kernel slot receives LK's handoff and
-jumps to the real kernel with our DTB, copying LK's runtime-patched
-`bootargs`, initrd addresses and `/memory` from the merged tree.
-Hardware-verified 2026-08-19: `/proc/device-tree/model` reads
-`Daylight Computer DC-1`, DRM binds OVL/RDMA/DSI, and GNOME runs with
-atomic modesetting. `vendor_boot` remains a no-op for the DT (its blob
-never reaches the kernel — measured from LK's log on 2026-08-18).
+the development device were lost that way once). Since 2026-08-19 the
+device boots the **mainline device tree** via the `boot/dtbswap` stub:
+`boot.img` is unauthenticated, so a stub in its kernel slot receives LK's
+handoff and jumps to the real kernel with our DTB, copying LK's
+runtime-patched `bootargs`, initrd addresses and `/memory` from the
+merged tree; fail-safes return LK's original FDT. Hardware-verified
+2026-08-19: `/proc/device-tree/model` reads `Daylight Computer DC-1`,
+DRM binds OVL/RDMA/DSI, GNOME runs with atomic modesetting. See
+[boot/dtbswap/README.md](../boot/dtbswap/README.md).
 
-**Losing the dtbo cuts both ways.** The signed dtbo was also the only thing
-that *enabled* some hardware: the MT7902's SDIO host (`mmc@11240000`) exists
-only through it, so the first mainline-DT boots had an empty
-`/sys/bus/mmc/devices` and **no Wi-Fi** (measured 2026-08-19). Fixed the
-same day in three layers, each hardware-verified: kernel `231fa88`
-(transcribe the dtbo's host node into the board DTS), kernel `0c26bee`
-(power the MSDC1 pad rails VCN18 + VMC — vendor `vioa/viob`, which mainline
-mtk-sd never enables; with them off every pad read low), and pmos `0f63c60`
-(stage the MT7902 firmware in the system initramfs, because the built-in
-driver requests it at ~2.8 s, before the rootfs exists). The same pattern —
-"the dtbo enabled it, the board DTS must now describe it" — is the first
-thing to check for anything else that stops working on the mainline tree.
+Losing the dtbo cuts both ways: the signed dtbo also *enabled* hardware.
+The MT7902's SDIO host existed only through it (fixed by transcribing
+the node into the board DTS, powering the MSDC1 pad rails, and staging
+the firmware in the initramfs — kernel `231fa88`, `0c26bee`, pmos
+`0f63c60`). The same pattern — "the dtbo enabled it, the board DTS must
+now describe it" — is the first thing to check for anything that stops
+working on the mainline tree. Of the devices that were bound on the
+stock tree, only the hall switch and the two board NTC zones were genuine
+losses; both were re-added to the mainline DTS before the switch
+(kernel `3d3de59a5`, `981870b`).
 
 **Reachability watchdog (hardware-verified 2026-08-19).** A boot the
-network cannot reach used to be unrecoverable without a key combo. The boot
-image now self-deploys `dc1-boot-watchdog` into the installed system: while
-an inbound shell connection exists — or a shell port listens and a probe
-peer (USB host `172.16.42.2` or the Wi-Fi gateway) answers — it stays
-quiet; after 10 unreachable minutes it reboots into LK fastboot via the
-`WDT_NONRST_REG2` nibble (both the tool and the full unattended fire were
-observed landing the device in fastboot). An initramfs deadman (15 min)
-backstops the case where systemd never starts the service, and the rescue
-path's deadman lease covers pre-switch_root failures. Opt out with
-`touch /etc/dc1/boot-watchdog.disabled`.
+network cannot reach used to be unrecoverable without a key combo. The
+boot image self-deploys `dc1-boot-watchdog` into the installed system:
+after 10 unreachable minutes it reboots, escalating to LK fastboot via
+the `WDT_NONRST_REG2` nibble if consecutive boots stay unreachable; an
+initramfs deadman (15 min) and a rescue-path lease backstop earlier
+phases. Opt out with `touch /etc/dc1/boot-watchdog.disabled`. Details in
+[debugging.md](debugging.md).
 
-The board NTC thermal zones and the hall switch were added to the mainline
-DTS (kernel `3d3de59a5`) and now take effect on every dtbswap boot.
-
-**What landed 2026-08-22.** Four changes shipped without hardware proof, and two things were measured live. In the kernel (commit `a2c27ab3bff1`, pinned the same day at linux pkgrel=28): every LVTS die zone gains a 105 °C hot trip, and the two board NTC zones gain their first-ever trips plus 2 s polling — compile-checked only, not yet booted on hardware. In the device package (pkgrel=57): the speaker-labeling UCM2 profile plus a WirePlumber profile override, parse-validated on-device but never executed through UCM on hardware. And the ambient-light part at i2c1 `0x49` received an identification dossier — MEMSic-family `mn29xxx` per the board's own SCP firmware strings, exact part unverified, node still undeclared. Later the same day, the dead pen was root-caused — `CONFIG_TOUCHSCREEN_WACOM_W9000` had never been enabled, so the DTS digitizer node sat unbound — and kernel `e2836cc1dcb4` (pinned at linux pkgrel=29) builds the mainline driver in; live bring-up hours later proved that driver family wrong for this part and moved the node to the register-protocol `wacom_i2c.c` instead (kernel `4af6c7fef881` + `3581ef5732a6`, pinned at linux pkgrel=30), after which the pen streamed real coordinates, pressure and its barrel button on hardware — see Pen digitizer. Measured live the same day on the running pkgrel=27 build: microphone capture works over the codec's DMIC path (see Audio), and the 2026-08-20 cpufreq/LVTS-trips/GPU-cooling commits are all active (see Thermal). Checklists for the next hardware session close this page.
-
-**What landed and was verified 2026-08-23 (night session).** The full OTA cycle ran autonomously on-device for the first time: CI green on the r31 pin → rolling release republished → `apk fix` of the world-pinned packages → `dc1-boot-sync` wrote slot b, read-back verified and armed it tries=1 → reboot → first-try success, slot marked ok. On that boot: **microSD works** (P6.2 closed — root cause was `CONFIG_REGULATOR_GPIO` unset; see Expansion / I/O); **all 13 LVTS hot trips verified present** plus the NTC trips (the earlier 4/13 reading was checker error, not kernel gap); **pen kernel events fully verified** (proximity/touch/barrel/eraser/pressure) with a newly discovered compositor blocker — zero axis resolution makes libinput reject the device (see Pen digitizer); **audio race fix verified working** with two new defects recorded — a kernel-side idle re-zeroing of the gains, and a WirePlumber lua crash that drops the profile to Dummy Output after a transient PCM EBUSY (see Audio); **PD contract confirmed end-to-end at the 12 V PDO**, and raising `constant_charge_current` to the 3.15 A ceiling measured **~40%/h** into the pack (see Battery). The red-CI scare of the previous evening was root-caused by a parallel session as curl error 35 during the wireless-regdb fetch — `--retry-all-errors` now absorbs it; run 5cffb2b had already gone green on retry.
-
-**2026-08-22 evening: six parallel read-only audits of the running build.**
-The running system (kernel apk r27, device apk r58, mainline DT confirmed)
-was audited end-to-end without touching state. Measured: the Type-C/TCPM
-stack is alive (`/sys/class/typec/port0`, PD 3.0, declared sink caps
-5/9/12 V@3 A) with nothing attached; the Bluetooth chain is fully assembled
-(controller auto-recovered at t≈8 s, A2DP/AVRCP UUIDs, WirePlumber bluez5
-monitor with SBC/LDAC/aptX loaded, zero prior pairings); the USB-gadget ECM
-fix proved effective on this real boot (`ecm.0` linked, `usb0` up at
-172.16.42.1/24); the thermal pre-r28 baseline was recorded exactly (both NTC
-zones show zero trips — the signature the r28 diff changes); tilt-test
-sanity checks all pass. Two corrections to earlier claims came out of it:
-the suspend row's "RTC wakealarm" backstop does not exist (below), and
-`pulseaudio-wireplumber` is not installed on this image, so WirePlumber's
-own profile already enables hardware audio/bluetooth — the shipped
-`55-dc1-audio.conf` fragment stays as defense for images that add that
-package. The audio gain-clobber was root-caused from live evidence and
-fixed in device pkgrel=59 (see Audio). Publication state: the rolling
-release still ships kernel r29; r30 (pen digitizer) is pinned but its CI
-runs failed at the boot-image step — the workflow now tees that step's full
-log to a public artifact on failure so the next red run is diagnosable.
-
-**Charging mode (packaged 2026-08-25, device pkgrel>=79 — not yet
-hardware-verified).** Plugging USB power into a cleanly-powered-off device
-now boots a minimal headless `dc1-charging.target` instead of the full
-desktop: panel, network and desktop stay off while the battery charges
-autonomously — the MT6375 runs CC/CV to the pack's 4350 mV CV point in
-hardware, the kernel's VBUS one-shot raises AICR to 1.5 A and the
-fast-charge target to 2 A once VBUS appears (see Battery), and PD
-contracts are negotiated in-kernel — so zero userspace is required for
-safe charging. Exit paths: unplug (`dc1-charging-monitor.service` runs
-`/usr/libexec/dc1-charging-monitor`, which polls VBUS with ~6 s debounce
-and then powers off cleanly), a brief power-key press (warm reboot into
-the normal desktop), or a PMIC long-press hard reset (which also lands in
-the normal desktop). Detection is firmware-first, still without
-bootloader or kernel changes. **Primary signal — the firmware boot
-cause.** MediaTek's preloader/LK
-writes a fresh console log every boot into reserved DRAM at physical
-`0x7ffbf000` (256 KiB, kept mapped by our DT as `log-store@7ffbf000`,
-root-readable via `/dev/mem` because `CONFIG_STRICT_DEVMEM` is off),
-carrying a line `BOOT_REASON: <n>` with the MTK enum 0 = power key,
-1 = USB charger insert, 2 = RTC alarm, 3 = watchdog, 4/5 = warm-reboot
-bypass, 8 = kpanic. `dc1-charging-generator` parses the LAST such line,
-voting only when the ring-tail sanity marker `jump to linux kernel
-64Bit` shows this ring actually reached the kernel handoff — stale or
-partial rings don't vote. Reason 1 plus VBUS enters charging mode
-authoritatively (no flag required); reasons 3/4/5 NEVER enter it even
-with a fresh flag — watchdog/warm-reboot bypasses must land in the
-normal desktop even when docked, and that asymmetry is exactly what
-makes the power-key exit work. Reasons 0/2/8, unknown codes, or an
-unreadable ring fall through to the deliberate fallback: the
-clean-poweroff heuristic — `dc1-poweroff-flag.service` runs
-`/usr/libexec/dc1-poweroff-flag` via ExecStop to record
-`/var/lib/dc1/poweroff-clean` (an epoch timestamp) whenever the system
-shuts down without reboot markers (`/run/systemd/reboot`/`kexec` absent;
-reboots never leave the flag) — fresh for up to DC1_MAX_AGE, default
-7 days (stale beyond that means "parked", not "docked"), which also
-degrades gracefully if a charger's ring value ever differs from enum
-expectations. Two gates apply regardless of tier:
-`/var/lib/dc1/no-charging-mode` absent,
-`/var/lib/dc1/first-boot-apps-done` present — a system that has never
-finished provisioning always boots to the desktop, protecting the
-fresh-install-with-flash-cable-still-attached case that would otherwise
-present reason 1 and wake as silent dark glass — plus VBUS present
-(`/sys/class/power_supply/mt6375-charger/online` = 1; every charger
-driver is built-in, so sysfs exists before generators run). Inside the
-target the monitor stands down `dc1-boot-watchdog` by touching
-`/run/dc1-boot-watchdog.pat` (an existence-based pat — without it, 600 s
-of unreachability would reboot-loop a dumb charger into fastboot
-escalation), holds `bl_power=4` on all frontlight channels as insurance,
-and runs `/usr/sbin/dc1-pwrkey`, which reads KEY_POWER evdev events
-directly because logind ignores the power key globally on this device
-(`HandlePowerKey=ignore` via `/etc/systemd/logind.conf.d/10-dc1-power.conf`)
-and `/etc` drop-ins outrank `/run`, so no volatile logind override could
-take. Kept units: PID 1 with its `RuntimeWatchdogSec=30s` feed (mandatory
-— LK arms a ~31 s SoC watchdog), journald, udevd, logind,
-`dc1-usb-gadget` + `dc1-debug-shell` + `unudhcpd@usb0` (the USB recovery
-channel at 172.16.42.x stays reachable), `dc1-link-apk-keys`, and
-`dc1-rtcsync.timer`; excluded are gdm/GNOME, NetworkManager,
-wpa_supplicant, sshd, Bluetooth, ModemManager, and the audio/display/
-frontlight/backlight/GPU/first-boot/boot-sync/update services. Electrical
-facts worth keeping: there is **no in-kernel battery-temperature
-throttling of charge current** — only the chip-side JEITA-ish behavior
-plus the 110/113.5 °C critical shutdowns already described under
-Thermal; the device has **no charging LED**; and the panel is physically
-dark without `dc1-display-gate`, so charging mode adds nothing to make
-the screen dark. Verification state: the ring mechanism itself is
-verified live on-device — this boot printed `BOOT_REASON: 4` with the
-warm-reboot-bypass marker,
-and five historical cold power-key boots recovered from `expdb` logs all
-show `BOOT_REASON: 0`. Still owed is one hardware calibration session:
-power off, plug USB, confirm the ring really shows the charger code
-(optionally pinning the MT6358 CHRIN bit via the `000c:` line of the
-PMIC regmap under debugfs); until then the feature stays
-`hardware_verified=false`. Remaining candidates beyond that are
-second-opinion boot-cause sources (MT6358 PONSTS/CHRIN power-on-status
-registers) or plumbing the reason through the dtbswap stub's trace-word
-channel (`TRACE_PA 0xff0c1000`) — the latter explicitly discouraged,
-because stub changes are the highest-risk class in this repository (the
-fail-safe returns stock DT behavior, and three past bugs in that class
-surfaced only on hardware).
-
-## GNOME on fresh installs: the verified-minimal shim set (2026-08-19)
-
-A fresh install of this image could not start GNOME: the pmOS systemd
-repository is mid-way through its GNOME 50 migration, so the image mixes
-Alpine's gdm 48.0-r7 with pmOS's gnome-shell-mobile 999948.0-r4 and the pmOS
-accountsservice fork. An on-device session established the exact minimal fix
-set — GNOME up, clean reboot, zero failed units — and this repository now
-codifies all five pieces so every fresh install gets them:
-
-1. **libelogind → libsystemd shim** (installer provisioning,
-   `apply_libelogind_shim`). Alpine's gdm links `libelogind.so.0`, and real
-   elogind 255.24's session parser fails on systemd cgroups — gdm logs
-   "Session never registered" and no session ever reaches the display.
-   `/usr/local/lib/libelogind.so.0` is a symlink to `/lib/libsystemd.so.0`.
-2. **musl loader path** (same function). `/etc/ld-musl-aarch64.path` lists
-   `/usr/local/lib` before `/lib` and `/usr/lib`; without it the dynamic
-   linker's default search order finds the real libelogind first and the
-   shim never wins.
-3. **Wayland-only gdm** (installer provisioning, `apply_gdm_wayland_only`).
-   `WaylandEnable=true` + `XorgEnable=false` in `/etc/gdm/custom.conf`,
-   with the packaged autologin block preserved. Otherwise any session
-   failure falls back to an X11 greeter on an image that ships no Xorg and
-   no X11 session files — SIGABRT until start-limit-hit.
-4. **Accelerometer-driven orientation** (device package, pkgrel 56). Static
-   GNOME and Sway 180° transforms were removed: they overrode the MC3416
-   orientation reported through `iio-sensor-proxy`. The device package now
-   also installs `gnome-settings-daemon-mobile`, which supplies the desktop
-   orientation consumer. A device polkit rule permits the active `dc1` GNOME
-   session to claim the accelerometer; without that, SensorProxy rejects the
-   claim and reports orientation as `undefined`. The panel's physical scanout
-   correction is supplied by the compositor's live sensor orientation, not a
-   fixed monitor file. The device orientation bridge runs as a persistent
-   user service and requests the compositor-owned rotation transition from the
-   patched Mutter-Mobile package, avoiding a visible hard snap during rotation.
-5. **accountsservice pin** (rootfs build, `scripts/build-rootfs.sh`). The
-   pmOS fork `accountsservice-999923.13.9` ships a typelib referencing
-   `libaccountsservice.so.0` while the installed gdm/gnome-shell link
-   `.so.1`, so the shell's JS init throws. The build writes
-   `accountsservice<999` + `libaccountsservice<999` into `/etc/apk/world`,
-   which selects Alpine edge (26.27.3, the hardware-verified version) and —
-   because world constraints are sticky — survives on-device `apk upgrade`.
-   Temporary until the fork's typelib matches its library soname.
-
-The shims themselves are hardware-verified; their delivery through the
-installer and the rootfs build has not yet been exercised end-to-end on a
-device. Two known risks:
-
-- the gdm greeter path (the `gdm` user's own Wayland session) was observed
-  once aborting with "no session desktop files installed" — after a user
-  rename or a logout the greeter may still be broken even with the set
-  above applied;
-- screen orientation after removing the static transforms still needs a
-  physical tilt test on hardware.
-
-**What the switch would cost, audited 2026-08-17.** Every device with a driver
-bound on the running (stock) tree was mapped back to its DT node and checked
-against the built `mt8781-daylight-jagar.dtb`. Most of the 341 compatible
-strings that differ are vendor-BSP nodes no mainline driver claims, and most of
-the rest are naming differences for the same hardware — the stock tree's
-`mediatek,mt6983-i2c`, `mediatek,disp_ovl0`, `mediatek,mt8781-sd` and
-`mediatek,mt6366-keys` are our `mediatek,mt6789-i2c`, the mainline display
-components, `mtk-msdc` and `mediatek,mt6358-keys`. The display bias regulator
-that the diff also flags (`tps65132`) is present as `regulator@3e` with the
-`ti,` prefix mainline requires. Only **two** bound devices would genuinely
-disappear:
-
-- **the hall switch** (`soc:odm:hall`, `gpio-keys`/`hall-switch`, `input2`) —
-  live today and one of the board's enabled wakeup sources;
-- **the two board NTC thermal zones** (`generic-adc-thermal`, `thermal-ntc1`
-  and `thermal-ntc2`) — today the only thermal zones that read at all.
-
-Both should be added to the mainline DTS before the switch, or it is a net
-regression on those two.
+**OTA/slot machinery.** The full autonomous update cycle — CI green on a
+pin, rolling release republished, `apk fix`, `dc1-boot-sync` writing the
+inactive slot with read-back verification, first-try boot, slot marked
+ok — ran end-to-end on hardware for the first time on 2026-08-23.
 
 ## Device specification (stock DC-1 hardware)
 
@@ -263,165 +91,44 @@ measured on this unit, the measurement wins and the cell says so.
 | Charging port | USB Type-C with USB PD. Neither the accepted PDOs, maximum wattage, USB data speed, nor alt-modes are published by Daylight — do not quote figures like "USB 3.1" or a watt class without hardware evidence | Port's TCPM sink declares fixed PDOs 5 V/3 A, 9 V/3 A, 12 V/3 A; ~27 W input observed under contract — see Battery row |
 | Display | 10.5″ greyscale "LivePaper™" reflective LCD (not E Ink, not bistable), 1600 × 1200 (portrait 1200 × 1600), 4:3, ≈190 ppi (2000 diagonal px / 10.5″ = 190.48); 60 Hz product refresh (Daylight has acknowledged a 6–120 Hz panel capability without enabling it); IGZO TFT backplane and DC/CCR (PWM-free) LED driving confirmed by Daylight's engineering write-up; MIPI-DSI interface; matte anti-glare cover; no temporal dithering. Exact LCD module maker/P/N unpublished (more than one panel revision may exist) — community attribution to a custom Sharp IGZO panel is plausible but unconfirmed | Port runs the panel at 60 Hz over DSI; scanout is 180° from the glass — see Display row |
 | Backlight | Two independently exposed channels: white "Daylight" light plus Pure Amber light, DC dimming (no PWM), dimmable to zero (pure reflective mode) | RT4539 pair: white on i2c-5, amber on i2c-2 — see Frontlight row |
-| Touch / pen | Capacitive multitouch plus Wacom EMR passive digitizer (batteryless stylus, no Bluetooth pairing, palm rejection). Touch sampling rate, pressure levels and tilt spec are not publicly documented — do not attach guessed numbers (e.g. "4096 levels") | ILI2910 touch; digitizer on i2c9 `0x09` behind the mainboard's `Wacom`-marked connector, mainline `wacom_w9000` driver built since pkgrel=29 — see Pen digitizer row |
+| Touch / pen | Capacitive multitouch plus Wacom EMR passive digitizer (batteryless stylus, no Bluetooth pairing, palm rejection). Touch sampling rate, pressure levels and tilt spec are not publicly documented — do not attach guessed numbers (e.g. "4096 levels") | ILI2910 touch; digitizer on i2c9 `0x09` behind the mainboard's `Wacom`-marked connector, mainline `wacom_i2c` driver — see Pen digitizer row |
 | Wireless / RF | Radio: MediaTek **MT7902BSN**, dual-antenna (ANT1+ANT2, InnoComm TJG01/"Jagar" dual-PIFA). Shipping/certified spec: Wi-Fi 6 dual-band + Bluetooth 5.0. MediaTek's case study credits the platform with Wi-Fi 6E/BT 5.2, but the FCC grant authorizes 2.4 GHz (2402–2480 BT / 2412–2462 Wi-Fi) and 5 GHz (5180–5825) only — no 6 GHz — so treat 6E/5.2 as unexercised platform capability. Grant's max conducted output: BT 0.001 W; 2.4 GHz Wi-Fi 0.097 W; 5 GHz 8–12 mW by band. Antennas were characterized to 7.125 GHz (ANT2 avg efficiency 58.7 % / 3.6 dBi at 2.4 GHz) | MT7902 over SDIO driven by mainline mt7921s / btmtksdio — see Wi-Fi and Bluetooth rows |
 | Audio | Stereo speakers, 1 W each, on mainboard connectors labelled `SPK-L`/`SPK-R`; stereo microphone — two mic positions `MIC301`/`MIC302` on the top key FPC | Two RT9101 amp-fed speakers; two digital DMICs on AIN0/AIN2 (the "stereo mic") — see Audio row |
 | Buttons | Five physical controls: Power, Volume Up, Volume Down, plus custom keys "Walkie-Talkie" and "Quick Action" | Power + Vol-up via PMIC keys, Vol-down via KPD matrix; the two custom keys are matrix positions (0,1)/(1,1) mapped `KEY_F11`/`KEY_F12` verbatim from stock — mapping needs on-device confirmation |
 | Sensors | Daylight publishes nothing; the mainboard carries a connector explicitly labelled Light Sensor | From this unit: MC3416 accelerometer (AP i2c6), ambient-light/proximity part at i2c1 `0x49` (MEMSic `mn29xxx` family, undeclared), AP-wired hall switch; no gyro or magnetometer — see Sensors row |
-| Expansion / I/O | microSD slot (mainboard location marked `SD Card`; max card size unspecified by Daylight); rear accessory contacts — five pogo pads visible in FCC photos, silkscreened `POGO_VUSB_5V`; full pinout unpublished | microSD wired as MSDC0 in the board DTS (card-detect + GPIO157 vqmmc regulator, pins from measured stock values); insertion invisibility root-caused 2026-08-23: the DT's `regulator-gpio` `sdcard-io` rail (GPIO157 select, 1.8/3.0 V states, vsim2-fed) had no driver because `CONFIG_REGULATOR_GPIO` was unset in `jagar_defconfig`, so the device never registered, msdc0 probe deferred forever after acquiring the CD GPIO, and no mmc host appeared; fix enabled and pinned (kernel `27918e9d5c92`, linux pkgrel=31) and **verified on hardware 2026-08-23**: `sdcard-io` registers, msdc0 comes up as `mmc0`, and an inserted 119 GiB SDXC card enumerates as `mmcblk0` with its partition table — P6.2 closed; pogo unused by this port; no headset jack (measured) |
+| Expansion / I/O | microSD slot (mainboard location marked `SD Card`; max card size unspecified by Daylight); rear accessory contacts — five pogo pads visible in FCC photos, silkscreened `POGO_VUSB_5V`; full pinout unpublished | microSD wired as MSDC0 in the board DTS and hardware-verified 2026-08-23 (an SDXC card enumerates as `mmcblk0`); pogo unused by this port; no headset jack (measured) — see Storage row |
 | Dimensions / weight | 253.5 mm × 184 mm × 9.75 mm; 550 g (1.2 lb) | — |
 | Stock software | Sol:OS (Android 13); auto-updates ~every two weeks | This repository replaces Sol:OS with postmarketOS/Alpine |
 
+## Status table
+
 ✅ works on hardware &nbsp;·&nbsp; 🟡 partly working, with a known limitation
-&nbsp;·&nbsp; 🚧 being worked on, not usable yet &nbsp;·&nbsp; ⬜ untouched
+&nbsp;·&nbsp; 🚧 being worked on, not usable yet &nbsp;·&nbsp; ⬜ untouched.
+Every row links to its measurement record.
 
-| Component | Status | Notes |
+| Component | Status | Notes — full record |
 | --- | --- | --- |
-| Display | ✅ Works | DSI panel; Wayland sessions (Sway, GNOME) run. Blank/unblank: a DPMS off stops the pipeline at the proven boundary and a DPMS on replays the handoff (`production power sequence complete` → `first DSI frame complete`) in ~0.6 s. That log sequence was read as proof on 2026-08-16 and **was not** — it printed identically while the glass stayed blank white. Root-caused 2026-08-24: `mtk_mipi_tx_pll_prepare()` **set** `DSI_SW_CTL_EN` on every MIPI-TX lane. That bit parks a lane under software control and disconnects its pad from the DSI controller, so it is the power-*off* semantic — `phy-mtk-mipi-dsi-mt8183.c`, same IP block, clears it at power-on and sets it at power-off. Boot never exercised the bug: LK hands Linux an already-running PLL, so `prepare()` takes its `RG_DSI_PLL_EN` early return and never reaches the gate writes, meaning the kernel's own cold path had never once lit this panel. Any DPMS off/on cycle ran it, killed the lanes, and transmitted the panel's DCS init sequence into the void, leaving the panel asleep behind a lit backlight — a uniformly white normally-white LCD, with every log reporting a clean power-on. The driver also wrote D2 twice instead of touching the real D3 block at `0x0544`, harmless only while the sense was inverted. Fixed in kernel `2466a7f6` (linux pkgrel=37), first confirmed in place through `/dev/mem` pokes, then **hardware-verified on the booted r37 kernel 2026-08-24**: two full DPMS off/on cycles through the untouched driver paths — unprepare parks all five lanes (including D3 at `0x0544`), prepare clears them, and the panel comes back every time with TE at ~230 edges/2 s, DCS `0x0a` reading `0x9c`, and DSI error count 0 at the driver's own 772.5 Mbps. The power key now blanks and wakes reliably. **Ground truth for this pipeline is the TE line on GPIO83** (`gpiomon -c gpiochip0 83`, ~200 edges/2 s when the panel TCON is running) and a DCS read of `0x0a` (`0x9c` = booster|sleep-out|normal|display-on) — not kernel logs, because short DCS writes complete host-side without a panel ACK. Note that a DCS read which times out latches the DSI handoff state machine into its failed phase, after which it refuses to re-enable until reboot; only probe a state you are willing to lose. The frontlight is not the panel's DRM backlight — our mainline DT has no panel node, so DRM exposes no `panel orientation` property and no backlight phandle — so `dc1-screen-backlight` mirrors the connector's DPMS state onto both RT4539 `bl_power` files; without it a blanked panel stays evenly lit and reads as a wedged display. |
-| GPU | ✅ Works | Mali-G57 MC2 via Panfrost, **now native on the mainline DT** (verified 2026-08-19): kernel `981870b` enables the dtsi `gpu` node at the proven 390 MHz / 850 mV point, panfrost binds at t=6.8 s from cold boot with no overlay and no probe poke, `renderD128` exists before the session starts, and gnome-shell logs `Created gbm renderer` (no llvmpipe). GPU devfreq cooling now binds through the LVTS ts3-0 map since kernel `0f6e730c92d6` (2026-08-20), live-verified 2026-08-22 — see Thermal. The overlay path below remains for stock-tree boots. `dc1-gpu` used to report failure while the GPU worked anyway: applying the runtime overlay only edits the live tree, and the platform device for the newly-enabled `mali` node is registered after that, so the `drivers_probe` poke issued straight after `modprobe` hit an empty platform bus and got `ENODEV` (measured 2026-08-17 at t=4.98 s; panfrost then bound at t=15.17 s off the kernel's own deferred-probe timeout). A red unit costs the ordering guarantee that gdm → mutter starts with a render node, so the poke is now retried until `renderD128` appears. Panfrost's old `Failed to register cooling device` log dates from when there was no thermal zone to bind to; the 2026-08-20 LVTS trips/maps fixed it (devfreq cooler live 2026-08-22) — see Thermal. |
-| Touchscreen | ✅ Works | ILI2910, 10-point multitouch. |
-| Pen digitizer | ✅ Works | Wacom EMR digitizer on i2c9 `0x09`, driven by the mainline **`wacom_i2c`** driver — hardware-verified 2026-08-22, with one open cosmetic check (cursor orientation, below). The road there had two wrong turns worth recording. First root cause: no Wacom driver was compiled in at all (`CONFIG_TOUCHSCREEN_WACOM_W9000` landed in `e2836cc1dcb4`, linux pkgrel=29) — but live bring-up the same day proved *that driver family* wrong: the part completely ignores `wacom_w9000`'s CMD_QUERY `0x2a` handshake yet ACKs every plain read, streaming 19-byte frames whose layout matches the older **`wacom_i2c.c`** exactly (flags in data[3], LE X@[4:5], Y@[6:7], pressure@[8:9]). Kernel `4af6c7fef881` gives `wacom_i2c.c` an OF match table, optional reset-GPIO/vdd power sequencing and a non-fatal feature query with DT fallbacks; `3581ef5732a6` (both pinned at linux pkgrel=30) swaps the compatible to `wacom,wacom-i2c`, sets `CONFIG_TOUCHSCREEN_WACOM_I2C`, drops `output-low` from `wacom_pins`' reset pin — which had been holding GPIO88, the active-low reset line, low for the chip's entire life and silently defeating every earlier attempt — and adds `touchscreen-max-pressure = <8191>`. Verified live on the running pre-Wacom build by loading a test module: probe succeeded immediately from cold-boot rail state, the feature query answered (X max 16008, Y max 21344, firmware byte 0x52 — bracketing a passive capture envelope of X 815..16008 / Y 14833..20868), and a 15 s drawing window produced 4489 input events including tip pressure up to 2849 and the barrel button (`BTN_STYLUS`). Unverified: a boot of pkgrel=30 itself (checklist below), and whether the reported axes land aligned with the glass — nobody watched the cursor during the capture; if it is mirrored or rotated, that is a two-property `touchscreen-inverted-*` fix in the digitizer node, not a new investigation. **Boot verification 2026-08-23 (linux r31):** the real driver binds from cold boot (`wacom_i2c` at 9-0009, no out-of-tree taint, no "Feature query failed" — sizes come from the controller), and a live evtest window proved the whole kernel event path end to end: `BTN_TOOL_PEN` proximity through 17 approach/lift cycles, 50 `BTN_TOUCH` down/up pairs across strokes spanning nearly the full coordinate envelope, pressure ramping to 3770/8191, the barrel button (`BTN_STYLUS`) and the eraser end (`BTN_TOOL_RUBBER`) both reporting. One new blocker found before any cursor could be watched: the driver leaves ABS_X/ABS_Y **resolution at zero**, so libinput refuses the device outright ("missing tablet capabilities: resolution. Ignoring this device.") and mutter/GNOME never sees the pen regardless of the kernel working — evtest sees everything, the desktop sees nothing. Fix pending in `wacom_i2c` probe (set axis resolution); until then the compositor-level checks (cursor alignment/orientation below) are unreachable even though every kernel-side box is ticked. **Resolution fix shipped and verified 2026-08-23 (linux r32, kernel `0adceb59`):** `wacom_i2c_probe` now reads `touchscreen-x-mm`/`touchscreen-y-mm` from the board and sets ABS_X/ABS_Y resolution from the final maxima (the `wacom_w9000.c` pattern), and the jagar digitizer node supplies `160`×`213` mm — against the firmware envelope that lands on exactly **100 units/mm per axis**. Deployed through the same OTA cycle (slot a, first-try boot) and confirmed live: evtest shows Resolution 100 under both axes, and `libinput list-devices` reports `Capabilities: tablet`, `Size: 160x213mm` — libinput accepts the device into the default seat, so mutter/GNOME finally has the pen. **Calibration closed 2026-08-23 (linux r33/r34/r35).** Three live findings, each fixed in the driver or the board node and each re-verified on this device against the r35 boot: (1) the reported coordinates were rotated 180 degrees from what is rendered -- a bottom-left stroke landed top-right -- fixed with `touchscreen-inverted-x`/`-y` (kernel `29a427af`, r33); (2) the firmware holds `data[3]` bit 4 set on every in-proximity frame, which userspace read as a permanently held `BTN_STYLUS2`, so every stroke was a right-drag and GNOME Settings' test area drew nothing -- boards can now opt out via `wacom,no-barrel-switch2` and jagar does (same commit; `evtest` now lists `BTN_STYLUS` only); (3) pressure saturates at **4095**, not the 8191 the node declared, so libinput normalised a full-press to ~0.5 and the pen felt uselessly light (kernel `94e6773e`, r34; `ABS_PRESSURE Max 4095` live). Corner taps also measured the active area running ~1.5-2 mm past the visible glass on every side. The first attempt shipped that as a `LIBINPUT_CALIBRATION_MATRIX` udev rule in the device package (r62) and it did **not** work: libinput stores the property on tablet-class devices but never applies it to their reported coordinates (back-solving captured coordinates through the matrix gave raw values ~14000x outside the sensor range). The rule was withdrawn in r63 and the remap moved into `wacom_i2c` itself -- optional `wacom,visible-{x,y}-{min,max}` properties describing the visible-glass envelope in hardware-frame coordinates, which the driver maps and clamps onto before reporting (kernel `94e25870`, r35; jagar fitted by outlier-rejected least squares over five correspondence taps to x 0..15707 / y 312..21344 of 16008x21344). Live on this device: driver `wacom_i2c` bound at 9-0009, `libinput list-devices` shows `Capabilities: tablet`, `Size: 160x213mm`, `Calibration: identity matrix`, and the running DT carries all four visible-area properties. Still needing hands: watching the cursor during real strokes to confirm it lands under the nib across the whole glass -- everything measurable without a human is now verified. **Edge misalignment root-caused 2026-08-25 (kernel `2afa5c09`, linux r38; eraser/libwacom in device r74).** The human check failed -- strokes still landed offset -- and the cause was found in code, not on glass: `touchscreen_parse_properties()` latches `prop.max_x/max_y` while the DT fallback `touchscreen-size-x/y` (16320x21120) is on the axes, and the probe's firmware-outranks-DT override restores the real 16008x21344 on the axes but never refreshed `prop`, so `touchscreen_report_pos()` reflected the inverted axes around 16319/21119. Net: reported X spanned 311..16319 against a declared 0..16008 and Y spanned -225..21119 -- a ~3 mm dead band at one edge of each axis, the cursor never reaching the opposite edges, and the glass center nearly aligned (which is why the error read as an "edge" problem). The r35 window fit was captured through that skewed chain and back-solved with the declared maxima, so its recorded "hardware frame" sits offset by (-311, +225); r38 refreshes `prop.max_*` after the override and shifts the jagar window into true frame: x 311..16018 / y 87..21119. Compile-checked (W=1) and DTB-verified only -- hardware verification needs the r38 boot. Separately, the eraser end: the kernel has delivered `BTN_TOOL_RUBBER` since r31, but only Wayland tablet-v2 clients ever see tool types (ordinary apps get pointer emulation, where both pen ends look identical), and libwacom had no entry for `i2c:056a:0000`, so GNOME classified an anonymous external tablet. Device r74 ships `daylight-dc1.tablet` (IntegratedIn=Display, generic-with-eraser styli) -- verified live: `libwacom-list-local-devices` names "Daylight DC-1 Pen" with the General Pen + Eraser styli after a driver rebind. Rnote and Xournal++ (tablet-v2 clients: pressure plus automatic eraser switching) are installed on the device for verification. |
-| On-device UI | 🟡 Works, with local shims | Installer: touch UI (`dc1-ask`) drawn by PID 1, hardware-verified to boot and serve its menu. Desktop: GNOME Mobile on the panel, hardware-accelerated via Panfrost. **Currently held together by device-local shims** (restored 2026-08-19 after a day-long outage): the decisive one redirects `libelogind.so.0` to `libsystemd.so.0` — Alpine's gdm links elogind's client library, whose session parser returns garbage on a systemd cgroup layout, so gdm could never match a session to a display. Around it: a 48-era gjs/mozjs/ICU shadow stack under `/usr/local/lib` (edge's gjs 1.88 segfaults the 948 mobile shell), a pinned gnome-session 48, a hand-supplied `org.gnome.Shell.target` user unit, Wayland-only gdm (`XorgEnable=false`; no Xorg exists to fall back to), a gdm drop-in that waits for a DRM connector (gdm races mediatek-drm at boot; the card0/card1 order flips between boots and mutter's builtin-panel heuristic copes), and display-manager restart caps (a 1s-restart session crash-loop once starved the whole machine). Full inventory + removal conditions live in the private bench HANDOFF; all of it comes off once pmOS's systemd repo ships a coherent GNOME-50 mobile set (mid-migration as of 2026-08-19: session 999950 + shell 999948 + an uninstallable gdm 999950). The verified-minimal subset is now codified for fresh installs — see "GNOME on fresh installs" above. |
-| Frontlight | ✅ Works | Dual RT4539 backlight drivers: `lcd-backlight` (white, i2c-5) and `lcd-backlight-amber` (amber, i2c-2). GNOME binds exactly one backlight device to the internal display — `gsd-power` takes the first `firmware` > `platform` > `raw` match, which is always the white one — so its Settings slider drives white alone. The `dc1-warmth@denv.it` shell extension shipped in the device package adds a quick-settings temperature slider that mixes both channels over one shared luminance: the lower half ramps amber up over full white, the upper half dims white, reaching pure amber (white fully off) at max. GNOME's own brightness controls set the luminance; the extension persists it and tells gsd's echoes of its own white writes apart from real brightness changes by comparing sysfs against its last write. Writes go through logind's `Session.SetBrightness`, no root needed. |
-| Power key | ✅ Works | Phone-like sleep/wake toggle as of 2026-08-23: a short press locks the screen shield and DPMS-offs the panel, the next short press wakes to the lock screen, and a ≥2 s hold opens GNOME's power menu (restart / power off). gnome-shell-mobile grabs the key as a mutter keybinding — so logind's `HandlePowerKey=ignore` never applies — and its `powerManager.js` maps `power-button-action='nothing'` onto `'blank'`; with `lock-enabled=true` the blank action locks before fading out, the wake press cancels the running action instead of starting a new one (no flap), and an untouched lock screen re-darkens after a hardcoded 10 s. Suspend stays unreachable by design (`CanSuspend=no`, s2idle aborts with unfreezable tasks). Shipped via the gschema override in the device package; the event path (mtk-pmic-keys → libinput) is proven by the working menu grab. **Logout trap found and fixed 2026-08-25 (device r68):** logging out to activate the r67 fix stranded the device on the GDM greeter. Two causes compound: GDM fires `AutomaticLogin=dc1` only once per gdm *daemon* start, so a normal logout lands on a password prompt instead of re-autologin; and the greeter had no on-screen keyboard on a tablet with no built-in one, so that prompt could not be typed at all. The greeter's dconf profile (`/usr/share/dconf/profile/gdm`) reads only the gdm user db and `greeter-dconf-defaults`, neither of which carries a11y keys, so it falls back to the *schema default* -- which is what `screen-keyboard-enabled=true` in the device package's gschema override now sets (verified: `sudo -u gdm-greeter DCONF_PROFILE=gdm gsettings get` reports `true`). Recovery from a stranded greeter, if it ever happens again, is `systemctl restart gdm` from a root shell (restarting the daemon re-arms autologin); this needs a channel the greeter itself cannot give you, which is why the OSK default matters. **Regression + fix 2026-08-24 (device r67):** the upstream upgrade to gnome-session 999950.1 emptied the power menu — GNOME 50's gnome-session changed `org.gnome.SessionManager.CanShutdown` from returning a boolean to a uint32 availability enum, the 48-based shell's proxy rejects the `(u)` reply (`returned type "(u)", but expected "(b)"`, reproduced with a gjs proxy against the live bus), `_updateHaveShutdown` treats the error as "unavailable", and Power Off *and* Restart both vanish (`_updatePowerOff` gates the two together). The rest of the chain is version-compatible (Shutdown/Reboot signatures unchanged; gnome-session 50 calls the shell's EndSessionDialog with the same `(uuu ao)` Open and `Confirmed*` signal names; logind availability reads back as 3 = available without authentication), so the `dc1-session-compat@denv.it` extension in the device package patches that one method with a signature-agnostic GDBus call. Drop the extension when gnome-shell-mobile rebases onto GNOME ≥ 50. |
-| Wi-Fi | ✅ Works | MT7902 via mainline mt7921s, **on the mainline device tree**, cold-boot verified 2026-08-19: `mmc1` enumerates the chip at SDR104 at t=2.7 s, firmware loads from the system initramfs, `wlan0` associates at t=14 s with the provisioned credentials, and Tailscale comes up. Three fixes got it there after the dtbswap switch dropped the signed dtbo that used to enable it: the host node itself (kernel `231fa88`), the MSDC1 pad rails VCN18/VMC that vendor `vioa/viob-supply` powered and mainline mtk-sd does not (kernel `0c26bee` — with them off, pads muxed and card powered still read all-low), and the boot-time firmware race (pmos `0f63c60`, blobs staged in the initramfs the built-in driver reads at ~2.8 s). | Needs `CONFIG_FW_LOADER_COMPRESS_ZSTD` — linux-firmware ships the three MT7902 blobs `.zst`-compressed, and without it the loader reports `-2` for a file that is present, `hardware init failed`, and no `wlan0`. Carried by the pinned kernel since `ea54394`. |
-| Bluetooth | 🚧 In progress | MT7902, same upstream firmware — but it did **not** work on any real boot, and the earlier "Works" here was wrong. `btmtksdio` is built in (`=y`), so it probes as soon as the SDIO function is enumerated, measured at t=1.75 s: before the root filesystem carrying `/lib/firmware` exists. `mediatek/BT_RAM_CODE_MT7902_1_1_hdr.bin` comes back `-2`, btmtk gives up with `Failed to setup 79xx firmware (-2)`, and `hci0` stays registered but never completes setup. Nothing looks broken — `/sys/class/bluetooth/hci0` and the rfkill switch are both present — while `bluetoothctl` answers `No default controller available`. The Wi-Fi half of the same chip survives the identical race only because mt7921s retries the load itself; btmtksdio makes one attempt. Confirmed by hand on 2026-08-17: one unbind/bind of `mmc1:0001:2` completed setup in 2.75 s and brought the controller up as `Daylight DC-1`. `dc1-bluetooth` (device pkgrel=34) does exactly that, ordered before bluetoothd. **Cold-boot verified 2026-08-17** at kernel pkgrel=24 / device pkgrel=38: the unit entered active 13 s into a boot that reached `graphical.target` at 17.9 s, and `bluetoothctl show` reports the controller up as `Daylight DC-1` with no manual intervention. **Re-measured 2026-08-22 evening:** same auto-recovery this boot (`Failed to setup 79xx firmware (-2)` at t=3 s, setup completed ≈8 s later via the service's unbind/bind), rfkill clear, A2DP Source/Sink + AVRCP UUIDs registered, and WirePlumber's bluez5 monitor loaded with SBC/LDAC/aptX/AAC codec plugins — the entire local half of an A2DP chain exists. `/var/lib/bluetooth` is empty (zero pairings ever) and Pairable/Discoverable default off, so the remaining work is exactly one session: enable pairable, pair a peer, stream. **Fix shipped 2026-08-23 (installer + device r65):** the race now has a winning side on new installs — `installer/build.sh` fetches `BT_RAM_CODE_MT7902_1_1_hdr.bin` from upstream linux-firmware at build time (exact size + SHA-256 checked, same discipline as the Wi-Fi blobs) and stages it into the system initramfs at `/lib/firmware/mediatek/`, mirroring the proven Wi-Fi pattern, so the single t=1.75 s load attempt finds the blob on the initramfs root instead of failing. `dc1-bluetooth` and its initd stay installed as the repair path but now exit 0 immediately unless dmesg carries the `Failed to setup 79xx firmware` signature, so they never rebind a healthy controller; already-installed devices (which converge by apk, not reflash) keep being recovered by that service. Pending: one boot from a rebuilt installer/boot image confirming setup completes with no unbind/bind. Left In progress until the pairing/streaming session happens. |
-| USB gadget | 🚧 In progress | Serial console works (`/dev/ttyGS0`, `ttyGS1`); USB ethernet and SSH over USB did **not**, and the earlier "Works" here was wrong. `dc1-usb-gadget` reused the gadget the initramfs leaves behind on the assumption that it is "identical" to the one it builds. It is not: on a plain (non-installer) boot the handed-off `g1` carried `acm.0` and `acm.1` and no `ecm.0` at all (observed 2026-08-17), so rebinding the UDC produced the two ACM ttys and never a `usb0`. The service still reported success, because the wait for `usb0` ran in a background subshell that `exit 0`-ed when the interface was missing. Both are fixed in device pkgrel=34: the existing tree is completed in place (`ensure_ecm`) before the bind, and the `usb0` wait is in the foreground and fatal. Verified on device by reproducing the handoff state (UDC unbound, ACM-only tree) and running the new script: `ecm.0` was added and `usb0` came up at 172.16.42.1/24. It must be the **only** UDC owner: `usb-signaller` (from `postmarketos-usb-moded`) starts afterwards, cannot classify our functions, tries to switch the UDC to its own gadget, and wedges in configfs; the device package masks it and its three mode units. **2026-08-22 evening: the fix confirmed itself on a real boot** — the handed-off tree was completed in place to `acm.0`+`acm.1`+`ecm.0`, all linked into `c.1`; the UDC bound cleanly at t=7.26 s after the initramfs unbind; `usb0` came up UP at 172.16.42.1/24 with the pinned MAC pair; `usb-signaller` and its three mode units all masked; configfs healthy (shallow single-level listings only — the D-state wedge is avoided, never provoked). What remains for ✅ is plugging a USB host into the port and proving SSH over ECM end-to-end. **Teardown is gone**, deliberately — see the next row. |
-| configfs teardown | ✅ Resolved | The gadget teardown used to unbind the UDC, unlink the functions, then `rmdir` bottom-up, on the theory that the uninterruptible hangs came from removals arriving out of order. They do not. Measured on hardware 2026-08-17: with the UDC cleanly unbound, every function unlinked from `c.1`, the configs already removed, and **no process holding `/dev/ttyGS0` or `ttyGS1` open**, `rmdir functions/acm.0` still entered D state and stayed there. It cannot be signalled (`SIGKILL` was ignored), so the mount is wedged for the rest of the boot, and because it holds the parent directory's lock every later configfs access blocks behind it — a plain `find` over `usb_gadget/` hung immediately. That is the same wedge previously blamed on `usb-signaller`'s removal order, and it is what fails the suspend freezer, since a D-state task can never be frozen. So nothing removes gadget objects any more: `stop` unbinds the UDC and leaves the tree standing, and `start` reuses and completes it. Rebuilding the tree, if it is ever actually needed, means a reboot. |
-| Internal storage | ✅ Works | UFS. |
-| Battery | 🟡 Partial | Real current, charge and state of charge, from the MT6366 PMIC's FGADC coulomb counter (`mt6358-fg`) — it measures pack current through the sense element and integrates it in hardware. Verified on device 2026-08-16: capacity held at 32% across idle → 8 cores busy → idle while `current_now` tracked -126 → -245 → -128 mA, and charge integration came within 1% of the measured current over 60 s. Caveats: the state of charge is seeded from open-circuit voltage at boot (so it is re-seeded on every reboot) and measured against *design* capacity, since nothing here learns a real full-charge capacity. The pack's BQ78Z100 — which does all of that properly and persistently — still does not answer: every `bq27xxx-battery` read of `7-0055` returns `-ENXIO`. The bus is not the problem: the RT9471 at `0x53` on the same i2c-7 replies, a full scan finds only `0x53`, `0x55` NAKs both read and write addressing across 60 retries, and the bus measures 49.2 kHz against the 50 kHz the DT asks for. The vendor 5.10 tree was compared line by line — same bq27xxx glue, same pad tuning (RSEL_111 1k pull-up, applied and read back in hardware), byte-identical pinctrl rsel tables, equivalent controller quirks and AC timing — so nothing in software distinguishes us from the kernel that read `capacity 100` from that address. `mt6358-fg` stands aside automatically if the pack gauge ever reports `present=1`. Tracked as P7.1, now a hardware item: the pack connector's SMBus pair, or the gauge's own I²C block. **Charging was found not to work on 2026-08-21** — plugged in at 11%, the coulomb counter lost ~10.3 mAh over 150 s (−248 mA net) because the MT6375's input-current limit sat at the bootloader's static 500 mA and nothing negotiates a higher one: there is no Type-C/PD or BC1.2 driver on this platform (no `typec`, no extcon), so the charger never learns what the source can do, the whole input budget feeds VSYS under desktop load, and the pack subsidises the rest. The driver's `status="Charging"` only ever meant *charge-enable bit set + VBUS good*, which is why this hid behind a green-looking sysfs. Verified live over `/dev/i2c-5`: raising CHG_AICR 500 → 2000 mA flipped the pack from −250 mA to +233 mA immediately, reproduced across an A/B cycle of the same register, and pushing to 3000/3175 mA gained nothing more — the ~600 mA input ceiling observed is the adapter, not the limit. Kernel `4fde6edeac00` (pkgrel=21) renames the read-only telemetry driver to `mt6375-charger` and gives it one job beyond telemetry: raise CHG_AICR from the bootloader's 500 mA to 1.5 A once VBUS appears (one-shot poll; the 4.5 V MIVR regulation folds back if a weak source sags), plus a writable `input_current_limit` property for userspace override. Charge enable, watchdog, interrupts, and constant-charge current/voltage stay untouched — those are cell-level settings whose normal enforcer (the BQ78Z100) does not answer here. Status stays 🟡 until a boot of pkgrel=21 shows the raised limit end-to-end. **The fuel gauge itself was then found to under-report by almost exactly 2× (2026-08-21, ten-agent investigation + differential referee test):** the homegrown `mt6358_fg` transcribed MediaTek's FGADC LSBs (381.47 µA/current count, 190.735 µAs/charge count) without the vendor's per-board correction ×`DEFAULT_R_FG/r_fg_value` — and this board's factory configuration is a **5 mΩ shunt with a 1.01 charge trim**, proven from two artifacts on the unit itself: the factory gauge node in `vendor_boot_a` (`R_FG_VALUE=<5>`, `CAR_TUNE_VALUE=<101>`) and the stock kernel's own boot log preserved in `expdb` (`r_fg=50 car_tune=1010 DEFAULT_RFG=100`). Stepping the charger's ICHG target 500→900→500 mA gave dI(chip IBAT)/dI(FG) = **2.02**, and doubling reconciles every earlier anomaly — idle is really ~267 mA, eight spinning cores ~534 mA, and the discharge/charge numbers quoted above were all half-truths (the −250 mA discharge was ~−500 mA; the +233 mA plateau ~+466 mA; the 2026-08-16 "verified within 1%" check was circular, both sides sharing the missing factor). Kernel `d8ed2cdfd537` (pkgrel=22) applies the vendor correction as module parameters (`mt6358_fg.r_fg_milliohms=5`, `car_tune_permille=1010` — module params because the signed `lk`/`dtbo` cannot carry DT tuning), halves the pack-resistance estimate that had absorbed the same factor, and exposes raw latch counts at `.../power_supply/mt6358-fg/fgc_raw`. True charge behavior after the AICR fix: **~440 mA at the 500 mA target, ~880 mA if ICHG is raised to 900 mA — roughly 5–11%/h on the 8 Ah pack, roughly double what the gauge used to claim.** Residuals kept honest: the shunt was never ohmmetered (a constant-ratio board bypass would look identical remotely; read the marking at next power-off), and the ~13% gap between chip IBAT and the nominal ICHG target is unexplained. **Fast charge then became the default (kernel `6a12a0831485`, pkgrel=23):** stepping the ICHG target 500→1500→2000→2500 mA on hardware measured the pack taking 1.46 → 1.8 A while the input pinned at ~1.85 A with VIN sagging 5.0→4.78 V and the junction at only 34 °C — the wall adapter, not the device, is the ceiling. The VBUS one-shot policy now raises the fast-charge target to 2 A alongside the 1.5 A input limit, and `constant_charge_current` joined `input_current_limit` as writable sysfs, so the observed ~1.8 A (~22%/h, 0→80% in under 4 h) needs no manual register writes; a weaker source simply yields less through the MIVR foldback. **USB-C PD then came up (kernel `5e36dfcd3193`, pkgrel=24):** the MT6375's TCPCI bank at i2c-5 `0x4e` (Richtek VID `0x29cf`, PID `0x6375`) turns out to be a plain TCPCI controller that the bootloader had already left presenting Rd — which is why PD adapters were applying vSafe5V all along with nobody home to talk PD to. A new `tcpci_mt6375` driver runs the generic TCPCI/TCPM stack over it: vendor PHY/timing patch from the BSP driver, a software-node connector (the signed bootloader DT describes neither the bank nor an interrupt line) declaring sink-only fixed PDOs of 5 V/3A, 9 V/3A and 12 V/3A — everything above stays out because the charger's OVP buckets top out at 14.5 V — and alert polling at 15 ms instead of an IRQ. Settled contracts flow through TCPM's per-port power supply into the charger: OVP bucket above the contract voltage, MIVR 800 mV under it, AICR at the contracted current. Expected with a real PD adapter at 9–12 V: up to ~27 W in, pack branch hitting its 3.15 A ICHG ceiling ≈ **35–40%/h**. First boot of pkgrel=24 verified everything *except* PD: boot chain + slot fallback machinery clean, charge policy auto-applied at probe, calibrated gauge took the pack from ~15% to 99% overnight — but `/sys/class/typec` never appeared, because `CONFIG_USB` had never been set (only `USB_GADGET`), and `TYPEC_TCPM depends on USB`, so syncconfig silently dropped TCPM, TCPCI, and the MT6375 driver down the dependency chain. pkgrel=25 sets `CONFIG_USB=y` (kernel `55509d09d028`; musb becomes dual-role as a side effect) and is the first build where the Type-C stack actually ships. Still pending hardware verification: port appearance, contract formation under polling latency, 9 V transition. **2026-08-22 evening audit (nothing attached):** the stack is alive end-to-end on the running build — `/sys/class/typec/port0` exists beneath the bound `mt6375-tcpc` device with `power_role=sink`, `port_type=sink`, `select_usb_power_delivery=pd0` (PD 3.0), and our declared sink caps read back as fixed PDOs 5 V/3 A, 9 V/3 A, 12 V/3 A; the charger sits at its idle policy values (AICR 500 mA) awaiting the VBUS one-shot. Also recorded: `bq78z100-0` registers a phantom empty power_supply that spams `-ENXIO` property warnings and pollutes PSU enumeration — cosmetic, but any UI listing batteries sees a dead entry. **Contract formation verified live (2026-08-22/23 night):** with a PD adapter attached the TCPM settled a contract — pack branch measured +1.798 A @ 3.998 V with the policy applied (AICR 1500 mA, CCC target 2000 mA) — and the adapter's own display read **11.8 V / 0.82 A**, which matches the negotiated **12 V PDO** confirmed from the source side (`tcpm-source-psy-mt6375-tcpc` reports `voltage_max=12000000`, `current_max=3000000`, active usb_type `C PD`; 11.8 V is ordinary droop). That closes the above-vSafe5V negotiation item: the port talks PD end to end. The ~9.7 W observed input is not a fault — at this contract the charge rate is capped by the 2 A `constant_charge_current` target (~22%/h on the 8 Ah pack), not by the adapter or the contract; raising that writable sysfs toward the 3.15 A ICHG ceiling scales the rate toward the predicted 35–40%/h, and the MIVR/OVP protections stay in command either way. **Measured 2026-08-23:** `constant_charge_current` 2000000→3150000 took the pack branch from ~1.82 A @ 4.06 V to a stable **2.93–2.95 A @ 4.18 V** within one sample interval (~12.3 W into the pack; capacity ticked 39→41% in about three minutes ≈ 40%/h), input staying inside the 1.5 A AICR at 11.8 V and the hottest thermal zone at 46 °C under audit load. The default policy stays at 2 A — conservative until the pack gauge answers — and this writable sysfs is the owner lever. |
-| Suspend/resume | 🟡 Partial | **A full s2idle cycle completed on 2026-08-19** (mainline DT): `echo mem` entered s2idle, the device woke (RTC alarm armed as backstop; a USB-gadget wakeup likely fired first), and `PM: suspend exit` returned rc=0 with the freezer clean. One wart: mt7921s failed its resume callback with -EIO, then mac80211 re-authenticated by itself ~2.5 s later and Wi-Fi came back with the same address — annoying, self-healing, unfixed. Panel state after resume not yet observed by a human. The sleep targets stay **masked** — unmasking trades remote reachability for battery and is an owner decision, now an informed one. The history: s2idle used to abort with `Freezing user space processes failed after 20.001 seconds (2 tasks refusing to freeze)`, twice per attempt, returning with the panel dark. Root-caused on 2026-08-16: the unfreezable tasks are not a suspend bug at all but `usb-signaller` stuck in `unlinkat(…, AT_REMOVEDIR)` on configfs (see USB gadget above), plus whatever later touched configfs and inherited its D state — an uninterruptible task can never be frozen. Masking `usb-signaller` removes that particular offender, but the 2026-08-17 teardown measurement (see the configfs row) shows the wedge is not specific to it: **any** `rmdir` of a gadget function object goes to D state, so the freezer would have kept failing for whoever ran one. Removing teardown entirely takes the blocker out for good. **The freezer is now fixed and measured.** `CONFIG_PM_DEBUG=y` (kernel pkgrel=22) brings `/sys/power/pm_test`, which stops the suspend sequence after freezing without touching devices — so the freezer can be exercised with the panel lit and no dark-screen recovery risk. Run on hardware 2026-08-17 at kernel pkgrel=24 (`echo freezer > /sys/power/pm_test; echo freeze > /sys/power/state`): `Freezing user space processes completed (elapsed 0.003 seconds)`, `Freezing remaining freezable tasks completed (elapsed 0.002 seconds)`, held 5 s, `Restarting tasks: Done`, `PM: suspend exit`, return code 0. Against the previous failure — 20.001 s timeout, twice per attempt — that is the configfs teardown removal doing exactly what it was predicted to do. What remains is the rest of the sequence: `pm_test` escalates through `devices`, `platform`, `processors`, `core`, and only `core` is close to a real `mem`. Those levels do suspend devices, so the panel goes dark; **correction 2026-08-22: the previously claimed RTC wake backstop does not exist.** The `rtc-s35390a` at i2c-8 registers as `rtc1` with **no `wakealarm` attribute** (the driver implements no alarm), and the MT6358 PMIC RTC never registered — there is no `rtc0` at all, so a timed wake cannot be armed. This does not block the `pm_test` escalation: every `pm_test` level stops the sequence at its test point and resumes automatically, so no wakeup source is needed until a real `echo mem` is attempted. Other enabled wakeup sources today: the hall switch, the touch controller (`5-0034`), the USB gadget, and the MT7902 SDIO function. The sleep targets stay masked until a full cycle is observed. |
-| Audio | ✅ Works | **Both speakers, correct L/R, balanced — hardware-verified 2026-08-20 — and microphone capture verified 2026-08-22.** The board mic is a digital DMIC microphone wired to the MT6366 codec: 5 s recorded from `hw:0,9` (`Capture_1`/UL1 front end) peaked at −29 dBFS broadband with zero mixer changes, and a control experiment flipping `Mic Type Mux` off DMIC recorded exact digital silence, proving the signal originates in the DMIC front end (`mt6358_dmic_enable` ran for exactly the capture window). There is no jack detection anywhere — zero `snd_jack`/`snd_soc_jack` registrations in codec or machine driver, no accdet platform device, no headphone switch in the input devices — so headset detect cannot work and there is no analog headset mic. Speakers took four kernel fixes from "dummy output": **power domain** — the AFE must attach `power-domains = <&spm MT6789_POWER_DOMAIN_AUDIO>` (`100b7a8c7`, pkgrel 16); without it the card probes but `hw_ptr` never advances and playback underruns to silence. **Right channel** — HPL → line-out buffer feeds the left speaker, HPR → DAC-R the right, and DAC-R must be powered up (`AUDDEC_ANA_CON0` = `0x30ff`, not mainline's `0x30f9`; vendor-matched `9c9f6ead`, pkgrel 17). **Balance** — the left channel rides two gain stages, so both channels ride the `Headphone` master gain (+8 dB, value 18; device pkgrel 48) and since `e1a31d1` (2026-08-20) Lineout adds a +2 dB trim (value 12, superseding the unity/value-10 pin recorded here before). **Channel swap** — the board wires HPL to the *right* speaker and HPR to the *left*, so the codec's downlink swap bit `AFE_DL_LR_SWAP` is set on the loudspeaker path (`586fc14`, pkgrel 20); the dead HPL re-mux alternative was reverted. The DAPM routing is applied at startup by `dc1-audio` via amixer. **Speaker-labeling packaged 2026-08-22 (device pkgrel=57) and verified on this installed system (device r76, 2026-08-25):** the package now ships a real UCM2 profile (`conf.d/mt6789-mt6366/mt6789-mt6366.conf` + `HiFi.conf`; the explicit `File` include is mandatory — UCM auto-scan does not work on alsa-lib 1.2.16) whose EnableSequence mirrors `dc1-audio`'s proven amixer sequence (Headphone 18,18 / Lineout 12,12 / ADDA_DL_GAIN 65535), plus a WirePlumber `wireplumber.conf.d/55-dc1-audio.conf` fragment setting `wireplumber.profiles.main.hardware.audio=required`, overriding pulseaudio-wireplumber's audio-disabled default by later lexical merge order. Validated only to open/parse on-device (`alsaucm -c hw:0 list _verbs` → HiFi against installed alsa-lib 1.2.16); on the first install carrying pkgrel=57, ACP adoption should replace the bogus `analog-output-headphones: Headphones` port with `[Speaker] Speakers` (checklist at the bottom of this page). `PlaybackPCM hw:${CardId},0` assumes `pcmC0D0p Playback_1` is DL1 — confirm once with `speaker-test -D hw:0,0 -c2`. **Gain-clobbering race root-caused from live evidence and fixed (device pkgrel=59):** the evening audit caught `Headphone`/`Lineout` sitting at 0,0 (and `ADDA_DL_GAIN` dragged from 65535 down to a stale stored value) 75 minutes into a boot where `dc1-audio` had exited 0. Mechanism: `alsa-restore.service` is `WantedBy=sound.target`, which udev pulls when the card registers — *after* multi-user already started `dc1-audio`. An `After=` between units queued by different transactions does not order them; execution inverted (dc1-audio finished 22:12:08, restore ran 22:12:09) and the saved mute landed on top of the calibrated gains. Fix, three layers in pkgrel=59: the unit joins the `sound.target` transaction (`[Install] WantedBy=sound.target`), which makes `After=alsa-restore.service` enforceable; `dc1-audio` now persists the calibrated gains with `alsactl store` right after applying them, so any later restore converges on the working state instead of stop-ramp zeros; and `post-upgrade` runs `systemctl reenable dc1-audio` so upgraded devices leave the stale multi-user symlink. Verified on this build: UCM files parse (`alsaucm list _verbs` → HiFi), WirePlumber adopted the profile without fallback (sink node `alsa_output.platform-sound.HiFi__Speaker__sink`, description "Internal Speakers"), and PCM0=DL1 is confirmed by three read-only sources (kernel DAI link `"Playback_1"` binds the DL1 memif; `/proc/asound/card0/pcm0p` id; the UCM mapping) — the physical `speaker-test` probe remains. Gains stay 0,0 on this boot by design of the race; they recover on the first boot carrying ≥59. Bluetooth: the whole A2DP chain is assembled (bluez5 monitor + SBC/LDAC/aptX codecs loaded); pairing and streaming remain unexercised, and the earlier "`hardware.bluetooth` stays disabled" sentence described an image state that no longer holds — `pulseaudio-wireplumber` is not installed here, so WirePlumber's own profile enables it; the shipped fragment stays as defense for images that add that package. **First ≥r59 boot verified 2026-08-23 (device r60):** the race fix held — `alsa-restore` then `dc1-audio` executed in the same `sound.target` transaction at 00:44:10, `alsactl store` persisted the calibrated 18/18 + 12/12 into `/var/lib/alsa/asound.state`, and WirePlumber adopted the profile with the sink named "Internal Speakers". Two **new** defects recorded the same night, neither being the old race: **(1) kernel-side idle gain re-zeroing** — with no stream ever opened, `Headphone Volume`/`Lineout Volume`/`ADDA_DL_GAIN` are silently reset to zero ~30–50 s after being set; reproduced twice under a full journal capture (second time exactly ~31 s after re-applying), with nothing in any userspace log at the zeroing moment; the persisted state file keeps the correct values, so only live hardware state is clobbered; suspected codec/AFE idle-teardown writing user-visible gain registers — under investigation in the pinned source. **(2) WirePlumber drops the profile on a transient PCM error** — at 01:04 a brief "playback open failed: Resource busy" on `hw:0,0` (origin outside this session; likely a desktop sound event) errored the sink node, WirePlumber's `alsa.lua:425` then crashed ("attempt to concatenate a nil value") and the card fell back to Dummy Output; recovered by restarting wireplumber. **Both were root-caused from source on 2026-08-23, and the kernel half is fixed (linux r36, kernel `6e54631d`).** (1) The re-zeroing is not a jagar bug but an upstream `mt6358` design flaw: `Headphone Volume`, `Lineout Volume` and `Handset Volume` are declared `SOC_{DOUBLE,SINGLE}_EXT_TLV` over `ZCD_CON2`/`CON1`/`CON3`, so a control read returns the raw register -- but the driver treats those registers as scratch, ramping them to the -40 dB mute index (`0x1f`) in every DAPM power-down (`mtk_hp_disable`, `mtk_hp_spk_disable`) and restoring the user value from its own `priv->ana_gain[]` shadow on the next power-up. An idle card therefore reports a mute nobody asked for -- reproduced live here at 5 h uptime, `Headphone`/`Lineout` reading 0,0 while the shadow still held +8 dB and playback would have come up correct. The danger is not the reading but `alsactl store`: a snapshot taken while the path is down persists the mute, and the next restore feeds it back through `mt6358_put_volsw` as a real request that overwrites the shadow, so playback comes up ~18 dB low. dc1-audio's ordering after `alsa-restore` is what has been absorbing that. The fix adds `mt6358_get_volsw`, which reports the shadow -- what the next power-up will actually apply -- and leaves the write path alone; it is upstreamable as-is. Compile and hardware verification are pending the first r36 boot. (2) The lua crash is an upstream WirePlumber 0.5.15 bug, exactly at `scripts/monitors/alsa.lua:425`: the failure handler builds its message as `"Failed to create ALSA node " .. n:get_property("node.name") .. ": " .. tostring(err)`, and when the node never bound, `get_property` returns nil, so the error path itself throws "attempt to concatenate a nil value" and takes the monitor down with it -- which is why a transient `EBUSY` on `hw:0,0` ends as Dummy Output. One-line fix upstream (`tostring()` around the property, or use the `properties` table already in scope). Device pkgrel>=77 carries that guard without forking the script: `dc1-fix-wireplumber-alsa` rewrites the crash site in place, re-applied from post-install/post-upgrade and from an apk trigger on `alsa.lua` so a wireplumber upgrade cannot restore Dummy Output. `postboot-checks.sh` asserts WirePlumber adoption + persisted state instead of raw live gains. |
-| Sensors | 🟡 Partial | **Accelerometer works on the mainline tree** (verified 2026-08-19, re-measured 2026-08-22): `iio:device0 name=mc3416` reads a clean 1 g vector and `iio-sensor-proxy` reports `HasAccelerometer: true` with a live orientation property. **The hall switch is in the DTS** — kernel `3d3de59a5` (2026-08-18) added it as vendor-compatible `hall-switch` backed by `drivers/input/misc/hall-switch.c` (deliberately not gpio-keys), interrupt `&pio 1 1`, `CONFIG_INPUT_HALL_SWITCH=y` — live today as `input2`/event2. This corrects the stale claim repeated at the tail of earlier revisions that the hall switch was AP-wired but absent from the DTS. The desktop chain ships complete: the SensorProxy D-Bus activation file (device pkgrel=34, fixing Alpine's policy-only aport), the polkit claim rule (pkgrel≥71: unconditional — the installer renames the provisioned user and gdm's greeter runs as `gdm-greeter`, so a username match denied both; sensor readings are world-readable in sysfs anyway), gnome-settings-daemon-mobile, and the persistent `dc1-orientation` user bridge (active on 2026-08-22; pkgrel≥71 enables it statically for every user manager — including the gdm greeter, whose post-logout login screen otherwise sat on the raw 180°-off scanout with tilt ignored — defaults `undefined` orientation to the glass-upright transform, and re-drives a respawned compositor by comparing against Mutter's live transform instead of a cached one). One measured gap from that session: mutter-mobile's orientation manager never claimed the sensor on the observed boot, so rotation currently runs bridge-driven as an instant flip, and whether the patched-Mutter animated transition ever engages is unknown — **the physical tilt test has still never been performed** and remains the last unverified link (checklist at the bottom of this page). **ALS identification documented 2026-08-22, node stays undeclared:** the ambient-light/proximity part at i2c1 `0x49` (GPIO132/133) is pinned only to family level — the board-specific tinysys SCP sensorhub firmware read from this device's own UFS names its sole ALS/PS driver family `mn29xxx` beside standalone `memsic` (MEMSic) strings, which also positively exclude stk/tmd/apds/ltr/epl candidates. A same-day live probe (bit-banged through `/dev/gpiochip0` with nothing driving the SCP) found exactly one ACKing device at `0x49`, but it NAKs every write-data byte and returns constant bytes — no register protocol reachable, hence no ID-register read, hence no exact part number and no basis for a driver candidate; the kernel tree carries no driver for any MN29 part. Caveat: the probe ran before any SCP initialization, so AP-side behaviour may differ once that domain runs — do not conclude the part is broken from AP probes alone. Still no gyro or magnetometer. History: both sensor buses hang off the SCP, but their pin pairs are dual-function and nothing drives the SCP (no mainline driver binds `mediatek,mt6789-tinysys-scp`), so the AP takes them — measured 2026-08-16 by re-muxing and bit-banging GPIO142/143 (i2c6, the MC3416 at 0x4c) and GPIO132/133 (i2c1, the 0x49 part); the original "needs a mainline SCP/sensorhub bring-up" claim stands retracted. Kernel `d8b24985b` (i2c6 + `accelerometer@4c`), `c4dc49faa` (`mcube,mc3416` 16-bit registers) and `e77962ed3` (defconfig) carried since pkgrel=22. **2026-08-22 evening audit — tilt-test readiness all green on the running build:** the sanity paths pass exactly as the checklist below requires (`mc3416` at the expected sysfs path, mount matrix exact-match and world-readable, `HasAccelerometer=true` with live `AccelerometerOrientation`/`AccelerometerTilt`, `dc1-orientation` bridge active since boot). Two measurement caveats for whoever runs the tilt test: the driver-reported `in_accel_scale` implies ~10 g for a resting 1 g vector, so judge poses by sign/dominance, never magnitude; and `~/.config/monitors.xml` persists `upside_down` while the live mutter transform is 90° — expected under bridge-driven rotation, but remember it when interpreting results. Systemic limitation worth fixing eventually: journals are root-owned and `dc1` is not in `systemd-journal`, so nothing journal-based (e.g. counting `ClaimAccelerometer`) is verifiable without root. |
-| Thermal | 🟡 Partial | **Trips, cooling maps and CPU DVFS all exist now** — kernel `0f6e730c92d6` (LVTS trips + cooling maps), `ffc87512c0e2` (cpufreq-hw MT6789 variant) and defconfig `504b45c64ba0`, all 2026-08-20 and all in the pinned pkgrel=27 build running on 2026-08-22: live, nine of the thirteen LVTS zones carry passive 85000/hyst 2000 plus critical 113500 trips (`lvts-ts3-1/-ts3-2/-ts3-3/-ts4-0` critical-only), three cooling devices are registered (`cpufreq-cpu0`, `cpufreq-cpu6`, and a GPU devfreq cooler bound through the ts3-0 map), and DVFS is up (`scaling_driver=mtk-cpufreq-hw`, schedutil; policy0 = cpu0-5 at 500-2000 MHz, policy6 = cpu6-7 at 725-2200 MHz; every zone runs `step_wise` — `power_allocator` is offered in `available_policies` but selected nowhere; an earlier revision of this row claimed power-allocator was active, which re-measurement contradicts). That closes the long-recorded "no trips, no cooling maps, no cpufreq at all" thermometer era. Dynamic re-check on the same pkgrel=27 boot (2026-08-22): eight spinning cores pin both clusters at their ceilings — 2000/2200 MHz on every core, hottest LVTS zone climbing 41.7→57.5 °C over four seconds, no trip crossed — and releasing load drops the big cluster to its 725 MHz floor within seconds. The GPU devfreq sweeps between its 390 MHz floor and 1.1 GHz ceiling under nothing more than compositor load (`simple_ondemand`; seven distinct OPPs sampled live). The missing devfreq `trans_stat` is deliberate: with 36 OPPs the transition table exceeds PAGE_SIZE and the kernel disables it (`devfreq transition table exceeds PAGE_SIZE. Disabling`, dmesg) — absence of that file is not a scaling failure. The DVFS design is deliberately regulator-free: MCUPM firmware owns the MT6366 vproc/vsram_proc rails and publishes the LUT/energy-model tables, and the kernel writes perf-state indexes only — the classic mediatek-cpufreq OPP/voltage route must not be attempted (no upstream mt6789 entry exists, and the vendor voltage tables live inside MCUPM firmware). **Landed 2026-08-22 in kernel `a2c27ab3bff1`, pinned at linux pkgrel=28, not yet booted**: every LVTS zone gains a 105000/hyst 8000 `hot` trip inserted before its existing critical in `mt6789.dtsi` (hot is notification-only — netlink/uevent; the dtsi change also applies to the emerald board that shares it), and the two board NTC zones gain their first-ever actuation capability: polling-delay/-passive raised 0→2000 ms plus `hot` 85000/hyst 5000 and `critical` 110000/hyst 2000 each (`generic-adc-thermal` has no IRQ path, so at polling 0 they could never evaluate any trip). Values follow the vendor policy extracted read-only from this device's authenticated partitions: stock DT carries no CPU trips at all (stock throttling is userspace-driven), one GPU passive stage with a devfreq map, and criticals at exactly 113500 everywhere — all preserved untouched. Validated by preprocessing + compiling the board DTS (exit 0; five pre-existing warnings, none thermal); the same-day pin bump (linux pkgrel 27→28) makes CI rebuild instead of silently reusing the cached package. Two honest risks: the NTC critical has no debounce — a single garbage ADC sample converting to ≥110 °C starts an immediate ordered poweroff (`CONFIG_THERMAL_EMERGENCY_POWEROFF_DELAY_MS=0`) — and the four polling-0 LVTS zones rely solely on the LVTS hardware threshold IRQ. Kept history: LVTS reading verified 2026-08-19 (fuse calibration base `0x1a4` versus the vendor DT's misaligned `0x1b4`; no manual RCK needed, and the driver still refuses manual-RCK paths with `-EOPNOTSUPP` until that takeover is separately accepted); the NTC zones used to fail registration with `-ENODEV` until kernel `981870b` moved the shadowing dtsi `thermal-zones` block from `/soc` to the root node; occasional empty LVTS reads remain uninvestigated (reproduced 2026-08-22: one empty poll of lvts-ts2-3 that recovered on the next read); `bq78z100-0` still disables itself (`Unable to get temperature`). First-boot checks for the trip work are in the next-session checklist at the bottom of this page. **Pre-r28 baseline recorded 2026-08-22** for side-by-side comparison: 16 zones (13 LVTS + `ap_ntc`/`ltepa_ntc` + self-disabled `bq78z100-0`, which failed reads at boot and was disabled by the core); nine LVTS zones passive 85000/h2000 + critical 113500/h2000, four critical-only, and **both NTC zones with zero trips — the exact pre-28 signature**, confirming the running build predates the trip diff regardless of uname's misleading `#28` build counter; all zones `step_wise`; all three cooling devices at cur_state 0; hottest idle zone 38.9 °C. NTC zones return live values but refresh sparsely at stable ambient (`ltepa_ntc` static across 14 s) — post-boot, expect occasional-identical consecutive reads even with 2 s polling. |
+| Display | ✅ Works | 1200×1600 @ 60 Hz over DSI; blank/wake reliable since the MIPI-TX `DSI_SW_CTL_EN` sense fix (linux r37, verified 2026-08-24 with TE + DCS ground truth). Ground truth for display work is TE on GPIO83 and a DCS read of `0x0a`, never kernel logs. — [hw/display.md](hw/display.md) |
+| GPU | ✅ Works | Mali-G57 MC2 via Panfrost, native on the mainline DT; devfreq cooling bound through LVTS ts3-0. — [hw/display.md](hw/display.md) |
+| Touchscreen | ✅ Works | ILI2910, 10-point multitouch. — [hw/input.md](hw/input.md) |
+| Pen digitizer | ✅ Works | Wacom EMR via mainline `wacom_i2c`; kernel events, pressure, barrel, eraser all verified; one hands-on ink-under-nib check across the glass awaits an r38 boot. — [hw/input.md](hw/input.md) |
+| On-device UI | 🟡 Works, with shims | GNOME Mobile, hardware-accelerated; held together by the verified-minimal shim set (codified for fresh installs) plus version-skew fixes. Installer delivery of the shim set not yet exercised end-to-end. — [gnome.md](gnome.md) |
+| Frontlight | ✅ Works | Dual RT4539 (white + amber), PWM-free; warmth quick-settings slider in the device package. — [hw/display.md](hw/display.md) |
+| Power key | ✅ Works | Phone-like blank/wake toggle + ≥2 s power menu; first feel/timing exercise pending. — [hw/input.md](hw/input.md) |
+| Wi-Fi | ✅ Works | MT7902 via mt7921s on the mainline DT; firmware staged in the system initramfs. — [hw/wireless.md](hw/wireless.md) |
+| Bluetooth | 🚧 In progress | Controller comes up (repair path for the firmware race; initramfs staging shipped for new installs); pairing/streaming session and a fresh-boot race check pending. — [hw/wireless.md](hw/wireless.md) |
+| USB gadget | 🚧 In progress | Serial console + ECM gadget up and verified on real boots; SSH over ECM from a host end-to-end pending. — [hw/usb.md](hw/usb.md) |
+| configfs teardown | ✅ Resolved | Nothing removes gadget objects (any `rmdir` of a function wedges in D state — measured); the tree persists for the boot. — [hw/usb.md](hw/usb.md) |
+| Internal storage | ✅ Works | UFS. — [hw/storage.md](hw/storage.md) |
+| microSD | ✅ Works | MSDC0; `CONFIG_REGULATOR_GPIO` root cause fixed and hardware-verified 2026-08-23. — [hw/storage.md](hw/storage.md) |
+| Battery | 🟡 Partial | Calibrated coulomb counter (2× r_fg fix); PD 12 V PDO verified end-to-end; default charge 2 A (~22 %/h), owner lever to 3.15 A (~40 %/h); SoC re-seeds from voltage each boot; pack gauge (BQ78Z100) does not answer (P7.1). — [hw/power.md](hw/power.md) |
+| Charging mode | 🚧 Packaged, unverified | Headless `dc1-charging.target` (device pkgrel ≥ 79); ring mechanism verified live, `BOOT_REASON: 1` calibration session owed. — [hw/power.md](hw/power.md) |
+| Suspend/resume | 🟡 Partial | One clean s2idle cycle on record; freezer fixed; sleep targets masked by design; escalation plan open. — [hw/suspend.md](hw/suspend.md) |
+| Audio | ✅ Works | Stereo speakers + stereo DMIC capture verified; UCM2 profile adopted; idle-gain shadow fix verified on hardware 2026-08-26; one-time physical `speaker-test` probe pending. — [hw/audio.md](hw/audio.md) |
+| Sensors | 🟡 Partial | Accelerometer + hall switch live on the mainline DT; physical tilt test never performed; ALS/proximity part has no mainline driver. — [hw/sensors.md](hw/sensors.md) |
+| Thermal | 🟡 Partial | All 13 LVTS hot trips + NTC trips verified on hardware 2026-08-23; DVFS + three cooling devices live; occasional empty LVTS reads uninvestigated. — [hw/thermal.md](hw/thermal.md) |
 
-## Next hardware session: checklists
-
-Updated 2026-08-23 after the night-session sweep. Each item names what it
-needs — a first boot carrying newer packages than this device runs, or actual
-hands. Nothing here writes a partition or touches slots; run as `dc1` unless
-a step says otherwise. Closed since 2026-08-22: the thermal-trip checks (all
-13 LVTS hot points plus the NTC hot/critical pairs verified on the
-2026-08-23 night boot — the earlier 4/13 reading was checker error, not a
-kernel gap), the audio label/transaction checks through device r60 (cleared
-by the same night's audit and first ≥r59 boot), and every pen check that does
-not need eyes on a cursor.
-
-**Audio gains under kernel ≥ pkgrel 36.** Everything up to device r60 is
-closed (see the Audio row): UCM parses, WirePlumber adopts HiFi with no
-fallback (`alsa_output.platform-sound.HiFi__Speaker__sink`, "Internal
-Speakers" — a UCM-device node, not a `[Speaker] Speakers` *port*), PCM0=DL1
-is confirmed from kernel/procfs/UCM sources, and the sound.target
-transaction fix held with calibrated gains persisted by `alsactl store`.
-What remains is verifying the mt6358 shadow-read fix on its first boot:
-after several minutes *idle*, `amixer get Headphone` / `amixer get Lineout`
-and `/var/lib/alsa/asound.state` must agree on 18,18 / 12,12. On ≤35 builds
-the live controls legitimately read 0,0 while no path is powered — that is
-the known defect, not a regression; a zero there means the old kernel is
-running. Then once per hardware, with explicit permission first (the
-speakers are loud), `speaker-test -D hw:0,0 -c2` closes the PCM0=DL1
-physical probe. If the wireplumber journal ever says `UCM not available for
-card`, apply the fallback relabel rule (`node.description="Speakers"`,
-matched on `alsa.card_name="mt6789-mt6366"`, never the numeric index) and
-bump the device pkgrel again.
-
-**Pen digitizer (kernel ≥ pkgrel 38) — human check pending.** The r35/r37
-check failed with edge offsets; root cause (stale `prop.max_*` inversion
-pivot in `wacom_i2c`, see the Pen digitizer row) is fixed in r38 together
-with the window refit, but that chain is hardware-unverified until an r38
-boot. After rebooting into r38: draw in Rnote or Xournal++ across the
-glass edges and corners — ink must land under the nib everywhere — and
-flip the pen: the eraser end must erase (only tablet-v2 apps show this;
-ordinary apps see both ends as a pointer). If edges still miss, refit the
-visible envelope from new correspondence taps against the now-straight
-chain; do not re-open calibration generally.
-Wiring reference: measured i2c9 @11eb3000 addr `0x09`, IRQ GPIO9 level-low,
-reset GPIO88 active-low (driver-owned via `reset-gpios`), vdd = WACOM-1V8
-(GPIO150), 3V3 rail always-on.
-
-**Rotation tilt test (never yet performed).** Sanity first:
-`cat /sys/devices/platform/soc/1101a000.i2c/i2c-6/6-004c/iio:device0/name`
-must read `mc3416`, `busctl --system get-property net.hadess.SensorProxy
-/net/hadess/SensorProxy net.hadess.SensorProxy HasAccelerometer` must read
-`true`, and (root) `in_mount_matrix` should still read
-`0, -1, 0; -1, 0, 0; 0, 0, -1`. If `/proc/device-tree/model` is wrong
-instead, the stock DT booted and the dtbswap handoff needs inspecting — do
-not reflash. Then hold each edge-up pose at least three seconds while
-watching `AccelerometerOrientation` follow the physical quadrant (a natural
-portrait hold is calibrated to read `bottom-up`). Expect paired journal
-lines within about a second per tilt — iio-sensor-proxy's orientation emit
-followed by `dc1-orientation: <label> -> transform N` — with content ending
-upright and touch tracking in all four poses, and returning to the start
-pose restoring the picture. An animated ~260 ms transition means mutter
-finally claimed the sensor (then watch for double-apply races); an instant
-snap with exactly one `ClaimAccelerometer` this boot means the bridge-only
-path drove it and mutter's orientation manager is still dormant.
-
-**Power key (device r64) — first human exercise.** Short press must lock
-(shield up) and DPMS-off the panel; the next short press wakes to the lock
-screen; a ≥2 s hold opens GNOME's power menu with restart / power off.
-Watch that the first press does not double-apply (blank then immediate wake)
-and that an untouched shield re-darkens after ~10 s. The event path is
-proven by the working menu grab; what needs hands is only whether the
-feel/timing matches a phone.
-
-**Bluetooth (device r65 + a rebuilt boot image) — one session.** After a
-boot whose initramfs stages `BT_RAM_CODE_MT7902_1_1_hdr.bin`: dmesg must
-show hci0 completing setup with **no** `Failed to setup 79xx firmware` line
-(the race won outright), `bluetoothctl show` reporting the controller up,
-and `dc1-bluetooth.service` inactive because its dmesg gate held. On images
-older than the rebuild the service may still recover the controller once —
-that is the repair path doing its job. Then: enable pairable, pair a peer,
-stream A2DP, and close this row.
-
-## Upstreaming readiness (postmarketOS)
-
-Assessment 2026-08-23 of what separates this port from leaving
-`device/testing` (documented only; no MR without explicit approval).
-
-Already upstream-shaped: no proprietary blobs anywhere in the port — MT7902
-Wi-Fi/Bluetooth firmware and `regulatory.db` are fetched from upstream at
-build time under exact size + SHA-256 pins; the kernel compiler boundary is
-plain clang/LLVM; the device package follows the normal pmbootstrap layout;
-and the overlay scope is small. The mutter-mobile recipe's staging into the
-upstream systemd extra repo is a prepare.sh concern, not a packaging
-deviation.
-
-Blocking, kernel side: the source is a rolling `jagar` branch pinned by
-commit, while upstream pmaports expects linux-* recipes built from released
-stable trees with a reviewable patch series. Until the jagar work is
-expressed as a series against such a base, the kernel package cannot move.
-The individually upstreamable pieces are clear: the mt6358 shadow-read fix
-(`6e54631d`), the wacom_i2c OF/reset/power-sequencing/resolution/
-visible-area work, tcpci_mt6375, the mt6375-charger AICR policy, the MC3416
-compatible, and the config fixes (REGULATOR_GPIO, USB). Each needs its own
-mailing-list thread with sign-off discipline; none blocks on another.
-
-Blocking, device side: operating policy no upstream device package would
-carry must move out or become optional — dc1-update.timer with its parity
-gates, dc1-boot-sync references, postboot-checks.sh, install-specific
-gschema overrides, and the dmesg-gated bluetooth repair service (which
-should dissolve once initramfs staging proves the race is won). The UCM2
-profile belongs in upstream alsa-ucm-conf once hardware-verified, not in
-the device package forever. None of this blocks an MR *into*
-`device/testing` quality-wise — much of it already landed there — but it
-blocks promotion beyond testing and inflates review surface.
-
-Blocking, evidence: releases honestly say `hardware_verified=false` until
-the hands-on list above closes (cursor-under-nib alignment, tilt rotation,
-speaker-test probe, Bluetooth streaming, power-key feel). With a single
-public unit, the mitigation for reviewer skepticism is measurement depth:
-docs/status.md should travel with any MR as the wiki page's backbone.
-
-Process shape: pmaports merge request against master, green CI, a named
-maintainer, and a demonstrated generic pmbootstrap install. That last one
-this device satisfies structurally — the installer writes only `boot_a`,
-`userdata`, and the boot-control bytes in `misc`, never authenticated
-partitions — but nobody outside this repository has executed it yet; one
-external install attempt would be worth more than any amount of internal
-verification.
-
-Not listed means untested or unknown. Status updates land here as the port
-progresses; upstreaming to postmarketOS is the goal, so this table also
-tracks what is left before the device can move out of
-`device/testing`.
+Not listed means untested or unknown. Status updates land in the
+per-subsystem records as the port progresses; upstreaming to postmarketOS
+is the goal — what separates this port from that is tracked in
+[roadmap.md](roadmap.md).
