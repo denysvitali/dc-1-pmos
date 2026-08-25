@@ -323,8 +323,9 @@ jobs:
       # required applets natively — no qemu, this runner is aarch64.
       # MODDIR is passed only if the built rootfs actually shipped modules
       # (the gadget stack may be built in).
-      # clang/lld/dtc build the dtbswap stub + payload so jagar-boot.img boots
-      # the MAINLINE device tree (installer-boot.img stays plain/stock-DT).
+      # clang/lld/dtc build the dtbswap stub + payload so both boot images
+      # boot the MAINLINE device tree (issue #1: the stock tree black-screens
+      # installation mode on some units, so installer-boot.img carries it too).
       # Ubuntu's default clang is fine for the 6 KB freestanding stub -- a
       # clang19 build of it was boot-proven on hardware 2026-08-19; the kernel
       # itself keeps its pinned toolchain inside pmbootstrap.
@@ -372,18 +373,21 @@ jobs:
               sh installer/build.sh 2>&1 | tee boot-images.log
           fi
           # The release must never silently regress to a stock-DT image:
-          # prove the kernel slot is a dtbswap payload (stub magic at 56,
-          # payload table at 0x40, FDT magic at the dtb offset).
+          # prove each kernel slot is a dtbswap payload (stub magic at 56,
+          # payload table at 0x40, FDT magic at the dtb offset). Both images
+          # carry it -- issue #1 proved installation mode needs the mainline
+          # tree on some units.
           python3 - <<'EOF'
           import struct, gzip
-          img = open('installer/out/jagar-boot.img','rb').read()
-          ks = struct.unpack_from('<I', img, 8)[0]
-          blob = gzip.decompress(img[4096:4096+ks])
-          assert blob[56:60] == b'ARM\x64', "kernel slot is not an arm64 image"
-          doff, dlen, koff, klen = struct.unpack_from('<4I', blob, 0x40)
-          assert blob[doff:doff+4] == b'\xd0\x0d\xfe\xed', "no FDT at dtb offset: not a dtbswap payload"
-          assert koff + klen == len(blob), "payload table inconsistent"
-          print(f"jagar-boot.img is a dtbswap payload: dtb {dlen}B @ {doff}, kernel {klen}B @ {koff}")
+          for name in ('installer-boot.img', 'jagar-boot.img'):
+              img = open(f'installer/out/{name}','rb').read()
+              ks = struct.unpack_from('<I', img, 8)[0]
+              blob = gzip.decompress(img[4096:4096+ks])
+              assert blob[56:60] == b'ARM\x64', f"{name}: kernel slot is not an arm64 image"
+              doff, dlen, koff, klen = struct.unpack_from('<4I', blob, 0x40)
+              assert blob[doff:doff+4] == b'\xd0\x0d\xfe\xed', f"{name}: no FDT at dtb offset: not a dtbswap payload"
+              assert koff + klen == len(blob), f"{name}: payload table inconsistent"
+              print(f"{name} is a dtbswap payload: dtb {dlen}B @ {doff}, kernel {klen}B @ {koff}")
           EOF
 
       - name: Upload boot-image build log on failure

@@ -56,6 +56,14 @@ printf 'not an image at all' > "$TMP/garbage.img"
 ! (require_dtbswap "$TMP/garbage.img") 2>/dev/null \
 	&& ok "garbage refused" || bad "garbage accepted"
 
+# Wiring: BOTH images must pass the gate before any fastboot write --
+# installer-boot.img too (issue #1: the stock tree black-screens
+# installation mode on some units). dtbswap-only, no plain path.
+grep -q 'require_dtbswap "\$INSTALLER_BOOT"' "$HERE/../host/dc1-install.sh" \
+	&& ok "installer image is gated" || bad "installer image is not gated"
+grep -q 'require_dtbswap "\$BOOT_IMAGE"' "$HERE/../host/dc1-install.sh" \
+	&& ok "system boot image is gated" || bad "system boot image is not gated"
+
 echo
 echo "test-dc1-install: $pass ok, $failn failed"
 [ "$failn" -eq 0 ]

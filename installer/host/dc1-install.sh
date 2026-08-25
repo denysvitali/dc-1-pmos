@@ -30,9 +30,11 @@
 #   5. (--boot-image) prove jagar-boot.img is a dtbswap payload (its kernel
 #      slot carries OUR device tree -- a plain image would boot LK's signed
 #      stock tree), fastboot-flash it to boot_a, and reboot into the
-#      installed system. vendor_boot is never written: LK ignores its DTB
-#      (it builds the tree from its signed lk_main_dtb + dtbo), so the
-#      dtbswap stub in the boot image is the only DT delivery channel.
+#      installed system. The --installer-boot image gets the same dtbswap
+#      check before step 1: the stock tree black-screens installation mode
+#      on some units (issue #1). vendor_boot is never written: LK ignores
+#      its DTB (it builds the tree from its signed lk_main_dtb + dtbo), so
+#      the dtbswap stub in the boot image is the only DT delivery channel.
 #
 # Needs: fastboot (for steps 1/5), zstd (if the rootfs is .zst), ip, nc,
 # sha256sum, and one of mkpasswd / openssl / busybox for password hashing.
@@ -219,6 +221,10 @@ done
 	die "installer boot image missing: $INSTALLER_BOOT"
 [ -z "$BOOT_IMAGE" ] || [ -f "$BOOT_IMAGE" ] || \
 	die "boot image missing: $BOOT_IMAGE"
+# Both images must be dtbswap payloads: the stock tree black-screens
+# installation mode on some units (issue #1), and a plain jagar-boot.img
+# would boot the stock tree on every unit. dtbswap-only, no exceptions.
+[ -z "$INSTALLER_BOOT" ] || require_dtbswap "$INSTALLER_BOOT"
 [ -z "$BOOT_IMAGE" ] || require_dtbswap "$BOOT_IMAGE"
 command -v nc >/dev/null || die "need nc"
 command -v sha256sum >/dev/null || die "need sha256sum"

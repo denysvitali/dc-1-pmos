@@ -142,8 +142,9 @@ enabled by provision.sh for this reason.
 
 ```sh
 sudo ./build.sh                          # both initramfs cpios only
-sudo env KERNEL_IMAGE=Image.gz MODDIR=mods ./build.sh
+sudo env KERNEL_IMAGE=Image.gz KERNEL_DTB=jagar.dtb MODDIR=mods ./build.sh
                                          # + installer-boot.img + jagar-boot.img
+                                         # (both dtbswap; KERNEL_DTB required)
 ```
 
 Needs `lz4` (the boot chain requires a legacy-frame LZ4 cpio), `curl` and
@@ -170,7 +171,12 @@ before use:
 enforces `nc sha256sum base64 blkid awk switch_root cryptpw udhcpc` and
 friends when the build host can execute it — prefer the native aarch64 CI).
 Both boot images are packed by `../boot/repack-boot.sh` (Android header v4,
-gzip kernel, AVB0 signature page). The artifact names `installer-boot.img`
+gzip kernel, AVB0 signature page). `KERNEL_DTB=` is required alongside
+`KERNEL_IMAGE=`: both kernel slots are always the `../boot/dtbswap` payload
+so installation mode and the installed system boot the mainline device
+tree — issue #1 showed units where the stock tree black-screens
+installation mode, and no plain/stock-DT image path exists. The
+artifact names `installer-boot.img`
 and `jagar-boot.img` are load-bearing — the host script, the on-device
 installer, and CI depend on them.
 

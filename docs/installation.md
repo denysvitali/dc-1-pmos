@@ -323,7 +323,9 @@ normal `dc1-update.timer` path takes over.
   display, no USB. Both slots on the development device were lost this way.
   Shipping a mainline tree through `lk`/`dtbo` would require signing them,
   which this project cannot do. The supported route (since 2026-08-19,
-  hardware-verified) is the `boot/dtbswap` stub inside `jagar-boot.img`: LK
+  hardware-verified) is the `boot/dtbswap` stub inside the boot images —
+  both `jagar-boot.img` and, since issue #1 (some units black-screen
+  installation mode on the stock tree), `installer-boot.img`: LK
   boots the unauthenticated boot image as usual, and the stub hands the
   kernel our device tree instead of LK's merged one. No signed partition is
   ever written.
