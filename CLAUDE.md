@@ -363,16 +363,31 @@ off while charging proceeds autonomously in hardware/kernel (MT6375 CC/CV
 to 4350 mV; kernel raises AICR to 1.5 A and ICHG to 2 A once VBUS appears;
 PD contracts settle in-kernel). Constraints future changes must preserve:
 
+- Detection is firmware-first: LK writes a fresh console ring each boot
+  at physical `0x7ffbf000` (256 KiB, DT node `log-store@7ffbf000`,
+  root-readable via `/dev/mem` — `CONFIG_STRICT_DEVMEM` is off). The
+  `dc1-charging-generator` takes the LAST `BOOT_REASON: <n>` line (MTK
+  enum: 0 power key, 1 USB charger, 2 RTC, 3 watchdog, 4/5 warm-reboot
+  bypass, 8 kpanic), voting only when the tail marker `jump to linux
+  kernel 64Bit` shows the ring reached the handoff — stale/partial rings
+  don't vote. Reason 1 + VBUS enters charging mode authoritatively;
+  reasons 3/4/5 NEVER enter it even with a fresh flag — a docked warm
+  reboot must reach the desktop, and that asymmetry is what makes the
+  power-key exit work. Reasons 0/2/8/unknown/unreadable fall back to the
+  flag path.
 - Flag lifecycle: `dc1-poweroff-flag.service` writes
   `/var/lib/dc1/poweroff-clean` (epoch timestamp) via ExecStop on every
   shutdown without reboot markers (`/run/systemd/reboot`/`kexec` absent);
-  reboots never leave the flag. It is consumed on every boot and expires
-  after 7 days.
-- The `dc1-charging-generator` system generator redirects default.target
-  only when ALL hold: flag present and younger than 7 days,
-  `/var/lib/dc1/no-charging-mode` absent, VBUS present
-  (`/sys/class/power_supply/mt6375-charger/online` = 1 — all charger
-  drivers are built-in, so sysfs exists before generators run).
+  reboots never leave the flag. It is consumed on every boot, expires
+  after 7 days, and only decides when the boot-reason readout cannot.
+  Generators never mutate this state (they re-run on daemon-reload).
+- All four gates must hold: `/var/lib/dc1/no-charging-mode` absent; VBUS
+  present (`/sys/class/power_supply/mt6375-charger/online` = 1 — charger
+  drivers are built-in, so sysfs exists before generators run);
+  `/var/lib/dc1/first-boot-apps-done` present (an unprovisioned system
+  ALWAYS boots to the desktop — a fresh install rebooting with the flash
+  cable attached would otherwise wake as dark glass); and reason==1 or a
+  fresh clean-poweroff flag.
 - Any future headless target must stand down `dc1-boot-watchdog` by
   keeping `/run/dc1-boot-watchdog.pat` present (an existence-based pat);
   otherwise ~600 s of unreachability reboots into a loop with fastboot
@@ -382,8 +397,13 @@ PD contracts settle in-kernel). Constraints future changes must preserve:
   (`/etc/systemd/logind.conf.d/10-dc1-power.conf`), and `/etc` drop-ins
   outrank `/run`, so a volatile logind override is impossible.
 - Opt-out is `touch /var/lib/dc1/no-charging-mode`; journal tag
-  `dc1-charging`. Implemented but NOT hardware-verified — do not claim a
-  charger boot works until someone cycles one.
+  `dc1-charging`. The ring mechanism is verified live (a real boot
+  printed `BOOT_REASON: 4` + WDT bypass; five expdb cold power-key boots
+  show 0), but the charger==1 mapping owes one calibration session
+  (power off, plug USB, confirm the ring shows 1; optionally pin MT6358
+  CHRIN via debugfs regmap) — NOT hardware-verified until then. Do not
+  plumb the boot reason through dtbswap: stub changes are the
+  highest-risk class here.
 
 ## CI contract
 

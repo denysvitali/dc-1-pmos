@@ -318,12 +318,22 @@ GNOME, Wi-Fi, Bluetooth, sshd — is stopped. The boot watchdog is stood down
 for the duration, so leaving the device on a dumb charger cannot
 reboot-loop it.
 
-Detection is deliberately userspace-only. Every clean shutdown records an
-epoch timestamp to `/var/lib/dc1/poweroff-clean`
-(`dc1-poweroff-flag.service`; reboots leave no flag), and at boot the
-`dc1-charging-generator` redirects the default target to
-`dc1-charging.target` only when that flag is younger than 7 days,
-`/var/lib/dc1/no-charging-mode` does not exist, and VBUS is present.
+Detection reads why the device powered on. Every boot, the bootloader
+leaves a fresh console log in reserved memory (kept mapped by the device
+tree), and its last `BOOT_REASON:` line names the cause — charger insert,
+power key, RTC alarm, watchdog, warm reboot, kernel panic. A
+charger-insert boot enters charging mode outright when power is present;
+watchdog and warm-reboot boots never enter it — which is exactly what
+makes the brief power-key press above able to exit to the desktop even
+while docked. Any other boot — power key, alarm, panic, unknown code, or
+an unreadable log — falls back to the older heuristic: the timestamp
+recorded at the last clean shutdown (`dc1-poweroff-flag.service` writes
+`/var/lib/dc1/poweroff-clean`; reboots leave no flag), valid for 7 days.
+Two conditions apply either way: `/var/lib/dc1/no-charging-mode` must not
+exist, and the device must have finished its first-boot setup once
+(`/var/lib/dc1/first-boot-apps-done`) — a system that has never completed
+provisioning always boots to the desktop, so a fresh install rebooting
+with the flash cable still attached does not wake as silent dark glass.
 Three consequences worth knowing:
 
 - Pressing power **while plugged in** after a clean poweroff lands in
@@ -339,9 +349,11 @@ Opt out permanently with:
 touch /var/lib/dc1/no-charging-mode
 ```
 
-Diagnose with `journalctl -t dc1-charging`. Like every behavior change in
-this repository, charging mode ships **not yet hardware-verified** until
-a real charger boot has been cycled.
+Diagnose with `journalctl -t dc1-charging`. The boot-cause readout itself
+is verified on hardware, but confirming that real charger boots report
+the charger code is still owed one calibration session — so charging mode
+ships **not yet hardware-verified** until a real charger boot has been
+cycled.
 
 ## Recovery notes
 

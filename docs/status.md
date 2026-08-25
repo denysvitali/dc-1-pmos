@@ -91,15 +91,36 @@ safe charging. Exit paths: unplug (`dc1-charging-monitor.service` runs
 `/usr/libexec/dc1-charging-monitor`, which polls VBUS with ~6 s debounce
 and then powers off cleanly), a brief power-key press (warm reboot into
 the normal desktop), or a PMIC long-press hard reset (which also lands in
-the normal desktop). Detection is userspace-only by design — no
-bootloader or kernel changes: `dc1-poweroff-flag.service` runs
+the normal desktop). Detection is firmware-first, still without
+bootloader or kernel changes. **Primary signal — the firmware boot
+cause.** MediaTek's preloader/LK
+writes a fresh console log every boot into reserved DRAM at physical
+`0x7ffbf000` (256 KiB, kept mapped by our DT as `log-store@7ffbf000`,
+root-readable via `/dev/mem` because `CONFIG_STRICT_DEVMEM` is off),
+carrying a line `BOOT_REASON: <n>` with the MTK enum 0 = power key,
+1 = USB charger insert, 2 = RTC alarm, 3 = watchdog, 4/5 = warm-reboot
+bypass, 8 = kpanic. `dc1-charging-generator` parses the LAST such line,
+voting only when the ring-tail sanity marker `jump to linux kernel
+64Bit` shows this ring actually reached the kernel handoff — stale or
+partial rings don't vote. Reason 1 plus VBUS enters charging mode
+authoritatively (no flag required); reasons 3/4/5 NEVER enter it even
+with a fresh flag — watchdog/warm-reboot bypasses must land in the
+normal desktop even when docked, and that asymmetry is exactly what
+makes the power-key exit work. Reasons 0/2/8, unknown codes, or an
+unreadable ring fall through to the deliberate fallback: the
+clean-poweroff heuristic — `dc1-poweroff-flag.service` runs
 `/usr/libexec/dc1-poweroff-flag` via ExecStop to record
 `/var/lib/dc1/poweroff-clean` (an epoch timestamp) whenever the system
 shuts down without reboot markers (`/run/systemd/reboot`/`kexec` absent;
-reboots never leave the flag), and the systemd system generator
-`dc1-charging-generator` redirects default.target to
-`dc1-charging.target` only when that flag exists and is younger than
-7 days, `/var/lib/dc1/no-charging-mode` is absent, and VBUS is present
+reboots never leave the flag) — fresh for up to DC1_MAX_AGE, default
+7 days (stale beyond that means "parked", not "docked"), which also
+degrades gracefully if a charger's ring value ever differs from enum
+expectations. Two gates apply regardless of tier:
+`/var/lib/dc1/no-charging-mode` absent,
+`/var/lib/dc1/first-boot-apps-done` present — a system that has never
+finished provisioning always boots to the desktop, protecting the
+fresh-install-with-flash-cable-still-attached case that would otherwise
+present reason 1 and wake as silent dark glass — plus VBUS present
 (`/sys/class/power_supply/mt6375-charger/online` = 1; every charger
 driver is built-in, so sysfs exists before generators run). Inside the
 target the monitor stands down `dc1-boot-watchdog` by touching
@@ -122,16 +143,21 @@ throttling of charge current** — only the chip-side JEITA-ish behavior
 plus the 110/113.5 °C critical shutdowns already described under
 Thermal; the device has **no charging LED**; and the panel is physically
 dark without `dc1-display-gate`, so charging mode adds nothing to make
-the screen dark. Future-work candidates, documented but not promised:
-true boot-cause detection from LK's SRAM log ring at physical
-`0x7ffbf000` (256 KiB, already kept mapped by our DT as
-`log_store@7ffbf000` and readable through `/dev/mem` because
-`CONFIG_STRICT_DEVMEM` is off) or from the MT6358 PMIC power-on-status
-registers; or the dtbswap stub's trace-word channel (`TRACE_PA
-0xff0c1000`) as a lower-risk alternative to DT-property injection —
-remembering that stub changes are the highest-risk class in this
-repository (the fail-safe returns stock DT behavior, and three past bugs
-in that class surfaced only on hardware).
+the screen dark. Verification state: the ring mechanism itself is
+verified live on-device — this boot printed `BOOT_REASON: 4` with the
+warm-reboot-bypass marker,
+and five historical cold power-key boots recovered from `expdb` logs all
+show `BOOT_REASON: 0`. Still owed is one hardware calibration session:
+power off, plug USB, confirm the ring really shows the charger code
+(optionally pinning the MT6358 CHRIN bit via the `000c:` line of the
+PMIC regmap under debugfs); until then the feature stays
+`hardware_verified=false`. Remaining candidates beyond that are
+second-opinion boot-cause sources (MT6358 PONSTS/CHRIN power-on-status
+registers) or plumbing the reason through the dtbswap stub's trace-word
+channel (`TRACE_PA 0xff0c1000`) — the latter explicitly discouraged,
+because stub changes are the highest-risk class in this repository (the
+fail-safe returns stock DT behavior, and three past bugs in that class
+surfaced only on hardware).
 
 ## GNOME on fresh installs: the verified-minimal shim set (2026-08-19)
 
