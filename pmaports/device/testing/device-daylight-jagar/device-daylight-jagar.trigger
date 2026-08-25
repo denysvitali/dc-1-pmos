@@ -13,6 +13,8 @@
 # nil node.name on adapter bind failure and takes the ALSA monitor down.
 set -u
 
+libexec="${DC1_LIBEXEC:-/usr/libexec}"
+
 kernel=0
 wireplumber=0
 for path in "$@"; do
@@ -30,9 +32,9 @@ if [ $# -eq 0 ]; then
 fi
 
 if [ "$wireplumber" -eq 1 ]; then
-	/usr/libexec/dc1-fix-wireplumber-alsa || true
+	"$libexec/dc1-fix-wireplumber-alsa" || true
 fi
 if [ "$kernel" -eq 1 ]; then
-	exec /usr/libexec/dc1-boot-sync --deploy
+	exec "$libexec/dc1-boot-sync" --deploy
 fi
 exit 0

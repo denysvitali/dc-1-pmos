@@ -145,11 +145,17 @@ The hardware-proven mainline route is `boot/dtbswap`:
 3. Its fail-safe paths return LK's original FDT, so a bad swap should fall
    back to stock DT behavior.
 
-`jagar-boot.img` is built with this payload when `KERNEL_DTB` is supplied.
-`installer-boot.img` deliberately remains a plain kernel image with the stock
-DT path; installation mode is proven there and does not need the mainline
-tree. The normal install therefore flashes only `jagar-boot.img` after the
-rootfs is written. Nothing ships or writes `jagar-vendor_boot` images: LK
+Both `installer-boot.img` and `jagar-boot.img` are always built with this
+payload — `installer/build.sh` requires `KERNEL_DTB` whenever it builds boot
+images, there is no plain/stock-DT image path, and CI plus the host
+installer assert the payload on both images. Installation mode
+originally shipped on the stock DT, but hardware evidence (issue #1,
+2026-08-24) showed a unit where the stock-DT installer black-screens with no
+USB gadget while a dtbswap installer works; the initramfs GCE gate accepts
+both DT node names (`10228000.gce` stock, `10228000.mailbox` mainline), so
+the installer image carries the mainline tree too. The normal install still
+flashes only `jagar-boot.img` after the rootfs is written. Nothing ships or
+writes `jagar-vendor_boot` images: LK
 ignores vendor_boot's DTB (see the invariant above), so a vendor_boot image
 cannot deliver a device tree, and every flash path structurally refuses a
 plain (non-dtbswap) `jagar-boot.img`.
@@ -217,6 +223,13 @@ Audio invariants (measured 2026-08-17..22):
   (the image's PulseAudio backend never starts under systemd, so without
   it there is no server at `$XDG_RUNTIME_DIR/pulse/native` and
   gnome-shell/g-c-c get connection refused).
+- WirePlumber 0.5.15 `scripts/monitors/alsa.lua` concatenates a nil
+  `node.name` when adapter bind fails (transient EBUSY on `hw:0,0`),
+  which kills the ALSA monitor and leaves GNOME on Dummy Output. Do
+  not fork that versioned script. `dc1-fix-wireplumber-alsa` reapplies
+  a one-line `tostring()` guard from post-install/post-upgrade and from
+  the apk trigger on the file, so a wireplumber upgrade cannot restore
+  the crash.
 
 Display/DSI invariants (measured 2026-08-24):
 
@@ -258,7 +271,8 @@ Display/DSI invariants (measured 2026-08-24):
   artifact export, deterministic ext4 creation, rootfs archive creation,
   signed APK index creation, verification, and offline tests.
 - `installer/build.sh` — creates both initramfs images and, when given
-  `KERNEL_IMAGE`, the two Android boot images. It also downloads and verifies
+  `KERNEL_IMAGE` plus the mandatory `KERNEL_DTB`, the two dtbswap Android
+  boot images. It also downloads and verifies
   public upstream firmware and pinned Alpine runtime packages into a local,
   gitignored cache.
 - `installer/gotools/` — the CGO-free multi-call Go userland (`dc1tools`),

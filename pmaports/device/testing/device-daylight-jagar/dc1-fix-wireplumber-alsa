@@ -30,9 +30,12 @@ grep -q 'n:get_property ("node.name")' "$lua" || exit 0
 tmp=$(mktemp) || exit 0
 trap 'rm -f "$tmp"' EXIT
 
+# Wrap get_property sites (the bind-failure log) and concatenations of a
+# possibly-nil node_name. The closing paren is required so we cannot turn
+# `.. node_names_table` into `.. tostring(node_name)s_table`.
 sed \
 	-e 's/n:get_property ("node.name")/tostring(n:get_property("node.name"))/g' \
-	-e 's/ \.\. node_name/ .. tostring(node_name)/g' \
+	-e 's/\.\. node_name)/.. tostring(node_name))/g' \
 	"$lua" >"$tmp" || exit 0
 
 grep -q 'tostring(n:get_property("node.name"))' "$tmp" || exit 0
