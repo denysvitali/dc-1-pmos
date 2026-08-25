@@ -33,6 +33,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -268,12 +269,25 @@ static int open_panel_gate(void)
 	static const char *panel = "/sys/module/panel_novatek_nt36523/parameters";
 	static const char *skip  = "/sys/module/mediatek_drm/parameters/jagar_skip_drm_client";
 	static const char *gce_param = "/sys/module/mtk_cmdq_mailbox/parameters/jagar_mt6789_probe_stage";
-	static const char *gce_drv   = "/sys/bus/platform/devices/10228000.gce/driver";
-	static const char *dsi_dev   = "/sys/bus/mipi-dsi/devices/14013000.dsi.0";
+	/* The GCE node is 10228000.gce on the stock tree and 10228000.mailbox on
+	 * the mainline one; which one a unit shows depends on its stock-firmware
+	 * vintage, not on anything we flash. Take whichever exists and stay on
+	 * the stock name if neither does. */
+	const char *gce_node;
+	const char *dsi_dev   = "/sys/bus/mipi-dsi/devices/14013000.dsi.0";
+	char gce_dev[64], gce_drv[64], gce_probe[64];
 	static const char *prod = "/sys/module/panel_novatek_nt36523/parameters/jagar_production_sequence";
 	static const char *stage = "/sys/module/panel_novatek_nt36523/parameters/jagar_probe_stage";
 
 	if (!exists(panel)) { say("gate: no panel driver (wrong kernel?)"); return -1; }
+
+	gce_node = "10228000.gce";
+	if (!exists("/sys/bus/platform/devices/10228000.gce") &&
+	    exists("/sys/bus/platform/devices/10228000.mailbox"))
+		gce_node = "10228000.mailbox";
+	snprintf(gce_dev, sizeof(gce_dev), "/sys/bus/platform/devices/%s", gce_node);
+	snprintf(gce_drv, sizeof(gce_drv), "%s/driver", gce_dev);
+	snprintf(gce_probe, sizeof(gce_probe), "%s\n", gce_node);
 
 	/* Tell mediatek-drm to skip its intermediate DRM client, so no fbdev
 	 * helper performs the first modeset -- the first real KMS client (us)
@@ -285,7 +299,7 @@ static int open_panel_gate(void)
 	 * chain synchronously and can wedge the interconnect). */
 	if (!exists(gce_drv)) {
 		if (wr(gce_param, "4\n") != 0 ||
-		    wr("/sys/bus/platform/drivers_probe", "10228000.gce\n") != 0) {
+		    wr("/sys/bus/platform/drivers_probe", gce_probe) != 0) {
 			say("gate: GCE bind write failed");
 			return -1;
 		}

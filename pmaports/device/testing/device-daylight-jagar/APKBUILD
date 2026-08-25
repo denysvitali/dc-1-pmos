@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=75
+pkgrel=76
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -383,7 +383,7 @@ package() {
 
 sha512sums="
 269542398027d0947ced76f2c039328e657437c8d1e31d01bc6cc9e2b176766b59d33ea58e7ce7f9a548af8342cce05c733585dfd9d1bcb4aa11fab21e48eea1  deviceinfo
-66d1dd8ae1f222e36e43d4e11e8905b8a894b35b39ad0d36157a13be3335bf6422e9ee181526afafe89d28f096874c4158feb6e7131e917b2a47cd969eb095ba  dc1-display-gate.initd
+fbf4d166a5da1d9e648696f725488d0d45f6ce1ad83ff65122187936c4275ad2b8ccfbe3cb184697298fd554a22fb2a04d4ba8ba8c50cf703089fbfb365acf4e  dc1-display-gate.initd
 a74965c50efc38879c4ce684ae1322b172d66be0b27ef2c74bff86eca12aaf8a948fc56edd37ef3249e57b1f993bda51672777137eb267bc3b26b753d1144ea2  dc1-frontlight.initd
 217b426571dd3fb8516541edf01dc79ea4433a8d8e31d6fd596a97e6f7178508a999c19793e60b621d897babbd5213a2484573d7a6e3e58b43fe1d3a411ee708  dc1-screen-backlight.initd
 efa9af2d3ccae717f209aae43383911420034fe937030e227f015167369952251ea47bf8ffa4c603e5054dd254dcdf48556e5c9f1b67c640aff20579e3e14076  dc1-gpu.initd

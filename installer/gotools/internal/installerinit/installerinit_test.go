@@ -273,16 +273,70 @@ func TestGateStepsOverAnOptionalFailure(t *testing.T) {
 // The GCE steps are skipped when the driver is already bound; repeating the
 // bind is not harmless.
 func TestGateSkipsGCEWhenAlreadyBound(t *testing.T) {
+	for _, gce := range gceCandidates {
+		t.Run(gce, func(t *testing.T) {
+			f := newFake()
+			f.present[panelParams] = true
+			// Hardware: the platform node exists before its driver binds.
+			f.present["/sys/bus/platform/devices/"+gce] = true
+			f.present["/sys/bus/platform/devices/"+gce+"/driver"] = true
+			if err := OpenGate(f, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			for _, c := range f.calls {
+				if strings.Contains(c, gceParam) {
+					t.Fatalf("re-bound GCE that was already bound (%s):\n%s", gce,
+						strings.Join(f.calls, "\n"))
+				}
+			}
+		})
+	}
+}
+
+// Units differ in which name the platform device carries: stock-tree FDTs say
+// 10228000.gce, mainline ones 10228000.mailbox. A unit with the mailbox name
+// used to fail the gate outright -- and through acquireDisplay, lose USB and
+// every other installer channel with it.
+func TestGateResolvesTheGCENameTheUnitActuallyHas(t *testing.T) {
+	cases := map[string]string{
+		"stock tree": "10228000.gce",
+		"mainline":   "10228000.mailbox",
+	}
+	for name, gce := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFake()
+			f.present[panelParams] = true
+			f.present["/sys/bus/platform/devices/"+gce] = true
+			if err := OpenGate(f, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			probe := indexOf(t, f.calls, "write /sys/bus/platform/drivers_probe="+gce)
+			wait := indexOf(t, f.calls, "wait /sys/bus/platform/devices/"+gce+"/driver")
+			if probe > wait {
+				t.Fatalf("probed %s but waited on a different node:\n%s", gce,
+					strings.Join(f.calls, "\n"))
+			}
+			for _, c := range f.calls {
+				if strings.Contains(c, "10228000.gce") && gce == "10228000.mailbox" ||
+					strings.Contains(c, "10228000.mailbox") && gce == "10228000.gce" {
+					t.Fatalf("gate mixed both GCE names:\n%s", strings.Join(f.calls, "\n"))
+				}
+			}
+		})
+	}
+}
+
+// With neither node present yet -- the normal early-boot case, since the fake
+// marks nothing -- resolution must still pick one name and run the sequence,
+// not fail before any write happened.
+func TestGateDefaultsToTheStockGCENameWhenNeitherNodeExists(t *testing.T) {
 	f := newFake()
 	f.present[panelParams] = true
-	f.present[gceDriver] = true
 	if err := OpenGate(f, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range f.calls {
-		if strings.Contains(c, gceParam) {
-			t.Fatalf("re-bound GCE that was already bound:\n%s", strings.Join(f.calls, "\n"))
-		}
+	if indexOf(t, f.calls, "write /sys/bus/platform/drivers_probe=10228000.gce") < 0 {
+		t.Fatalf("did not default to the proven stock name:\n%s", strings.Join(f.calls, "\n"))
 	}
 }
 

@@ -45,7 +45,10 @@ start() {
 	ebegin "Opening the DC-1 display gate"
 
 	local panel=/sys/module/panel_novatek_nt36523/parameters
+	# The GCE node is 10228000.gce on the stock tree and 10228000.mailbox on
+	# the mainline one; take whichever exists.
 	local gce=/sys/bus/platform/devices/10228000.gce
+	[ -e "$gce" ] || gce=/sys/bus/platform/devices/10228000.mailbox
 
 	[ -d "$panel" ] || { eend 1 "panel driver not present (wrong kernel?)"; return 1; }
 
@@ -58,7 +61,7 @@ start() {
 	if [ ! -L "$gce/driver" ]; then
 		write_sysfs /sys/module/mtk_cmdq_mailbox/parameters/jagar_mt6789_probe_stage 4 \
 			|| { eend 1; return 1; }
-		printf '10228000.gce\n' > /sys/bus/platform/drivers_probe \
+		printf '%s\n' "${gce##*/}" > /sys/bus/platform/drivers_probe \
 			|| { eend 1 "GCE drivers_probe write"; return 1; }
 		wait_for "$gce/driver" 5 || { eend 1 "GCE did not bind"; return 1; }
 	fi

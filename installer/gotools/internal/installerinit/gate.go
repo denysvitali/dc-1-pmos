@@ -29,13 +29,35 @@ const (
 	panelParams = "/sys/module/panel_novatek_nt36523/parameters"
 	skipClient  = "/sys/module/mediatek_drm/parameters/jagar_skip_drm_client"
 	gceParam    = "/sys/module/mtk_cmdq_mailbox/parameters/jagar_mt6789_probe_stage"
-	gceDriver   = "/sys/bus/platform/devices/10228000.gce/driver"
 	dsiDevice   = "/sys/bus/mipi-dsi/devices/14013000.dsi.0"
 	prodSeq     = "/sys/module/panel_novatek_nt36523/parameters/jagar_production_sequence"
 	probeStage  = "/sys/module/panel_novatek_nt36523/parameters/jagar_probe_stage"
 	cardNode    = "/dev/dri/card0"
 	backlight   = "/sys/class/backlight/lcd-backlight/brightness"
 )
+
+// The GCE/CMDQ platform device is named 10228000.gce by the stock tree LK's
+// FDT comes from and 10228000.mailbox by the mainline one; which one a unit
+// shows depends on its stock-firmware vintage, not on anything we flash. Both
+// name the same device, and the node exists before its driver probes, so
+// resolving it here keeps one bad guess from failing the whole gate -- which,
+// through acquireDisplay, failed the entire installer bring-up.
+var gceCandidates = []string{"10228000.gce", "10228000.mailbox"}
+
+func gceNode(ops Ops) string {
+	for _, node := range gceCandidates {
+		if ops.Exists("/sys/bus/platform/devices/" + node) {
+			return node
+		}
+	}
+	// Neither visible (or sysfs not populated yet): stay on the stock name
+	// the C gate was proven with.
+	return gceCandidates[0]
+}
+
+func gceDriverPath(node string) string {
+	return "/sys/bus/platform/devices/" + node + "/driver"
+}
 
 // GateStep is one action in the sequence. Exactly one of Write/WaitFor is set.
 type GateStep struct {
@@ -57,10 +79,12 @@ type GateStep struct {
 	SkipIfExists string
 }
 
-// GateSequence is the gate in the order the C performed it. Kept as data so a
-// test can assert the order without a panel: get this wrong and the device
-// does not boot, which is not a thing to discover on hardware.
-func GateSequence() []GateStep {
+// GateSequence is the gate in the order the C performed it, parameterized by
+// the resolved GCE node name ("10228000.gce" or "10228000.mailbox"). Kept as
+// data so a test can assert the order without a panel: get this wrong and the
+// device does not boot, which is not a thing to discover on hardware.
+func GateSequence(gce string) []GateStep {
+	gceDriver := "/sys/bus/platform/devices/" + gce + "/driver"
 	return []GateStep{
 		{
 			Why:  "tell mediatek-drm to skip its intermediate DRM client, so no fbdev helper performs the first modeset and the first real KMS client (us) gets the panel",
@@ -72,7 +96,7 @@ func GateSequence() []GateStep {
 		},
 		{
 			Why:  "poke the deferred probe for GCE",
-			Path: "/sys/bus/platform/drivers_probe", Value: "10228000.gce\n",
+			Path: "/sys/bus/platform/drivers_probe", Value: gce + "\n",
 			SkipIfExists: gceDriver,
 		},
 		{
@@ -112,7 +136,8 @@ func OpenGate(ops Ops, log io.Writer) error {
 	if !ops.Exists(panelParams) {
 		return fmt.Errorf("no panel driver at %s (wrong kernel?)", panelParams)
 	}
-	for _, step := range GateSequence() {
+	gce := gceNode(ops)
+	for _, step := range GateSequence(gce) {
 		if step.SkipIfExists != "" && ops.Exists(step.SkipIfExists) {
 			continue
 		}
