@@ -113,6 +113,10 @@ jobs:
           ANTHROPIC_DEFAULT_HAIKU_MODEL: opencode/x-preview-f-free
           ANTHROPIC_DEFAULT_SONNET_MODEL: opencode/x-preview-f-free
           ANTHROPIC_DEFAULT_OPUS_MODEL: opencode/x-preview-f-free
+          # x-preview-f-free serves a 1M-token context. Claude Code does not
+          # recognize the model name and would otherwise assume 200k and
+          # auto-compact early; declare the real window explicitly.
+          CLAUDE_CODE_MAX_CONTEXT_TOKENS: "1000000"
           DISABLE_AUTOUPDATER: "1"
           DISABLE_TELEMETRY: "1"
           DISABLE_ERROR_REPORTING: "1"
