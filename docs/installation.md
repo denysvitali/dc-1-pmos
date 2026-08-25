@@ -342,6 +342,10 @@ Three consequences worth knowing:
   boot goes straight to the desktop, exactly as before.
 - A wrong guess costs one extra keypress at most; it never takes away the
   old behavior.
+- A port that suspends its VBUS for longer than the ~6 s unplug debounce
+  (some laptops do this) reads as "unplugged": the device powers off, then
+  boots back into charging mode when the port wakes — a slow but harmless
+  cycle, and by design.
 
 Opt out permanently with:
 
