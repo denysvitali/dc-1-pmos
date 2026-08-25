@@ -277,6 +277,9 @@ Display/DSI invariants (measured 2026-08-24):
 - `tools/i2cbb/` — hardware probe utility retained for controlled
   re-measurement; it is not a normal build dependency.
 - `.github/workflows/build.yml` — the complete verify/build/release contract.
+- `.github/workflows/claude-review.yml` and `claude-review-comment.yml` —
+  privilege-separated Claude Code PR review (untrusted reviewer job, trusted
+  comment poster); see the CI contract section.
 
 ## Build flow and artifact contract
 
@@ -359,6 +362,19 @@ No workflow step may quietly turn a docs-only change into a skipped build. The
 cache is part of correctness: unchanged `pkgver-pkgrel` packages must remain
 byte-identical so the package and matching boot image do not drift across
 runs. Preserve the cache ownership handling and the final SHA256 check.
+
+`claude-review.yml` plus `claude-review-comment.yml` give every pull request
+an automated Claude Code review. The split is a security boundary and must
+stay: the `pull_request` review job treats all PR content as untrusted, so it
+runs with `contents: read` only, `persist-credentials: false`, no secrets
+(OpenCode Zen's free `x-preview-f-free` model is keyless through a
+loopback-only llm-proxy container), and a read-only Claude toolset
+(Read/Grep/Glob; no Bash, writes, or web tools), producing only an artifact.
+The trusted `workflow_run` poster is the only holder of
+`pull-requests: write`; it re-validates the artifact's PR number against the
+reviewed head SHA and posts the review body strictly as data. Do not move
+write permissions or secrets into the review job, and do not switch it to
+`pull_request_target`.
 
 ## Required validation
 

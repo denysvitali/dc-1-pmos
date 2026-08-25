@@ -1,0 +1,96 @@
+# Trusted second half of the Claude Code PR review: posts the review produced
+# by claude-review.yml as one sticky PR comment.
+#
+# `workflow_run` workflows always execute the definition on the default
+# branch, never a PR's edited copy, so this is the only place that holds
+# `pull-requests: write`. The downloaded artifact was produced by a job that
+# processed untrusted PR content, so every byte of it is attacker-influenced:
+# the PR number is reduced to digits and only accepted if that PR's current
+# head is exactly the commit the reviewed run ran on (which also drops
+# reviews made stale by a newer push), and the review body is passed as data
+# (a file) — never through a shell or expression interpolation — and is
+# size-capped. Worst case: markdown text on the PR that was reviewed.
+name: claude-review-comment
+
+on:
+  workflow_run:
+    workflows: [claude-review]
+    types: [completed]
+
+permissions:
+  actions: read
+  pull-requests: write
+
+concurrency:
+  group: claude-review-comment-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  comment:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download review artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name claude-review --dir "$RUNNER_TEMP/claude-review"
+
+      - name: Validate artifact and post sticky comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          dir="$RUNNER_TEMP/claude-review"
+          pr="$(tr -cd '0-9' < "$dir/pr-number.txt")"
+          if [ -z "$pr" ]; then
+            echo "artifact carries no PR number" >&2
+            exit 1
+          fi
+
+          # Accept the artifact's claimed PR only if its current head is the
+          # commit the reviewed run actually ran on. A forged artifact cannot
+          # point at someone else's PR, and a review superseded by a newer
+          # push is silently dropped instead of posted stale.
+          api_head="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" --jq .head.sha)"
+          if [ "$api_head" != "$RUN_HEAD_SHA" ]; then
+            echo "PR #$pr head is $api_head, reviewed run was $RUN_HEAD_SHA; not posting"
+            exit 0
+          fi
+
+          body="$RUNNER_TEMP/body.md"
+          {
+            printf '<!-- claude-code-review -->\n'
+            printf '**Automated review** of %s by Claude Code via llm-proxy (opencode/x-preview-f-free).\n' "$RUN_HEAD_SHA"
+            printf '_Generated from untrusted PR content with a read-only toolset; verify findings before acting on them._\n\n'
+            head -c 60000 "$dir/review.md"
+            if [ "$(wc -c < "$dir/review.md")" -gt 60000 ]; then
+              printf '\n\n_[review truncated at 60000 bytes]_\n'
+            fi
+          } > "$body"
+
+          existing="$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" \
+            --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]")
+                      | select(.body | startswith("<!-- claude-code-review -->"))
+                      | .id' | head -n 1)"
+          if [ -n "$existing" ]; then
+            gh api -X PATCH \
+              "repos/$GITHUB_REPOSITORY/issues/comments/$existing" \
+              -F "body=@$body" >/dev/null
+            echo "updated comment $existing on PR #$pr"
+          else
+            gh api -X POST \
+              "repos/$GITHUB_REPOSITORY/issues/$pr/comments" \
+              -F "body=@$body" >/dev/null
+            echo "created comment on PR #$pr"
+          fi
