@@ -28,7 +28,8 @@
 # Until then the flag+VBUS path below stays in as the FALLBACK:
 #
 #	reason == 1              -> charging mode (flag not required)
-#	reason unreadable/garbled, or any other code (0/2/3/4/5/8/...)
+#	reason 3/4/5             -> never charging mode, even with a fresh flag
+#	reason unreadable/garbled, or any other code (0/2/8/...)
 #	                         -> additionally require a fresh flag
 #
 # NEVER treat reason 3/4/5 as a charger boot even with VBUS present: those
@@ -47,7 +48,8 @@
 # All gates that must pass:
 #   1. no opt-out:        no-charging-mode absent from $VAR_DIR
 #   2. VBUS present now:  the charger `online` attribute reads 1
-#   3. reason == 1, or    (see above)
+#   3. provisioned once:  first-boot-apps-done exists in $VAR_DIR
+#   4. reason == 1, or    (see above)
 #      fresh clean-poweroff flag
 #
 # NEVER clear or rewrite that state here: generators re-run on every
@@ -119,7 +121,15 @@ decide() {
 	# 2. No VBUS, no charge session, whatever the firmware says.
 	vbus_online || return 1
 
-	# 3. Firmware verdict. BOOT_REASON 1 is a charger boot outright;
+	# 3. A system that has never finished first-boot provisioning must
+	# always reach the desktop: a fresh install rebooting with the flash
+	# cable still attached would otherwise present BOOT_REASON=1 and wake
+	# as silent dark glass before dc1-first-boot has ever run. The marker
+	# only appears once provisioning completed; treat absence as
+	# "not set up yet", whatever the firmware says.
+	[ -e "$VAR_DIR/first-boot-apps-done" ] || return 1
+
+	# 4. Firmware verdict. BOOT_REASON 1 is a charger boot outright;
 	# anything else -- including an unreadable ring -- additionally
 	# requires a fresh clean-poweroff flag. Captured with care under
 	# set -eu: an unparsable ring yields "", not an aborted generator.
@@ -127,6 +137,12 @@ decide() {
 	if [ "$reason" = "1" ]; then
 		return 0
 	fi
+	# Known non-charger codes are excluded from the fallback too, not just
+	# from the authoritative path -- watchdog/warm-reboot bypasses must land
+	# in the desktop even if a stale-looking flag somehow survived.
+	case $reason in
+	3|4|5) return 1 ;;
+	esac
 	flag_is_fresh
 }
 
@@ -141,7 +157,11 @@ if decide; then
 	# in the unit search path (systemd.unit(5), system-mode load path:
 	# generator.early > /etc > /run > generator > /usr/lib > late).
 	OUT=${1:-/run/systemd/generator}
-	mkdir -p "$OUT"
-	ln -sfn /usr/lib/systemd/system/dc1-charging.target "$OUT/default.target"
+	mkdir -p "$OUT" 2>/dev/null || {
+		echo "dc1-charging-generator: cannot create $OUT; booting normally" >&2
+		exit 0
+	}
+	ln -sfn /usr/lib/systemd/system/dc1-charging.target "$OUT/default.target" ||
+		echo "dc1-charging-generator: could not stage default.target; booting normally" >&2
 fi
 exit 0
