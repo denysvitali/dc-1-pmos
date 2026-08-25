@@ -110,13 +110,20 @@ jobs:
           done
           # The device-package C tools share dc1-misc.c (the PARTNAME=misc
           # resolver), so each links against it here exactly as the APKBUILD
-          # build() does.
+          # build() does -- except dc1-pwrkey, which is deliberately
+          # freestanding (nothing partition-related) and must stay that way.
           dev=pmaports/device/testing/device-daylight-jagar
-          for tool in dc1-reboot-fastboot dc1-slotctl dc1-pwrkey; do
+          for tool in dc1-reboot-fastboot dc1-slotctl; do
             out=$(mktemp)
             gcc -Wall -Wextra -Os -o "$out" "$dev/$tool.c" "$dev/dc1-misc.c"
             rm -f "$out"
             echo "compiled $dev/$tool.c + $dev/dc1-misc.c"
+          done
+          for tool in dc1-pwrkey; do
+            out=$(mktemp)
+            gcc -Wall -Wextra -Os -o "$out" "$dev/$tool.c"
+            rm -f "$out"
+            echo "compiled $dev/$tool.c (freestanding)"
           done
 
       - uses: actions/setup-go@v5
