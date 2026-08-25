@@ -79,6 +79,60 @@ release still ships kernel r29; r30 (pen digitizer) is pinned but its CI
 runs failed at the boot-image step — the workflow now tees that step's full
 log to a public artifact on failure so the next red run is diagnosable.
 
+**Charging mode (packaged 2026-08-25, device pkgrel>=79 — not yet
+hardware-verified).** Plugging USB power into a cleanly-powered-off device
+now boots a minimal headless `dc1-charging.target` instead of the full
+desktop: panel, network and desktop stay off while the battery charges
+autonomously — the MT6375 runs CC/CV to the pack's 4350 mV CV point in
+hardware, the kernel's VBUS one-shot raises AICR to 1.5 A and the
+fast-charge target to 2 A once VBUS appears (see Battery), and PD
+contracts are negotiated in-kernel — so zero userspace is required for
+safe charging. Exit paths: unplug (`dc1-charging-monitor.service` runs
+`/usr/libexec/dc1-charging-monitor`, which polls VBUS with ~6 s debounce
+and then powers off cleanly), a brief power-key press (warm reboot into
+the normal desktop), or a PMIC long-press hard reset (which also lands in
+the normal desktop). Detection is userspace-only by design — no
+bootloader or kernel changes: `dc1-poweroff-flag.service` runs
+`/usr/libexec/dc1-poweroff-flag` via ExecStop to record
+`/var/lib/dc1/poweroff-clean` (an epoch timestamp) whenever the system
+shuts down without reboot markers (`/run/systemd/reboot`/`kexec` absent;
+reboots never leave the flag), and the systemd system generator
+`dc1-charging-generator` redirects default.target to
+`dc1-charging.target` only when that flag exists and is younger than
+7 days, `/var/lib/dc1/no-charging-mode` is absent, and VBUS is present
+(`/sys/class/power_supply/mt6375-charger/online` = 1; every charger
+driver is built-in, so sysfs exists before generators run). Inside the
+target the monitor stands down `dc1-boot-watchdog` by touching
+`/run/dc1-boot-watchdog.pat` (an existence-based pat — without it, 600 s
+of unreachability would reboot-loop a dumb charger into fastboot
+escalation), holds `bl_power=4` on all frontlight channels as insurance,
+and runs `/usr/sbin/dc1-pwrkey`, which reads KEY_POWER evdev events
+directly because logind ignores the power key globally on this device
+(`HandlePowerKey=ignore` via `/etc/systemd/logind.conf.d/10-dc1-power.conf`)
+and `/etc` drop-ins outrank `/run`, so no volatile logind override could
+take. Kept units: PID 1 with its `RuntimeWatchdogSec=30s` feed (mandatory
+— LK arms a ~31 s SoC watchdog), journald, udevd, logind,
+`dc1-usb-gadget` + `dc1-debug-shell` + `unudhcpd@usb0` (the USB recovery
+channel at 172.16.42.x stays reachable), `dc1-link-apk-keys`, and
+`dc1-rtcsync.timer`; excluded are gdm/GNOME, NetworkManager,
+wpa_supplicant, sshd, Bluetooth, ModemManager, and the audio/display/
+frontlight/backlight/GPU/first-boot/boot-sync/update services. Electrical
+facts worth keeping: there is **no in-kernel battery-temperature
+throttling of charge current** — only the chip-side JEITA-ish behavior
+plus the 110/113.5 °C critical shutdowns already described under
+Thermal; the device has **no charging LED**; and the panel is physically
+dark without `dc1-display-gate`, so charging mode adds nothing to make
+the screen dark. Future-work candidates, documented but not promised:
+true boot-cause detection from LK's SRAM log ring at physical
+`0x7ffbf000` (256 KiB, already kept mapped by our DT as
+`log_store@7ffbf000` and readable through `/dev/mem` because
+`CONFIG_STRICT_DEVMEM` is off) or from the MT6358 PMIC power-on-status
+registers; or the dtbswap stub's trace-word channel (`TRACE_PA
+0xff0c1000`) as a lower-risk alternative to DT-property injection —
+remembering that stub changes are the highest-risk class in this
+repository (the fail-safe returns stock DT behavior, and three past bugs
+in that class surfaced only on hardware).
+
 ## GNOME on fresh installs: the verified-minimal shim set (2026-08-19)
 
 A fresh install of this image could not start GNOME: the pmOS systemd

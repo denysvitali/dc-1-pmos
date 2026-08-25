@@ -198,7 +198,8 @@ re-muxed and nothing drives the SCP:
 
 Do not add an AP sensor node while also adding an SCP/sensorhub owner for the
 same pins. There is still no gyro or magnetometer; the hall switch is directly
-AP-wired but absent from the DTS. The panel scanout is 180 degrees from the
+AP-wired and declared in the DTS since kernel `3d3de59a5` (live as an input
+device). The panel scanout is 180 degrees from the
 glass. If a future DTS `rotation = <180>` property is added, remove the same
 180-degree compensation from the accelerometer `mount-matrix` in that change
 to avoid double rotation.
@@ -265,7 +266,9 @@ Display/DSI invariants (measured 2026-08-24):
 ## Repository map
 
 - `pmaports/device/testing/` — the three local APKBUILD overlays and their
-  package files. The mutter overlay is staged into the upstream systemd extra
+  package files. The device package carries the charging-mode units and
+  scripts (see Charging mode under Installed-device convergence). The
+  mutter overlay is staged into the upstream systemd extra
   repo by `scripts/prepare.sh`.
 - `scripts/` — pinned checkout preparation, pmbootstrap rootfs/package build,
   artifact export, deterministic ext4 creation, rootfs archive creation,
@@ -351,6 +354,36 @@ that path honest:
   to ours — bump pkgrel rather than bypassing it. Version ordering for both
   comes from `scripts/apk_version_compare.py`, which matches apk-tools 3.x
   exactly (validated against on-device `apk version -t`).
+
+### Charging mode (device pkgrel >= 79)
+
+Plugging USB power into a cleanly-powered-off device boots the headless
+`dc1-charging.target` instead of the desktop: panel/network/desktop stay
+off while charging proceeds autonomously in hardware/kernel (MT6375 CC/CV
+to 4350 mV; kernel raises AICR to 1.5 A and ICHG to 2 A once VBUS appears;
+PD contracts settle in-kernel). Constraints future changes must preserve:
+
+- Flag lifecycle: `dc1-poweroff-flag.service` writes
+  `/var/lib/dc1/poweroff-clean` (epoch timestamp) via ExecStop on every
+  shutdown without reboot markers (`/run/systemd/reboot`/`kexec` absent);
+  reboots never leave the flag. It is consumed on every boot and expires
+  after 7 days.
+- The `dc1-charging-generator` system generator redirects default.target
+  only when ALL hold: flag present and younger than 7 days,
+  `/var/lib/dc1/no-charging-mode` absent, VBUS present
+  (`/sys/class/power_supply/mt6375-charger/online` = 1 — all charger
+  drivers are built-in, so sysfs exists before generators run).
+- Any future headless target must stand down `dc1-boot-watchdog` by
+  keeping `/run/dc1-boot-watchdog.pat` present (an existence-based pat);
+  otherwise ~600 s of unreachability reboots into a loop with fastboot
+  escalation — unrecoverable on a dumb charger.
+- The power key needs its own evdev reader (`/usr/sbin/dc1-pwrkey`):
+  logind ignores the power key globally on this device
+  (`/etc/systemd/logind.conf.d/10-dc1-power.conf`), and `/etc` drop-ins
+  outrank `/run`, so a volatile logind override is impossible.
+- Opt-out is `touch /var/lib/dc1/no-charging-mode`; journal tag
+  `dc1-charging`. Implemented but NOT hardware-verified — do not claim a
+  charger boot works until someone cycles one.
 
 ## CI contract
 

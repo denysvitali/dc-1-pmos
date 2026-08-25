@@ -293,6 +293,56 @@ Alpine key links into `/etc/apk/keys`, then runs `apk update` +
 `apk upgrade` and prints the resulting package versions. Afterwards the
 normal `dc1-update.timer` path takes over.
 
+## Charging mode
+
+Plugging USB power into a cleanly-powered-off DC-1 boots it into a minimal
+headless **charging mode** instead of the full desktop (device package
+pkgrel >= 79). The panel, frontlight, network, and desktop all stay off;
+the device is dark and silent. Charging itself never depends on any of
+that: the MT6375 charger runs its CC/CV profile to the pack's 4.35 V limit
+in hardware, the kernel raises the input limit to 1.5 A and the charge
+target to 2 A as soon as VBUS appears, and USB-PD contracts are negotiated
+in-kernel — zero userspace is required for safe charging.
+
+| You do | The device does |
+| --- | --- |
+| Plug USB power into a cleanly powered-off device | Boots silently into charging mode |
+| Unplug while in charging mode | Powers off cleanly after a few seconds |
+| Press power briefly | Warm-reboots into the normal desktop |
+| Hold power until the PMIC hard-reset fires | Hard-resets into the normal desktop |
+
+While charging, systemd, the journal, udev, logind, and the USB gadget stay
+up, so the recovery channels keep working: the debug shell on TCP 4444 at
+`172.16.42.1` over the cable, and both USB serial ports. Everything else —
+GNOME, Wi-Fi, Bluetooth, sshd — is stopped. The boot watchdog is stood down
+for the duration, so leaving the device on a dumb charger cannot
+reboot-loop it.
+
+Detection is deliberately userspace-only. Every clean shutdown records an
+epoch timestamp to `/var/lib/dc1/poweroff-clean`
+(`dc1-poweroff-flag.service`; reboots leave no flag), and at boot the
+`dc1-charging-generator` redirects the default target to
+`dc1-charging.target` only when that flag is younger than 7 days,
+`/var/lib/dc1/no-charging-mode` does not exist, and VBUS is present.
+Three consequences worth knowing:
+
+- Pressing power **while plugged in** after a clean poweroff lands in
+  charging mode first — press power again to continue to the desktop.
+- After a battery death (an unclean shutdown leaves no flag) the next
+  boot goes straight to the desktop, exactly as before.
+- A wrong guess costs one extra keypress at most; it never takes away the
+  old behavior.
+
+Opt out permanently with:
+
+```sh
+touch /var/lib/dc1/no-charging-mode
+```
+
+Diagnose with `journalctl -t dc1-charging`. Like every behavior change in
+this repository, charging mode ships **not yet hardware-verified** until
+a real charger boot has been cycled.
+
 ## Recovery notes
 
 - **There is no general recovery channel without a working kernel.** The DC-1's

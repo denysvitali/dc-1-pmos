@@ -125,6 +125,12 @@ what each menu option does — is in
   kernel updates included (they arm the inactive A/B slot and apply on the
   next reboot). No reflashing for userland fixes. Opt out with
   `touch /var/lib/dc1/no-auto-update`.
+- **Charging while powered off.** Plugging USB power into a cleanly
+  powered-off DC-1 boots a silent headless charging mode instead of the
+  desktop — unplug to power it off again, press power briefly to continue
+  to the desktop. Opt out with `touch /var/lib/dc1/no-charging-mode`;
+  details in
+  [docs/installation.md](docs/installation.md#charging-mode).
 - **Offline use needs one setting.** Because a boot that succeeds but can't
   be reached would otherwise be unrecoverable on a device with no serial
   header, `dc1-boot-watchdog` reboots the device after 10 unreachable
