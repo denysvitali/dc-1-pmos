@@ -1,4 +1,4 @@
-# dc-1-pmos
+# postmarketOS for Daylight DC-1
 
 [![build](https://github.com/denysvitali/dc-1-pmos/actions/workflows/build.yml/badge.svg)](https://github.com/denysvitali/dc-1-pmos/actions/workflows/build.yml)
 
