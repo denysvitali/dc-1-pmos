@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=76
+pkgrel=77
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -39,9 +39,10 @@ makedepends="devicepkg-dev"
 replaces="gdm"
 install="$pkgname.post-install $pkgname.post-upgrade"
 # Fire dc1-boot-sync --deploy when the kernel apk drops a new kernel, so
-# `apk upgrade` arms the inactive slot before the reboot. The watched paths
-# are what the kernel package installs on every upgrade.
-triggers="$pkgname.trigger=/boot/vmlinuz:/usr/share/kernel/*"
+# `apk upgrade` arms the inactive slot before the reboot. Also re-apply the
+# WirePlumber Dummy Output guard when alsa.lua is replaced by a wireplumber
+# upgrade (that script concatenates a nil node.name on bind failure).
+triggers="$pkgname.trigger=/boot/vmlinuz:/usr/share/kernel/*:/usr/share/wireplumber/scripts/monitors/alsa.lua"
 source="
 	deviceinfo
 	dc1-display-gate.initd
@@ -74,6 +75,7 @@ source="
 	dc1-gpu.service
 	dc1-audio
 	dc1-audio.service
+	dc1-fix-wireplumber-alsa
 	dc1-ucm-card.conf
 	dc1-ucm-hifi.conf
 	55-dc1-audio.conf
@@ -174,6 +176,12 @@ package() {
 	install -Dm755 "$srcdir"/dc1-display-gate "$pkgdir"/usr/libexec/dc1-display-gate
 	install -Dm755 "$srcdir"/dc1-gpu "$pkgdir"/usr/libexec/dc1-gpu
 	install -Dm755 "$srcdir"/dc1-audio "$pkgdir"/usr/libexec/dc1-audio
+	# tostring() guard for WirePlumber 0.5.15 alsa.lua -- see the helper.
+	# Re-applied from post-install/post-upgrade and from the apk trigger
+	# that watches the upstream script, because a wireplumber upgrade
+	# restores the crash site.
+	install -Dm755 "$srcdir"/dc1-fix-wireplumber-alsa \
+		"$pkgdir"/usr/libexec/dc1-fix-wireplumber-alsa
 	install -Dm755 "$srcdir"/dc1-bluetooth "$pkgdir"/usr/libexec/dc1-bluetooth
 	install -Dm755 "$srcdir"/dc1-frontlight "$pkgdir"/usr/libexec/dc1-frontlight
 	install -Dm755 "$srcdir"/dc1-screen-backlight \
@@ -374,8 +382,8 @@ package() {
 		"$pkgdir"/usr/lib/systemd/system/dc1-update.service
 	install -Dm644 "$srcdir"/dc1-update.timer \
 		"$pkgdir"/usr/lib/systemd/system/dc1-update.timer
-	# apk trigger script: apk runs it when /boot/vmlinuz or /usr/share/kernel/*
-	# changes (i.e. a kernel package upgrade). Installed explicitly so it does
+	# apk trigger script: apk runs it when /boot/vmlinuz, /usr/share/kernel/*,
+	# or WirePlumber's alsa.lua changes. Installed explicitly so it does
 	# not depend on abuild auto-installing the $pkgname.trigger from $source.
 	install -Dm755 "$srcdir"/device-daylight-jagar.trigger \
 		"$pkgdir"/usr/share/apk/triggers/device-daylight-jagar.trigger
@@ -401,7 +409,7 @@ e415530ead956df9d613725c4b165f89221093b3b29a5c9e543bca5fd3f935a1083602d287a2cc9e
 fef7de2bf3ca96f628a30bca8f9226d8a2be9b2bc1d3e19ae28e1eb0012bd142cafa2b00ed57debdb5873145ff1cb1651bbff68b64280e3914cd109ba8bcf32b  dc1-slotctl.c
 f08e318464fc650301f362ccab7e74019aff79830908c9fea9bd70428e8aa15db66a35b390241f17c5c41628fd7bc9e87c4af1780917ca81dd2017f8881c32b7  dc1-boot-sync
 efd2b7c4bce2380cc36706b0deefc6e2d901ee856165ea0e89f2faa2d38010125a9048ce73ee23a104d03e2d6e94054746de88486bac8e503174765d45cebb6f  dc1-boot-sync.service
-cb13bde7764d827402f55d5642e1078d2494be6c985740b8da287fe4226f4181922304017e9fe108b1cf81566899bc9202dfd0031efd43a70a5eb3231ffb82e8  device-daylight-jagar.trigger
+fa4c8350ade32dc5cca974a88d79a17351a27c04219efc5e01696bb1763635f36145591e56a34d9785132d5d099eada0e1f5c36a9f5cf8d97fe6594d2d59eabb  device-daylight-jagar.trigger
 f6587b81d91c2947020f0ab8426d9dc3e191ecbc604cc299c9b1debcdb51aac9ac20efc8553a7696607fa767181480bf6ee46b7a8f3502e23035fe2fca8c8623  dc1-link-apk-keys
 fdf8d6f958474554e27d62c9a9b9330a2ea3fec9591e50fc863de5cbb27bfbb1ff440ab14f8631cfc72cc3b86a37bef2e509231d9cc6ae190cc92781564b5b8b  dc1-usb-gadget
 ef0b3a6abeb2f201071f8cf136aa147e818e672d2c1ef313252269aca6670e55897912cb965c5f9cd1939f0def0571a116c4651598104d18ce4e4de2773c5ec7  dc1-usb-gadget.service
@@ -413,6 +421,7 @@ cbcfc899118ba9076315a16987f470473f7031184d1daa5e16554342227e2b66370f55ba8b9a2a05
 e9f0a80372e63be8a04a027326af59e565760c8f97640e2a6627cdf6386fedae2be4e25f4c8888908cbf3ad246ccf5f0748d2f42038ee5ba5735f8ae344963ef  dc1-gpu.service
 422604b3942e0a7de22f59505be09287402a16f7b41c615be7f7f44a5ee87e8f097740c6694b0a72e225754bfd6720f6a81423a89e8f90a0ebd843da833b66bf  dc1-audio
 79832ac33bac32c05edad52fdba749a0471456cadced93b6645109e68be3d8c3f8249e01d33840aac709d23695dcfcd1e6b40950cf7ead769dc74888a60671ff  dc1-audio.service
+4e32f57aa2609ec7cf4d8090d13b38652d3060c07d1339806f274764da8454651b2fe0b6c150c93e4426ae035ac2823a5b3a28de0e96c66313528e6daef6241e  dc1-fix-wireplumber-alsa
 72c1f6c699d7858beffbe57ebfe0c62741915c4b703adf273eee9e604e34e0c6bc16b1178a4886eff171b01edee66ca6ea3710c6fa987cfd6491b9f11091da78  dc1-ucm-card.conf
 be91d966c1ba2b8621c668eb1617c0f94e7646fe6d058bb6352defd1cca24216c00f235403233fead474be5d1bd17058be869eb66402390b20af24b85467fe8b  dc1-ucm-hifi.conf
 d66f156ec79198795ca85f067a6c8eec28716eb249f17788a54dc0ff6e6230b7faa6646a1dbafd66099e95286496338298c5b71f92a62d30c5db67022f5c5fc6  55-dc1-audio.conf

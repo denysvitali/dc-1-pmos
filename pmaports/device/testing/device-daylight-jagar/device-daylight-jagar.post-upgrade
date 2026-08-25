@@ -48,4 +48,10 @@ systemctl reenable dc1-update.timer 2>/dev/null || true
 # remap and re-trigger the input devices. Best-effort, as above.
 systemd-hwdb update 2>/dev/null || true
 udevadm trigger /dev/input/event* 2>/dev/null || true
+# WirePlumber 0.5.15 alsa.lua concatenates a nil node.name when an
+# ALSA adapter bind fails, which takes the monitor down and leaves
+# GNOME on Dummy Output. Re-apply the tostring() guard; a missing
+# script (build chroot, or a future wireplumber layout) is a no-op.
+[ -x /usr/libexec/dc1-fix-wireplumber-alsa ] &&
+	/usr/libexec/dc1-fix-wireplumber-alsa || true
 exit 0

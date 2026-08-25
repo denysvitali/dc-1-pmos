@@ -157,6 +157,11 @@ grep -qF 'jagar-rootfs.ext4" jagar-root' "$script_dir/export-artifacts.sh" ||
 grep -qF 'boot_image_included=false' "$script_dir/export-artifacts.sh" ||
 	fail "provenance must record that no boot image is published"
 
+sh -n "$device_dir/dc1-fix-wireplumber-alsa"
+sh -n "$device_dir/device-daylight-jagar.trigger"
+sh -n "$device_dir/device-daylight-jagar.post-install"
+sh -n "$device_dir/device-daylight-jagar.post-upgrade"
+sh "$script_dir/tests/test_dc1_fix_wireplumber_alsa.sh"
 sh "$script_dir/tests/test_make_ext4_image.sh"
 sh "$script_dir/tests/test_export_artifacts.sh"
 

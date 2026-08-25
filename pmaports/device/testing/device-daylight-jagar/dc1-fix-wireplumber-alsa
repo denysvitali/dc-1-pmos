@@ -1,0 +1,44 @@
+#!/bin/sh
+# Guard WirePlumber 0.5.15 alsa.lua against a nil node.name concatenation
+# that takes down the ALSA monitor and leaves GNOME on Dummy Output.
+#
+# Upstream logs:
+#   "Failed to create ALSA node " .. n:get_property("node.name") .. ": " .. err
+# when adapter bind fails. An unbound node has no properties, so get_property
+# returns nil, Lua throws "attempt to concatenate a nil value", and the
+# monitor dies. Measured on the DC-1 2026-08-23: a transient EBUSY on hw:0,0
+# recovered only by restarting wireplumber.
+#
+# Do not ship a forked copy of the versioned script -- it would rot on the
+# next wireplumber upgrade. Re-apply a one-line tostring() guard whenever
+# this package or wireplumber is installed/upgraded. Idempotent and
+# best-effort: never fail an apk transaction.
+set -u
+
+lua=${1:-/usr/share/wireplumber/scripts/monitors/alsa.lua}
+[ -f "$lua" ] || exit 0
+[ -r "$lua" ] || exit 0
+
+# Already guarded (this script's rewrite, or an equivalent upstream fix).
+if grep -q 'tostring(n:get_property("node.name"))' "$lua"; then
+	exit 0
+fi
+
+# Nothing for us to do if the crash site is gone.
+grep -q 'n:get_property ("node.name")' "$lua" || exit 0
+
+tmp=$(mktemp) || exit 0
+trap 'rm -f "$tmp"' EXIT
+
+sed \
+	-e 's/n:get_property ("node.name")/tostring(n:get_property("node.name"))/g' \
+	-e 's/ \.\. node_name/ .. tostring(node_name)/g' \
+	"$lua" >"$tmp" || exit 0
+
+grep -q 'tostring(n:get_property("node.name"))' "$tmp" || exit 0
+cmp -s "$lua" "$tmp" && exit 0
+
+# Overwrite in place so the inode (and apk's record of the packaged
+# wireplumber file) stays the same; a rename would look like a delete.
+cat "$tmp" >"$lua" 2>/dev/null || exit 0
+exit 0
