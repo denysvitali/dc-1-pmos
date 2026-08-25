@@ -31,7 +31,10 @@ depends="
 	python3
 	wireless-regdb
 "
-makedepends="devicepkg-dev"
+# linux-headers: build-time only, for dc1-pwrkey's kernel UAPI includes
+# (<linux/input.h>, <linux/input-event-codes.h>). Nothing is added to the
+# installed image.
+makedepends="devicepkg-dev linux-headers"
 # This package ships its own /etc/gdm/custom.conf (autologin to dc1), which
 # gdm's meson install also installs as a default. `replaces` lets our file
 # win the apk conflict without removing gdm -- the same pattern
