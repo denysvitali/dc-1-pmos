@@ -158,6 +158,9 @@ grep -qF 'boot_image_included=false' "$script_dir/export-artifacts.sh" ||
 	fail "provenance must record that no boot image is published"
 
 sh -n "$device_dir/dc1-fix-wireplumber-alsa"
+sh -n "$device_dir/dc1-charging-generator"
+sh -n "$device_dir/dc1-charging-monitor"
+sh -n "$device_dir/dc1-poweroff-flag"
 sh -n "$device_dir/device-daylight-jagar.trigger"
 sh -n "$device_dir/device-daylight-jagar.post-install"
 sh -n "$device_dir/device-daylight-jagar.post-upgrade"
