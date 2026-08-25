@@ -1,0 +1,147 @@
+#!/bin/sh
+# dc1-charging-generator -- boot into dc1-charging.target when the device
+# was powered off cleanly and is now plugged into a charger.
+#
+# System generators run as root before the boot transaction starts; this one
+# decides whether this boot is a "charge boot" and, if so, points
+# default.target at the headless dc1-charging.target instead of the desktop
+# chain. Silent on success; on any ordinary boot it exits 0 doing nothing.
+#
+# WHY FLAG+VBUS+BOOT-REASON AND NOT THE KERNEL CMDLINE: LK builds the
+# complete kernel command line itself and passes no androidboot.* charger
+# marker this port could key on, so userspace cannot ask the bootloader why
+# it started -- but the firmware does tell us one level down. The LK console
+# ring in DRAM at physical 0x7ffbf000 (256 KiB, reserved as
+# log-store@7ffbf000 in the device tree) carries a line
+#
+#	BOOT_REASON: <n>
+#
+# written EVERY boot by the preloader/LK, with the MediaTek enum:
+# 0=power key, 1=usb/charger, 2=rtc, 3=wdt, 4/5=warm-reboot bypass,
+# 8=kpanic. The ring is plain DRAM, so only root can read it, with dd(1)
+# from /dev/mem (CONFIG_STRICT_DEVMEM is off on this kernel precisely so
+# this LK log stays reachable); nothing exposes it elsewhere. BOOT_REASON: 1
+# is treated as an authoritative charger verdict, but ONE CALIBRATION IS
+# STILL OWED: a hardware session that powers off, plugs USB, and confirms
+# the ring really shows 1 (optionally pinning the MT6358 CHRIN bit via the
+# `000c:` line of /sys/kernel/debug/regmap/10026000.pmic-wrapper/registers).
+# Until then the flag+VBUS path below stays in as the FALLBACK:
+#
+#	reason == 1              -> charging mode (flag not required)
+#	reason unreadable/garbled, or any other code (0/2/3/4/5/8/...)
+#	                         -> additionally require a fresh flag
+#
+# NEVER treat reason 3/4/5 as a charger boot even with VBUS present: those
+# are watchdog / warm-reboot bypasses, and a docked warm reboot must land
+# in the normal desktop -- that asymmetry is exactly what makes the
+# power-key exit from charging mode work. Unknown codes fall back too.
+#
+# The fallback evidence: ${DC1_VAR_DIR}/poweroff-clean is written by
+# dc1-poweroff-flag.service ExecStop at every CLEAN shutdown and consumed
+# again early in the next boot, so "present and fresh" means the previous
+# power cycle ended deliberately (stale beyond DC1_MAX_AGE, default one
+# week, means "parked", not "docked"). A crash, watchdog reset or PMIC
+# long-press never runs that record path, so those boots land in the normal
+# desktop -- the conservative outcome.
+#
+# All gates that must pass:
+#   1. no opt-out:        no-charging-mode absent from $VAR_DIR
+#   2. VBUS present now:  the charger `online` attribute reads 1
+#   3. reason == 1, or    (see above)
+#      fresh clean-poweroff flag
+#
+# NEVER clear or rewrite that state here: generators re-run on every
+# daemon-reload, so mutating state here would race the running boot. The
+# flag is consumed by dc1-poweroff-flag.service early in the boot instead.
+#
+# Library mode for the offline tests: DC1_CHARGING_LIB=1 sources this file
+# for the pure functions without running the generator (same seam as
+# dc1-update).
+#
+# systemd-only by design: the shipped image boots systemd, and system
+# generators have no OpenRC equivalent, so no initd ships for this.
+set -eu
+
+VAR_DIR=${DC1_VAR_DIR:-/var/lib/dc1}
+SUPPLY_ONLINE=${DC1_SUPPLY_ONLINE:-/sys/class/power_supply/mt6375-charger/online}
+
+# vbus_online -- 0 iff the charger reports VBUS present right now.
+vbus_online() {
+	vo_val=$(cat "$SUPPLY_ONLINE" 2>/dev/null) || return 1
+	[ "$vo_val" = "1" ]
+}
+
+# flag_is_fresh -- 0 iff poweroff-clean exists, is all digits, and is not
+# older than DC1_MAX_AGE seconds. Every read is guarded: under set -eu a
+# missing or garbage flag means "no", never an aborted generator.
+flag_is_fresh() {
+	ff_flag="$VAR_DIR/poweroff-clean"
+	[ -r "$ff_flag" ] || return 1
+	ff_ts=$(cat "$ff_flag" 2>/dev/null) || return 1
+	case $ff_ts in
+	''|*[!0-9]*) return 1 ;;
+	esac
+	ff_now=${DC1_NOW:-$(date +%s)}
+	case $ff_now in
+	''|*[!0-9]*) return 1 ;;
+	esac
+	ff_age=$((ff_now - ff_ts))
+	[ "$ff_age" -ge 0 ] || return 1
+	[ "$ff_age" -lt "${DC1_MAX_AGE:-604800}" ] || return 1
+}
+
+# detect_boot_reason -- print the firmware boot-reason number, or fail.
+# Reads the LK console ring (see header); DC1_RING_FILE substitutes a copy
+# of the ring for offline tests. busybox-safe byte tools only -- no
+# strings(1), whose busybox coverage is uncertain. The tail-marker gate
+# refuses stale or partial rings: only a log that reached the kernel
+# handoff may vote.
+detect_boot_reason() {
+	if [ -n "${DC1_RING_FILE:-}" ]; then
+		br_data=$(cat "$DC1_RING_FILE" 2>/dev/null) || return 1
+	else
+		br_data=$(dd if=/dev/mem bs=4096 \
+			skip=$((0x7ffbf000/4096)) count=64 2>/dev/null) || return 1
+	fi
+	printf '%s\n' "$br_data" |
+		grep -a -q 'jump to linux kernel 64Bit' || return 1
+	# Last BOOT_REASON line wins.
+	printf '%s\n' "$br_data" |
+		grep -a -o -E 'BOOT_REASON: [0-9]{1,2}' | tail -n 1 |
+		grep -o -E '[0-9]{1,2}$'
+}
+
+# decide -- pure predicate, 0 = enter charging mode.
+decide() {
+	# 1. The owner's opt-out always wins.
+	[ ! -e "$VAR_DIR/no-charging-mode" ] || return 1
+
+	# 2. No VBUS, no charge session, whatever the firmware says.
+	vbus_online || return 1
+
+	# 3. Firmware verdict. BOOT_REASON 1 is a charger boot outright;
+	# anything else -- including an unreadable ring -- additionally
+	# requires a fresh clean-poweroff flag. Captured with care under
+	# set -eu: an unparsable ring yields "", not an aborted generator.
+	reason=$(detect_boot_reason) || reason=
+	if [ "$reason" = "1" ]; then
+		return 0
+	fi
+	flag_is_fresh
+}
+
+# Library seam (same idiom as dc1-update): stop here when sourced for tests.
+if [ "${DC1_CHARGING_LIB:-0}" = 1 ]; then
+	return 0 2>/dev/null || exit 0
+fi
+
+if decide; then
+	# argv[1] is the normal generator directory (/run/systemd/generator),
+	# which outranks the packaged /usr/lib/systemd/system/default.target
+	# in the unit search path (systemd.unit(5), system-mode load path:
+	# generator.early > /etc > /run > generator > /usr/lib > late).
+	OUT=${1:-/run/systemd/generator}
+	mkdir -p "$OUT"
+	ln -sfn /usr/lib/systemd/system/dc1-charging.target "$OUT/default.target"
+fi
+exit 0

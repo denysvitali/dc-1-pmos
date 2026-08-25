@@ -1,0 +1,43 @@
+# dc1-charging.target -- minimal headless boot for "plugged into a charger
+# while powered off". Reached ONLY via dc1-charging-generator swapping
+# default.target (see that script for the decision); there is no [Install]
+# section because nothing should ever enable this target statically.
+#
+# Kept deliberately minimal -- panel dark, radios off, login paths shut:
+#
+#   dc1-charging-monitor       unplug -> poweroff, KEY_POWER -> warm reboot
+#   dc1-usb-gadget.service     the USB recovery channel (ECM + 2x ACM),
+#   dc1-debug-shell.service    so an attached bench host can always reach
+#   unudhcpd@usb0.service     a charging device
+#   dc1-link-apk-keys.service  restores the apk trust links (cheap no-op)
+#   dc1-rtcsync.timer          keeps the RTC honest while parked
+#   systemd-logind.service     stock session management
+#   systemd-udevd.service      stock device management
+#
+# Deliberately EXCLUDED -- this list is the point of the target:
+#   gdm / graphical.target, NetworkManager, wpa_supplicant, sshd,
+#   tailscaled, happyd, routewrangler, oomd, avahi, ModemManager, getty --
+#   a parked, charging device needs no radio, no network daemons and no
+#   console or remote login surface.
+#   dc1-display-gate, dc1-frontlight, dc1-screen-backlight, dc1-gpu,
+#   dc1-audio, dc1-bluetooth, dc1-first-boot -- panel and peripherals stay
+#   dark and quiet; the charging monitor force-offs the backlights itself.
+#   dc1-boot-sync, dc1-update.timer -- power + boot-sync must NEVER flash
+#   slots or reboot while the user believes the device is "just charging":
+#   boot-sync downloads release images, arms the inactive slot and reboots
+#   into it, and an apk upgrade can arm a slot through the kernel trigger.
+#
+# The hardware watchdog keeps running throughout: PID 1 is still systemd,
+# and the global RuntimeWatchdogSec=30s in
+# /etc/systemd/system.conf.d/10-dc1-watchdog.conf keeps it petted while the
+# manager is healthy. Isolation swaps default.target, not PID 1.
+#
+# systemd-only by design: the shipped image boots systemd; system
+# generators have no OpenRC equivalent.
+
+[Unit]
+Description=DC-1 headless charging mode (charger boot, panel and network off)
+Requires=basic.target
+After=basic.target
+AllowIsolate=yes
+Wants=dc1-charging-monitor.service dc1-usb-gadget.service dc1-debug-shell.service unudhcpd@usb0.service dc1-link-apk-keys.service dc1-rtcsync.timer systemd-logind.service systemd-udevd.service

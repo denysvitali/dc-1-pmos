@@ -1,0 +1,60 @@
+#!/bin/sh
+# dc1-poweroff-flag -- the persistent half of charging-mode detection.
+#
+# Lifecycle (consumer side: dc1-charging-generator):
+#
+#   clean poweroff, from the desktop OR from a charging session
+#     -> ExecStop records date +%s atomically into
+#        ${DC1_FLAG_FILE:-/var/lib/dc1/poweroff-clean}
+#        (temp file in the same directory + mv, so a reader never sees a
+#        torn value).
+#   next boot
+#     -> dc1-charging-generator reads it to decide "charger boot";
+#        ExecStart (consume) then clears it early in the boot, so a later
+#        crash, watchdog reset or hard reset leaves NO flag and the boot
+#        after THOSE lands in the normal desktop.
+#   unplug-poweroff from a charging session
+#     -> records again: this unit runs in charging mode too (it is wanted
+#        by basic.target, which dc1-charging.target Requires), so
+#        plug -> charge -> unplug -> plug cycles stay in charging mode.
+#   reboot / kexec
+#     -> record SKIPS silently when /run/systemd/reboot or
+#        /run/systemd/kexec exists. This is what makes the power-key exit
+#        work: warm-rebooting out of charging mode must NOT leave a flag,
+#        or the "reboot" would come straight back into charging mode
+#        instead of the desktop.
+#   hard resets, watchdog fires, PMIC long-press hardware reset
+#     -> bypass these units entirely: no flag, next boot is the normal
+#        desktop. Conservative by design.
+#
+# Hook style (set -u, deliberately no -e): a failed record must not wedge
+# the shutdown transaction; the worst case is a missing flag, i.e. one
+# normal desktop boot.
+set -u
+
+FLAG=${DC1_FLAG_FILE:-/var/lib/dc1/poweroff-clean}
+
+case ${1-} in
+consume)
+	mkdir -p "${FLAG%/*}" 2>/dev/null || :
+	rm -f "$FLAG"
+	;;
+record)
+	if [ -e /run/systemd/reboot ] || [ -e /run/systemd/kexec ]; then
+		exit 0
+	fi
+	pf_tmp="$FLAG.tmp.$$"
+	if date +%s >"$pf_tmp" 2>/dev/null &&
+		mv -f "$pf_tmp" "$FLAG" 2>/dev/null; then
+		:
+	else
+		rm -f "$pf_tmp" 2>/dev/null || :
+		exit 1
+	fi
+	;;
+*)
+	echo "usage: dc1-poweroff-flag [consume|record]" >&2
+	exit 2
+	;;
+esac
+exit 0

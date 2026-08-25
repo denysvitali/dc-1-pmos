@@ -1,0 +1,23 @@
+# dc1-charging-monitor.service -- the userspace brain of charging mode.
+# See dc1-charging-monitor for the loop and dc1-charging.target for why
+# everything else stays off.
+#
+# Restart=on-failure + StartLimitBurst=0: the unplug and power-key exit
+# paths must never be lost to a dead monitor, so this unit may restart
+# forever. DefaultDependencies stay ON deliberately: the unit stops on
+# isolation and on shutdown, and the monitor's TERM handler exits without
+# acting (never double-firing a transition systemd is already performing).
+
+[Unit]
+Description=DC-1 charging monitor (unplug -> poweroff, power key -> reboot)
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/dc1-charging-monitor
+Restart=on-failure
+RestartSec=3
+StartLimitBurst=0
+TimeoutStopSec=10
+
+[Install]
+WantedBy=dc1-charging.target

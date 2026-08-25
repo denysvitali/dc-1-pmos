@@ -44,6 +44,12 @@ systemctl reenable dc1-audio.service 2>/dev/null || true
 # happens OnBootSec after the next boot.
 systemctl reenable dc1-update.timer 2>/dev/null || true
 
+# The clean-poweroff flag unit arrives with pkgrel 79; presets are never
+# re-run on an upgrade, so without this an upgraded device would never
+# start it and charging mode would never see a recorded flag. Same shape
+# as the update timer above: enable only, no start mid-transaction.
+systemctl reenable dc1-poweroff-flag.service 2>/dev/null || true
+
 # Keep in step with post-install: rebuild the udev hwdb for the side-button
 # remap and re-trigger the input devices. Best-effort, as above.
 systemd-hwdb update 2>/dev/null || true

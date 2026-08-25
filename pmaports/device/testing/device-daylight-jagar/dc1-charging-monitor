@@ -1,0 +1,145 @@
+#!/bin/sh
+# dc1-charging-monitor -- the brain of DC-1 charging mode.
+#
+# Started by dc1-charging.target (the headless charge boot). Jobs:
+#
+#   1. Stand the boot-watchdog down for the whole boot by touching its pat
+#      file (/run/dc1-boot-watchdog.pat; its check is pure existence). A
+#      charge session has NO network by design, so an unpatted
+#      boot-watchdog would call the boot unreachable, reboot it, and --
+#      after three strikes -- strand the device in LK fastboot while it
+#      sat innocently charging on a dumb wall wart.
+#
+#   2. Best-effort insurance: write FB_BLANK_POWERDOWN (4) to every
+#      writable /sys/class/backlight/*/bl_power -- the same knob
+#      dc1-screen-backlight uses -- so nothing leaves a light burning
+#      behind the dark panel.
+#
+#   3. Watch charger and power key:
+#        unplug (debounced: OFFLINE_LIMIT consecutive offline ticks)
+#          -> sync + `systemctl poweroff`. The clean shutdown lets
+#          dc1-poweroff-flag.service record again, so plug -> charge ->
+#          unplug -> plug stays in charging mode without a desktop in
+#          between.
+#        KEY_POWER (via /usr/sbin/dc1-pwrkey exiting 0)
+#          -> sync + `systemctl reboot`. A warm reboot skips the flag
+#          recording (reboot markers), so the next boot is the normal
+#          desktop.
+#
+#   Battery percentage comes from mt6358-fg, the live fuel gauge; the
+#   bq78z100 pack gauge is known-dead on this hardware, so logs degrade to
+#   "unknown" instead of trusting it.
+#
+# Exit discipline: TERM/INT exit quietly. The unit stops on isolation and
+# on shutdown (DefaultDependencies left in place); reacting to those with
+# another poweroff would double-fire the very transition systemd is
+# already performing.
+#
+# Library mode for the offline tests: DC1_CHARGING_LIB=1 sources this file
+# for the pure functions without running the loop (same seam as dc1-update).
+set -eu
+
+ONLINE=${DC1_SUPPLY_ONLINE:-/sys/class/power_supply/mt6375-charger/online}
+CAP=${DC1_FG_CAPACITY:-/sys/class/power_supply/mt6358-fg/capacity}
+PAT=${DC1_PAT_FILE:-/run/dc1-boot-watchdog.pat}
+TICK=${DC1_TICK:-1}
+OFFLINE_LIMIT=${DC1_OFFLINE_TICKS:-6}
+
+log() {
+	echo "dc1-charging: $*" >&2
+	logger -t dc1-charging "$*" 2>/dev/null || :
+}
+
+# is_online -- 0 iff the charger reports VBUS present ("1").
+is_online() {
+	io_val=$(cat "$ONLINE" 2>/dev/null) || return 1
+	[ "$io_val" = "1" ]
+}
+
+# read_capacity -- print the fuel-gauge percentage, or fail (garbage and
+# missing files both refuse; callers degrade to "unknown").
+read_capacity() {
+	rc_cap=$(cat "$CAP" 2>/dev/null) || return 1
+	case $rc_cap in
+	''|*[!0-9]*) return 1 ;;
+	esac
+	printf '%s\n' "$rc_cap"
+}
+
+# update_offline CURRENT -- print the next debounce counter: online resets
+# it, every offline tick increments it.
+update_offline() {
+	if is_online; then
+		printf '0\n'
+	else
+		printf '%s\n' $(($1 + 1))
+	fi
+}
+
+# decide_exit COUNT -- 0 once COUNT reached the unplug threshold.
+decide_exit() {
+	case $OFFLINE_LIMIT in
+	''|*[!0-9]*) return 1 ;;
+	esac
+	[ "$1" -ge "$OFFLINE_LIMIT" ]
+}
+
+case $TICK in
+''|*[!0-9.]*) TICK=1 ;;
+esac
+
+# Library seam (same idiom as dc1-update): stop here when sourced for tests.
+if [ "${DC1_CHARGING_LIB:-0}" = "1" ]; then
+	return 0 2>/dev/null || exit 0
+fi
+
+# 1. Pat the boot-watchdog for this whole boot.
+touch "$PAT" 2>/dev/null ||
+	log "warning: cannot create $PAT; boot-watchdog stays armed"
+
+# 2. Panel-dark insurance (FB_BLANK_POWERDOWN; see dc1-screen-backlight).
+for mo_bl in /sys/class/backlight/*/bl_power; do
+	[ -w "$mo_bl" ] || continue
+	printf '%s\n' 4 >"$mo_bl" 2>/dev/null || :
+done
+
+mo_cap=$(read_capacity) || mo_cap=""
+log "charging mode active; battery ${mo_cap:-unknown}%"
+
+# 3. Power-key watcher; timeout "0"/omitted = forever.
+/usr/sbin/dc1-pwrkey "${DC1_PWRKEY_TIMEOUT:-0}" &
+mo_pid=$!
+
+trap 'exit 0' TERM INT
+
+mo_offline=0
+while :; do
+	sleep "$TICK"
+
+	# Reap the watcher only once it is gone; wait(1) on a live child
+	# would block this loop for the entire session.
+	if ! kill -0 "$mo_pid" 2>/dev/null; then
+		mo_rc=0
+		wait "$mo_pid" || mo_rc=$?
+		if [ "$mo_rc" -eq 0 ]; then
+			log "KEY_POWER pressed; warm rebooting into the normal desktop"
+			sync 2>/dev/null || :
+			exec systemctl reboot
+		fi
+		# The watcher must never stay dead: both exit paths depend on
+		# it. Back off, respawn, keep watching.
+		log "power-key watcher exited rc=$mo_rc; respawning in 5 s"
+		sleep 5
+		/usr/sbin/dc1-pwrkey "${DC1_PWRKEY_TIMEOUT:-0}" &
+		mo_pid=$!
+	fi
+
+	mo_offline=$(update_offline "$mo_offline")
+	if decide_exit "$mo_offline"; then
+		mo_cap=$(read_capacity) || mo_cap=""
+		log "unplugged for ~$((mo_offline * TICK)) s;" \
+			"battery ${mo_cap:-unknown}%; powering off"
+		sync 2>/dev/null || :
+		exec systemctl poweroff
+	fi
+done

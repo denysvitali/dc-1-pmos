@@ -14,3 +14,8 @@ enable dc1-link-apk-keys.service
 enable dc1-first-boot.service
 enable dc1-boot-sync.service
 enable dc1-update.timer
+# The clean-poweroff flag unit backs charging mode (dc1-charging-generator
+# reads the flag it records). basic.target, not multi-user: charging mode
+# requires basic but never reaches multi-user, so recording must ride on
+# basic to also cover unplug-poweroffs from charge sessions.
+enable dc1-poweroff-flag.service
