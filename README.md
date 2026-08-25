@@ -130,16 +130,21 @@ what each menu option does — is in
   desktop — unplug to power it off again, press power briefly to continue
   to the desktop. Opt out with `touch /var/lib/dc1/no-charging-mode`;
   details in
-  [docs/installation.md](docs/installation.md#charging-mode).
+  [docs/installation.md](docs/installation.md#charging-mode). For charge
+  rates, the battery percentage's caveats, and the fast-charge lever,
+  see [docs/power.md](docs/power.md).
 - **Offline use needs one setting.** Because a boot that succeeds but can't
   be reached would otherwise be unrecoverable on a device with no serial
   header, `dc1-boot-watchdog` reboots the device after 10 unreachable
   minutes (escalating to fastboot only if consecutive boots stay
   unreachable). If you will use the tablet away from every network, opt
   out once: `sudo touch /etc/dc1/boot-watchdog.disabled`.
-- **Debug channels are always up.** SSH on port 22, a raw debug shell on
-  TCP 4444, and two USB serial ports — reachable over Wi-Fi or the USB
-  cable. The installer additionally offers read-only on-screen debug tools
+- **Debug channels are always up.** SSH on port 22 (reachable over Wi-Fi
+  or the USB cable), plus a raw root shell on TCP 4444 and two USB serial
+  ports (USB cable only — those bind to the USB interface and are never
+  exposed over Wi-Fi). The full exposure matrix, including how to close
+  each channel, is in [docs/security.md](docs/security.md); the
+  installer additionally offers read-only on-screen debug tools
   ([docs/debugging.md](docs/debugging.md)).
 
 ## When things go wrong
@@ -224,8 +229,10 @@ under `pmaports/device/testing/` are laid out exactly as they would land
 upstream, and device-specific installation policy lives in the installer
 and build scripts, not in the APKBUILDs. When the port is mature enough,
 the packages are meant to be submitted as-is; what still separates the
-port from that is tracked at the end of
-[docs/status.md](docs/status.md).
+port from that — including the open hardware-verification checklist —
+is tracked in [docs/roadmap.md](docs/roadmap.md), with the
+per-subsystem verification ledger in
+[docs/verification.md](docs/verification.md).
 
 ## License
 
