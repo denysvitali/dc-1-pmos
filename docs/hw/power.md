@@ -151,8 +151,13 @@ the pack branch from ~1.82 A @ 4.06 V to a stable **2.93–2.95 A @ 4.18 V**
 within one sample interval (~12.3 W into the pack; capacity ticked 39→41%
 in about three minutes ≈ 40%/h), input staying inside the 1.5 A AICR at
 11.8 V and the hottest thermal zone at 46 °C under audit load. The
-default policy stays at 2 A — conservative until the pack gauge answers —
-and this writable sysfs is the owner lever.
+default remained at 2 A pending broader validation at that time; this
+writable sysfs is the owner lever.
+
+**Default policy updated after that hardware session:** since 2026-08-26,
+the VBUS one-shot uses the measured **3150000 µA** target (~0.4C). The
+2 A value remains available as the conservative owner choice, while users
+can also write lower values for weaker packs or warmer conditions.
 
 Writable owner levers (confirmed present 2026-08-26):
 `/sys/class/power_supply/mt6375-charger/{constant_charge_current,
@@ -166,7 +171,7 @@ headless `dc1-charging.target` instead of the full desktop: panel,
 network and desktop stay off while the battery charges autonomously —
 the MT6375 runs CC/CV to the pack's 4350 mV CV point in hardware, the
 kernel's VBUS one-shot raises AICR to 1.5 A and the fast-charge target
-to 2 A once VBUS appears, and PD contracts are negotiated in-kernel — so
+to 3.15 A once VBUS appears, and PD contracts are negotiated in-kernel — so
 zero userspace is required for safe charging. Exit paths: unplug
 (`dc1-charging-monitor.service` runs `/usr/libexec/dc1-charging-monitor`,
 which polls VBUS with ~6 s debounce and then powers off cleanly), a brief

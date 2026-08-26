@@ -179,8 +179,8 @@ Ordered by user value per effort:
    sleep targets behind owner opt-in.
 2. **BQ78Z100 pack gauge (P7.1)** — hardware item (pack connector SMBus
    pair or the gauge's I²C block). Unlocks learned capacity, persistent
-   SoC across reboots, temperature-informed charge current, and retiring
-   the conservative 2 A default. [hw/power.md](hw/power.md).
+   SoC across reboots, and temperature-informed adaptive charge-current
+   control. [hw/power.md](hw/power.md).
 3. **ALS driver for the i2c1 `0x49` part** — auto-brightness on a
    reflective panel (frontlight is the main power draw). The AP now owns
    the bus and ships a write-free ACK probe, but implementation remains

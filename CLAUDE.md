@@ -368,7 +368,7 @@ that path honest:
 Plugging USB power into a cleanly-powered-off device boots the headless
 `dc1-charging.target` instead of the desktop: panel/network/desktop stay
 off while charging proceeds autonomously in hardware/kernel (MT6375 CC/CV
-to 4350 mV; kernel raises AICR to 1.5 A and ICHG to 2 A once VBUS appears;
+to 4350 mV; kernel raises AICR to 1.5 A and ICHG to 3.15 A once VBUS appears;
 PD contracts settle in-kernel). Constraints future changes must preserve:
 
 - Detection is firmware-first: LK writes a fresh console ring each boot
