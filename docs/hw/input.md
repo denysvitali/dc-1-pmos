@@ -129,6 +129,28 @@ Pen + Eraser styli after a driver rebind. Rnote and Xournal++
 (tablet-v2 clients: pressure plus automatic eraser switching) are
 installed on the device for verification.
 
+**Eraser-as-pen root-caused 2026-08-26 (linux r41, kernel `050e66ab`;
+compile-checked only, hands-on flip check pending).** In real use,
+flipping the pen to the eraser end produced pen-tip strokes: `wacom_i2c`
+chose `BTN_TOOL_PEN` vs `BTN_TOOL_RUBBER` only on the frame that entered
+proximity and ignored every later ERASER/INVERT flag change, and this
+firmware holds `IN_PROXIMITY` through a natural-speed flip. Raw evdev
+captures looked healthy only because slow, deliberate test flips drop
+proximity long enough for the entry latch to re-arm. The driver now
+evaluates the tool bits every frame and, on a mid-proximity change,
+releases the old tool bit before pressing the new one so userspace never
+sees two tools at once.
+
+**Calibration trap (found 2026-08-26).** GNOME Control Center's tablet
+calibrator measures taps *through* the active mutter mapping, so one bad
+calibration compounds on every retry: the device had accumulated a
+degenerate `org.gnome.desktop.peripherals.tablets.056a:0000 area` (~0.2%
+span, negative width/height) that made the whole glass map to a few
+pixels. Reset with `dconf reset .../area`. With the kernel-side visible-
+window remap delivering exact visible-glass geometry at identity
+calibration, no userspace calibration should ever be needed here — do not
+run the g-c-c calibrator on this device.
+
 Wiring reference: measured i2c9 @11eb3000 addr `0x09`, IRQ GPIO9
 level-low, reset GPIO88 active-low (driver-owned via `reset-gpios`), vdd =
 WACOM-1V8 (GPIO150), 3V3 rail always-on.

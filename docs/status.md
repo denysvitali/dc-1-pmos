@@ -111,7 +111,7 @@ Every row links to its measurement record.
 | Display | ✅ Works | 1200×1600 @ 60 Hz over DSI; blank/wake reliable since the MIPI-TX `DSI_SW_CTL_EN` sense fix (linux r37, verified 2026-08-24 with TE + DCS ground truth). Ground truth for display work is TE on GPIO83 and a DCS read of `0x0a`, never kernel logs. — [hw/display.md](hw/display.md) |
 | GPU | ✅ Works | Mali-G57 MC2 via Panfrost, native on the mainline DT; devfreq cooling bound through LVTS ts3-0. — [hw/display.md](hw/display.md) |
 | Touchscreen | ✅ Works | ILI2910, 10-point multitouch. — [hw/input.md](hw/input.md) |
-| Pen digitizer | ✅ Works | Wacom EMR via mainline `wacom_i2c`; kernel events, pressure, barrel, eraser all verified; one hands-on ink-under-nib check across the glass awaits an r38 boot. — [hw/input.md](hw/input.md) |
+| Pen digitizer | ✅ Works | Wacom EMR via mainline `wacom_i2c`; kernel events, pressure, barrel verified; eraser fixed for mid-proximity flips (linux r41, hands-on flip check pending); one hands-on ink-under-nib check across the glass awaits an r41 boot. — [hw/input.md](hw/input.md) |
 | On-device UI | 🟡 Works, with shims | GNOME Mobile, hardware-accelerated; held together by the verified-minimal shim set (codified for fresh installs) plus version-skew fixes. Installer delivery of the shim set not yet exercised end-to-end. — [gnome.md](gnome.md) |
 | Frontlight | ✅ Works | Dual RT4539 (white + amber), PWM-free; warmth quick-settings slider in the device package. — [hw/display.md](hw/display.md) |
 | Power key | ✅ Works | Phone-like blank/wake toggle + ≥2 s power menu; first feel/timing exercise pending. — [hw/input.md](hw/input.md) |

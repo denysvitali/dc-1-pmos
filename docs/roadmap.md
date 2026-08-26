@@ -24,18 +24,20 @@ says `UCM not available for card`, apply the fallback relabel rule
 (matched on `alsa.card_name="mt6789-mt6366"`, never the numeric index)
 and bump the device pkgrel. Details: [hw/audio.md](hw/audio.md).
 
-### Pen digitizer (needs a boot of kernel ≥ pkgrel 38, then hands)
+### Pen digitizer (needs a boot of kernel ≥ pkgrel 41, then hands)
 
 The edge-misalignment root cause (stale `prop.max_*` inversion pivot in
-`wacom_i2c`) is fixed in r38, compile/DTB-verified only. After booting
-r38 or newer: draw in Rnote or Xournal++ across the glass edges and
-corners — ink must land under the nib everywhere — and flip the pen: the
-eraser end must erase (only tablet-v2 apps show tool switching). If
-edges still miss, refit the visible envelope from new correspondence
-taps against the now-straight chain; do not re-open calibration
-generally. Check early in the boot: the dmesg ring rotates fast on this
-device (see the `rtc-s35390a` note in [hw/power.md](hw/power.md)).
-Details: [hw/input.md](hw/input.md).
+`wacom_i2c`) is fixed in r38, and the eraser-as-pen root cause (tool
+latched on proximity entry, ignored mid-proximity flips) is fixed in
+r41 — both compile/DTB-verified only. After booting r41 or newer: draw
+in Rnote or Xournal++ across the glass edges and corners — ink must
+land under the nib everywhere — and flip the pen: the eraser end must
+erase (only tablet-v2 apps show tool switching), including a flip made
+quickly while hovering. If edges still miss, refit the visible envelope
+from new correspondence taps against the now-straight chain; do not
+re-open calibration generally. Check early in the boot: the dmesg ring
+rotates fast on this device (see the `rtc-s35390a` note in
+[hw/power.md](hw/power.md)). Details: [hw/input.md](hw/input.md).
 
 ### Rotation tilt test (never yet performed — needs hands)
 
