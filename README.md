@@ -55,7 +55,7 @@ Details, measurements, and dates for every row:
 | Storage & microSD | ✅ | UFS internal storage; microSD slot works |
 | Battery & charging | 🟡 | USB-C PD negotiates (12 V PDO verified); charging defaults conservative (~22 %/h), tunable toward ~40 %/h via sysfs; charge % is real coulomb-counting but re-seeds from voltage at every boot |
 | USB-C networking | 🚧 | Serial console works, USB ethernet comes up; SSH from a host end-to-end still to be proven |
-| Suspend/sleep | ❌ | Unavailable by design — the power key blanks instead; see [Living with it](#living-with-it) |
+| Suspend/sleep | 🚧 | A clean s2idle test cycle is on record, but sleep targets remain masked by design; the power key blanks instead — see [Battery life today](docs/power.md#battery-life-today) |
 | Ambient light / proximity sensor | ❌ | Part identified on the bus, no mainline driver yet |
 | Gyro, magnetometer, cellular, GPS, cameras | ❌ | Not fitted/exposed on this hardware |
 
