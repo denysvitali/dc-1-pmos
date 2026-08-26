@@ -12,8 +12,8 @@ pins are re-muxed and nothing drives the SCP:
 - GPIO142/143, AP i2c6 at `0x1101a000`, exposes the MCube MC3416 at
   `0x4c` (`mcube,mc3416`, `drivers/iio/accel/mc3230.c`).
 - GPIO132/133, AP i2c1 at `0x11e01000`, exposes an ambient-light/
-  proximity part at `0x49`; it has no mainline driver and remains
-  undeclared.
+  proximity part at `0x49`. The bus is now claimed by the AP for controlled
+  bring-up, but the sensor itself remains deliberately unbound.
 
 Do not add an AP sensor node while also adding an SCP/sensorhub owner for
 the same pins. There is still no gyro or magnetometer.
@@ -70,7 +70,7 @@ from this mount-matrix in that change to avoid double rotation.
 
 ## Ambient-light / proximity part at i2c1 `0x49`
 
-**Identification documented 2026-08-22, node stays undeclared:** the part
+**Identification documented 2026-08-22; protocol still unknown:** the part
 is pinned only to family level — the board-specific tinysys SCP sensorhub
 firmware read from this device's own UFS names its sole ALS/PS driver
 family `mn29xxx` beside standalone `memsic` (MEMSic) strings, which also
@@ -83,6 +83,16 @@ candidate; the kernel tree carries no driver for any MN29 part. Caveat:
 the probe ran before any SCP initialization, so AP-side behaviour may
 differ once that domain runs — do not conclude the part is broken from AP
 probes alone.
+
+**2026-08-26 bring-up staging:** the shipped DT now enables AP i2c1 and
+muxes GPIO132/133 to SCL1/SDA1, using the same measured AP-bus-ownership
+approach as i2c6. The sensor has no child node or compatible: an exact MN29
+part identity and register protocol are still missing, and a guessed binding
+could change its mode without any safe way back. The device package ships
+root-only `dc1-mn29-probe` (`sudo dc1-mn29-probe`), which checks only the
+address ACK on `/dev/i2c-1`; it never writes a byte. This stage does not yet
+provide ambient light or proximity readings, and hardware verification of the
+controller/pinmux path still requires a boot with this kernel.
 
 The mainboard carries a connector explicitly labelled Light Sensor
 (Daylight publishes nothing about sensors).

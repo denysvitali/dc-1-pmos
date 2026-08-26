@@ -194,7 +194,8 @@ re-muxed and nothing drives the SCP:
 - GPIO142/143, AP i2c6 at `0x1101a000`, exposes the MCube MC3416 at `0x4c`
   (`mcube,mc3416`, `drivers/iio/accel/mc3230.c`).
 - GPIO132/133, AP i2c1 at `0x11e01000`, exposes an ambient-light/proximity part
-  at `0x49`; it has no mainline driver and remains undeclared.
+  at `0x49`. The AP now owns that bus for controlled bring-up; the sensor stays
+  unbound because the MN29 register protocol is still unidentified.
 
 Do not add an AP sensor node while also adding an SCP/sensorhub owner for the
 same pins. There is still no gyro or magnetometer; the hall switch is directly

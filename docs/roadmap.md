@@ -182,9 +182,10 @@ Ordered by user value per effort:
    SoC across reboots, temperature-informed charge current, and retiring
    the conservative 2 A default. [hw/power.md](hw/power.md).
 3. **ALS driver for the i2c1 `0x49` part** — auto-brightness on a
-   reflective panel (frontlight is the main power draw). Blocked on
-   exact part ID (MEMSic `mn29xxx` family; possibly only reachable with
-   SCP context). [hw/sensors.md](hw/sensors.md).
+   reflective panel (frontlight is the main power draw). The AP now owns
+   the bus and ships a write-free ACK probe, but implementation remains
+   blocked on exact part ID and protocol (MEMSic `mn29xxx` family;
+   possibly only reachable with SCP context). [hw/sensors.md](hw/sensors.md).
 4. **Phantom `bq78z100-0` power-supply suppression** — cosmetic PSU
    enumeration pollution; small kernel or DT change.
 5. **Surfaces for owner levers** — a Settings panel or extension for the
