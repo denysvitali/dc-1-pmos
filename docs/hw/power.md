@@ -255,17 +255,27 @@ surfaced only on hardware). The calibration runbook is in
 
 ## RTC
 
-The `rtc-s35390a` at i2c-8 registers as `rtc1` with **no `wakealarm`
-attribute** (the driver implements no alarm), and the MT6358 PMIC RTC
-never registered — there is no `rtc0` at all, so a timed wake cannot be
-armed (matters for suspend — see [suspend.md](suspend.md)).
+The `rtc-s35390a` at i2c-8 registers as `rtc0`; the MT6358 PMIC RTC does
+not register. Alarm support appeared after the S35390A driver gained an
+IRQ path, but it is not usable on this board.
 
-**New observation 2026-08-26 (r37 boot, ~15 h uptime):** the kernel ring
-carries ~24,000 repetitions of `rtc-s35390a 8-0030: alarm IRQ with INT2
-flag clear; disarmed INT2` (~0.6 lines/s sustained). Cause unknown;
-functionally it looks benign, but it rotates the dmesg ring fast enough
-that early-boot signatures (wacom probe, Bluetooth firmware race) are
-gone by the next morning — when a fresh-boot signature check matters,
-run it early or raise the ring size. Worth root-causing at the next
-kernel touch (candidate: the driver's INT2 alarm polarity handling
-against this board's wiring).
+The r46 boot on 2026-08-28 turned the earlier log-noise observation into
+a P0 defect: `/proc/interrupts` counted GPIO14 at about 492 IRQ/s (984 in
+two seconds), while STATUS1 never reported INT2 and the ring printed
+`alarm IRQ with INT2 flag clear; disarmed INT2`. The printed rate is only
+~0.6 lines/s because the warning is rate-limited; the underlying IRQ
+storm is continuous. Both driver-side mitigations are already present:
+the handler clears the INT2 alarm-enable mode, and probe clears every
+battery-backed INT output mode. Neither releases GPIO14, so the board
+line is not behaving as the controllable INT2 signal described by the
+DT. Besides rotating away early-boot evidence, this costs CPU wakeups and
+likely idle power.
+
+Kernel `8f0bfe8f8a4c` (pinned for package r48) removes the alarm IRQ and
+`wakeup-source` properties from the board node. This deliberately keeps
+RTC timekeeping and drops a timed-wake feature that has never worked;
+suspend remains disabled independently. Compile/DTB-verified only. On
+the first r48 boot, confirm no `8-0030` entry exists in
+`/proc/interrupts`, no S35390A IRQ warning appears over ten minutes, and
+`hwclock --show` still reads retained time. Until that boot, check fresh
+signatures early because r46 still rotates the ring.

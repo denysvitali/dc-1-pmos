@@ -7,6 +7,25 @@ what it needs — a first boot carrying newer packages than the device
 runs, actual hands, or an external user. Nothing here writes a partition
 or touches slots; run as the normal user unless a step says otherwise.
 
+## Current dmesg triage (2026-08-28, live kernel r46)
+
+The warning-level ring was normalized by signature and checked against
+live subsystem state. Counts below are from a roughly nine-minute boot;
+rate-limited messages understate the underlying event rate. This is a
+remediation queue, not a claim that every line is a user-visible failure.
+
+| Priority / category | Signatures | Assessment and exit criterion |
+| --- | --- | --- |
+| **P0 interrupt storm — fix pinned in r48, needs one boot** | `rtc-s35390a ... alarm IRQ with INT2 flag clear` (750 printed, 74 suppression notices); GPIO14 rose by 984 interrupts in 2 s | About 492 IRQ/s is a CPU/idle-power and diagnostics defect. Two driver attempts to disarm INT2 are present in r46 and do not release the line. Kernel `8f0bfe8f8a4c` therefore stops registering the unusable board alarm IRQ while retaining RTC timekeeping. On r48, prove no `8-0030` IRQ exists in `/proc/interrupts`, the message stays absent for 10 minutes, and `hwclock --show` still works. |
+| **P1 real but currently non-blocking hardware gaps** | SCP `invalid resource` (10); PMIC auxadc/key child probe failures; `fhctl` clocks, `socinfo`, display `mboxes`; missing audio pinctrl states / `Playback_12`; one MUSB `VBUS_ERROR` | These expose incomplete DT/driver descriptions even where the primary desktop path works. Triage one subsystem at a time against its `docs/hw/` record; close only when the relevant function is exercised and its signatures disappear without regressing it. USB role errors get first attention if the hub session reproduces them; SCP stays behind suspend and sensorhub work. |
+| **P2 known absent hardware** | `bq78z100-0` `-ENXIO` property/uevent spam (30 printed plus suppression); its thermal zone disables itself | The pack gauge does not ACK at `0x55`; this is known hardware/bus reality, not a transient probe. Suppress the phantom DT node so it cannot pollute power-supply UI or logs, while preserving the measured MT6358 voltage-based fallback. Re-enable only with a live ACK/protocol measurement. |
+| **P3 expected probe/takeover noise** | SD/MMC discovery commands, one UFS DME attribute failure, simplefb region conflict, initramfs UDC busy, CPU dummy supplies, unused clock/domain/regulator notices | Storage, DRM, gadget handoff and regulator-free CPU DVFS are live. Keep as baselines; investigate only if the associated function fails or a message repeats after steady state. The initramfs UDC retry should eventually be made quiet without weakening its fatal final check. |
+| **P4 userspace/kernel-policy cleanup** | missing `autofs4`; journald BPF-firewall and ACL warnings; unsupported `bootconfig` command-line token | No hardware failure. Align packaged systemd/kernel config and remove the inherited boot token when its LK source is understood; acceptance is a clean boot without weakening journald persistence, sandboxing, or the boot path. |
+
+The capture also contains successful `dc1-boot-watchdog` and initramfs
+handoff messages because those facilities log at warning priority; they
+are state reports, not errors, and are excluded from the queue.
+
 ## Tier 1 — close the open hardware-verification items
 
 Each item is one boot or one hands-on session. When one closes, update
@@ -197,14 +216,12 @@ Ordered by user value per effort:
    the bus and ships a write-free ACK probe, but implementation remains
    blocked on exact part ID and protocol (MEMSic `mn29xxx` family;
    possibly only reachable with SCP context). [hw/sensors.md](hw/sensors.md).
-4. **Phantom `bq78z100-0` power-supply suppression** — cosmetic PSU
-   enumeration pollution; small kernel or DT change.
+4. **Phantom `bq78z100-0` power-supply suppression** — repeated PSU
+   property/uevent errors plus enumeration pollution; small DT change,
+   but preserve the voltage-based battery fallback.
 5. **Surfaces for owner levers** — a Settings panel or extension for the
    flag opt-outs and charge-rate sysfs, so end users do not need shell
    flags ([../power.md](power.md) documents the current levers).
-6. **RTC log storm** — ~0.6 lines/s of `rtc-s35390a` spam rotates the
-   kernel ring within hours; root-cause at the next kernel touch.
-   [hw/power.md](hw/power.md).
-7. **Kernel patch series for the lists** — the tier-3 kernel items,
+6. **Kernel patch series for the lists** — the tier-3 kernel items,
    split per driver, are also standalone upstream contributions and can
    start any time.

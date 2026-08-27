@@ -52,10 +52,11 @@ The rest of the sequence: `pm_test` escalates through `devices`,
 automatically, so no wakeup source is needed until a real `echo mem` is
 attempted.
 
-**Correction 2026-08-22: the previously claimed RTC wake backstop does
-not exist.** The `rtc-s35390a` at i2c-8 registers as `rtc1` with no
-`wakealarm` attribute (the driver implements no alarm), and the MT6358
-PMIC RTC never registered — there is no `rtc0` at all, so a timed wake
+**Updated 2026-08-28: the previously claimed RTC wake backstop does not
+exist.** The `rtc-s35390a` at i2c-8 is `rtc0`; its newly added alarm path
+provokes about 492 IRQ/s from a line that never reports an INT2 event, so
+kernel r48 deliberately removes that unusable board IRQ while retaining
+timekeeping. The MT6358 PMIC RTC still does not register, so a timed wake
 cannot be armed (see [power.md](power.md)). Candidate wake paths to
 establish before real-mem testing: the PMIC RTC (`rtc-mt6397` family
 support for mt6358), the USB gadget, or the hall switch.
