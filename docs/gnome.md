@@ -101,6 +101,7 @@ as of 2026-08-19: session 999950 + shell 999948 + an uninstallable gdm
   [hw/display.md](hw/display.md).
 - **120 Hz compositing (device r84):** the `1200x1600@120` mode's kernel
   vblank is 118.4 Hz with 0.31 ms of blanking, and KMS cannot rotate 90°,
-  so landscape is an extra GPU blit. Schema default enables mutter
-  `kms-modifiers` for tiled Panfrost intermediates. 60 Hz stays
-  preferred. Details in [hw/display.md](hw/display.md).
+  so landscape is an extra GPU blit. Window drag misses that deadline
+  (mutter, not the CRTC; tiny-fast ~94 Hz, large-fast ~78 Hz). Schema
+  default enables mutter `kms-modifiers` for tiled Panfrost intermediates.
+  60 Hz stays preferred. Details in [hw/display.md](hw/display.md).

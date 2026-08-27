@@ -81,10 +81,22 @@ GPU offscreen blit on every frame. A 2026-08-27 compositor pass with
 pinning Mali at 1.1 GHz did not take it from ~105 FPS to 120 (fill-rate is
 not the limiter; the extra blit is bandwidth/stride-bound). After warmup
 the same path can lock to the real 118.4 Hz vblank (~117 FPS). Window
-dragging is worse than gears: GPU autosuspend wakes at `min_freq`, and a
-545 MHz Balanced floor leaves almost none of an 8.5 ms frame. Portrait
-uses hardware 180° and skips the extra pass. Device r84 enables mutter
-`kms-modifiers` so Panfrost can use tiled intermediates for that blit.
+dragging is worse than gears. The CRTC itself never skips: `drmWaitVBlank`
+stays 8448 µs / missed_seq=0 during a 900×600 fast drag, so dropped frames
+are mutter missing the 0.31 ms deadline and scanning the previous FB.
+A Wayland present probe in the same 1.25-scale 120 Hz landscape session
+(GPU floor 812 MHz, `kms-modifiers` on) held 118 Hz idle, ~112 Hz dragging
+a 64×64 window by 1 px/frame, ~94 Hz dragging that tiny window by 160
+px/frame, and ~78 Hz dragging a 900×600 window by 160 px/frame. Pinning
+Mali at 1.1 GHz did not recover tiny-fast (~110 Hz either way) and only
+partly helped large-fast (78→88). Forcing transform 0 (hardware rotate-0,
+`dc1-orientation` stopped) also left tiny-fast ~105 Hz while large-fast
+rose 78→96, so the 90° blit is an extra tax on large damage, not the
+tiny-fast limiter. Tiny-fast misses are compositor CPU/damage scheduling
+in an 8.45 ms frame; flood-moving via Xwayland pegs gnome-shell at
+~84–98% CPU and still cannot lock 118 Hz. Portrait hardware 180° skips
+the extra 90° pass. Device r84 enables mutter `kms-modifiers` so Panfrost
+can use tiled intermediates for that blit.
 
 The frontlight is not the panel's DRM backlight — our mainline DT has no
 panel node, so DRM exposes no `panel orientation` property and no backlight

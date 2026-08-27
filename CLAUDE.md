@@ -218,8 +218,11 @@ The `1200x1600@120` mode is not free smoothness. Live CRTC vblank is
 118.4 Hz with 62 lines / 0.31 ms of blanking (measured 2026-08-27);
 KMS OVL planes cannot rotate 90°, so landscape is a GPU offscreen blit
 and pinning Mali at 1.1 GHz does not turn that path into 120 FPS.
-60 Hz stays preferred. Device r84 defaults mutter `kms-modifiers` on
-so Panfrost can use tiled intermediates for the blit.
+Window drag is worse: the CRTC keeps 118.4 Hz with missed_seq=0, and
+mutter misses the deadline (~94 Hz tiny-fast, ~78 Hz large-fast at
+812 MHz). Tiny-fast is compositor damage/CPU, not GPU clock or the
+90° blit; 60 Hz stays preferred. Device r84 defaults mutter
+`kms-modifiers` on so Panfrost can use tiled intermediates for the blit.
 
 Audio invariants (measured 2026-08-17..22):
 
