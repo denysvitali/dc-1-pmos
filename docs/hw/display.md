@@ -64,9 +64,11 @@ Edge-flush UI is handled by the `dc1-safe-area` shell extension in the
 device package; other shipped UI should keep a >=12 device px margin
 (~40 px in corners).
 
-A second `1200x1600@120` DSC mode is exposed by linux r44, but it is
-**software availability only**: the native vertical timing remains
-hardware-unverified, and 60 Hz stays preferred. Validate any mode experiment
+A second `1200x1600@120` DSC mode is exposed by linux r45 at the same
+261267 kHz line rate as the boot-proven 60 Hz mode (`vtotal` 1662). 60 Hz
+stays preferred. linux r44 advertised that mode with `.clock = 406993` /
+`vtotal` 1610, so GNOME listed 192.97 Hz; selecting it flickered on hardware
+(TE tracked ~124 Hz, DSI HS stayed 672 Mbps). Validate any mode experiment
 with TE frequency and a DCS status read rather than kernel logs or DPMS state.
 
 The frontlight is not the panel's DRM backlight — our mainline DT has no
