@@ -104,7 +104,7 @@ REGDB_SIG_SIZE=1085
 REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e919179
 
 # Alpine edge/main aarch64 packages, pinned by exact version (resolved
-# 2026-08-14). The mirror serves exactly one file per version, so a version
+# 2026-08-28). The mirror serves exactly one file per version, so a version
 # pin IS the content pin for build reproducibility purposes; when edge moves
 # on, the URL 404s and the build fails closed.
 ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64"
@@ -125,8 +125,8 @@ libpsl-0.21.5-r3
 zlib-1.3.2-r0
 zstd-1.5.7-r2
 zstd-libs-1.5.7-r2
-libgcc-15.2.0-r8
-libstdc++-15.2.0-r8
+libgcc-15.2.0-r9
+libstdc++-15.2.0-r9
 wpa_supplicant-2.11-r4
 dbus-libs-1.16.2-r2
 libnl3-3.11.0-r0
