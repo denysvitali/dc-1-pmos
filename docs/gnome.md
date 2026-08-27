@@ -99,3 +99,8 @@ as of 2026-08-19: session 999950 + shell 999948 + an uninstallable gdm
   smooth = 812 MHz; 700 MHz remains a Smooth preset. The helper persists
   `/var/lib/dc1/gpu-freq.conf`. Details in
   [hw/display.md](hw/display.md).
+- **120 Hz compositing (device r84):** the `1200x1600@120` mode's kernel
+  vblank is 118.4 Hz with 0.31 ms of blanking, and KMS cannot rotate 90°,
+  so landscape is an extra GPU blit. Schema default enables mutter
+  `kms-modifiers` for tiled Panfrost intermediates. 60 Hz stays
+  preferred. Details in [hw/display.md](hw/display.md).

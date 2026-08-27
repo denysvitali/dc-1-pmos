@@ -214,6 +214,13 @@ Balanced 545 MHz, and Power saver 390 MHz remain selectable. Thermal
 devfreq cooling still caps from the top, and panfrost autosuspend keeps
 the floor from costing idle power.
 
+The `1200x1600@120` mode is not free smoothness. Live CRTC vblank is
+118.4 Hz with 62 lines / 0.31 ms of blanking (measured 2026-08-27);
+KMS OVL planes cannot rotate 90°, so landscape is a GPU offscreen blit
+and pinning Mali at 1.1 GHz does not turn that path into 120 FPS.
+60 Hz stays preferred. Device r84 defaults mutter `kms-modifiers` on
+so Panfrost can use tiled intermediates for the blit.
+
 Audio invariants (measured 2026-08-17..22):
 
 - Speakers: RT9101 amp behind the codec headphone buffers

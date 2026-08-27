@@ -23,6 +23,15 @@ power-button-action='nothing'
 sleep-inactive-ac-type='nothing'
 sleep-inactive-battery-type='nothing'
 
+[org.gnome.mutter]
+# 120 Hz compositing (measured 2026-08-27): KMS planes only advertise
+# LINEAR + rotate-0/180, so landscape is a GPU offscreen blit, and the
+# 1200x1600@120 mode has 0.31 ms of vblank (vtotal 1662). GBM modifiers
+# let Panfrost use tiled intermediates for that blit; without the flag
+# mutter stays on linear copies. Schema default only -- Settings still
+# wins if the user clears experimental-features.
+experimental-features=['kms-modifiers']
+
 [org.gnome.shell]
 # The amber frontlight is a second RT4539 that GNOME cannot see: gsd-power
 # binds one backlight device per internal display (firmware > platform > raw,

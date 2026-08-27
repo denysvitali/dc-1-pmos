@@ -71,6 +71,21 @@ stays preferred. linux r44 advertised that mode with `.clock = 406993` /
 (TE tracked ~124 Hz, DSI HS stayed 672 Mbps). Validate any mode experiment
 with TE frequency and a DCS status read rather than kernel logs or DPMS state.
 
+The 120 Hz mode is a tight video-mode timing, not a free smoothness upgrade.
+Kernel `drmWaitVBlank` on the live CRTC is **118.4 Hz**, not 120.0 (same
+261267 kHz nominal clock; ~1.4 % slow on the wire), and vblank is only 62
+lines / **0.31 ms**. MTK OVL planes expose `rotate-0` / `rotate-180` /
+reflect, never 90°, so landscape (`dc1-orientation` transform 1/3) is a
+GPU offscreen blit on every frame. A 2026-08-27 compositor pass with
+`es2gears_wayland` in the user's landscape + 1.25-scale 120 Hz session:
+pinning Mali at 1.1 GHz did not take it from ~105 FPS to 120 (fill-rate is
+not the limiter; the extra blit is bandwidth/stride-bound). After warmup
+the same path can lock to the real 118.4 Hz vblank (~117 FPS). Window
+dragging is worse than gears: GPU autosuspend wakes at `min_freq`, and a
+545 MHz Balanced floor leaves almost none of an 8.5 ms frame. Portrait
+uses hardware 180° and skips the extra pass. Device r84 enables mutter
+`kms-modifiers` so Panfrost can use tiled intermediates for that blit.
+
 The frontlight is not the panel's DRM backlight — our mainline DT has no
 panel node, so DRM exposes no `panel orientation` property and no backlight
 phandle — so `dc1-screen-backlight` mirrors the connector's DPMS state onto
