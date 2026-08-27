@@ -63,11 +63,13 @@ full-charge capacity, no battery-temperature-informed charge current
 shutdowns — see [thermal.md](thermal.md)), and the deliberately
 conservative 2 A charge default.
 
-Cosmetic but real: `bq78z100-0` registers a phantom empty power_supply
-that spams `-ENXIO` property warnings and pollutes PSU enumeration — any
-UI listing batteries sees a dead entry (still present on the 2026-08-26
-audit boot). Suppression is a tracked nice-to-have in
-[../roadmap.md](../roadmap.md).
+Cosmetic suppression landed in kernel `15fd2e78b746` (pkgrel 50): the
+production DT keeps the gauge node disabled while it NAKs, so it cannot
+register a phantom power_supply, spam `-ENXIO` property warnings, or create
+a thermal zone which disables itself. The calibrated `mt6358-fg` fallback
+is unchanged. The built DTB reports `status=disabled`; a boot of r50 still
+needs to verify the signatures are absent. Re-enable the node only after a
+live ACK/protocol measurement.
 
 ## Charger and USB-PD (MT6375)
 

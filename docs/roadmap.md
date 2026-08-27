@@ -18,7 +18,7 @@ remediation queue, not a claim that every line is a user-visible failure.
 | --- | --- | --- |
 | **Closed P0 interrupt storm — hardware-verified in r48** | `rtc-s35390a ... alarm IRQ with INT2 flag clear` (750 printed, 74 suppression notices on r46); GPIO14 rose by 984 interrupts in 2 s | About 492 IRQ/s was a CPU/idle-power and diagnostics defect. Kernel `8f0bfe8f8a4c` stops registering the unusable board alarm IRQ while retaining RTC timekeeping. On the 2026-08-28 r48 boot, at 10m15s uptime: no `8-0030` IRQ existed in `/proc/interrupts`, no S35390A alarm/error line had appeared, the driver had set the system clock from the RTC, and its sysfs clock was advancing. Closed; keep this row as the baseline for later dmesg audits. |
 | **P1 real but currently non-blocking hardware gaps** | SCP `invalid resource` (10); PMIC auxadc/key child probe failures; `fhctl` clocks, `socinfo`, display `mboxes`; missing audio pinctrl states / `Playback_12`; one MUSB `VBUS_ERROR` | These expose incomplete DT/driver descriptions even where the primary desktop path works. Triage one subsystem at a time against its `docs/hw/` record; close only when the relevant function is exercised and its signatures disappear without regressing it. USB role errors get first attention if the hub session reproduces them; SCP stays behind suspend and sensorhub work. |
-| **P2 known absent hardware** | `bq78z100-0` `-ENXIO` property/uevent spam (30 printed plus suppression); its thermal zone disables itself | The pack gauge does not ACK at `0x55`; this is known hardware/bus reality, not a transient probe. Suppress the phantom DT node so it cannot pollute power-supply UI or logs, while preserving the measured MT6358 voltage-based fallback. Re-enable only with a live ACK/protocol measurement. |
+| **Closed P2 known absent hardware — compile-verified in r50** | `bq78z100-0` `-ENXIO` property/uevent spam (30 printed plus suppression); its thermal zone disables itself | The pack gauge does not ACK at `0x55`; this is known hardware/bus reality, not a transient probe. Kernel `15fd2e78b746` disables the production DT node while preserving the measured MT6358 voltage-based fallback. The built DTB reports `status=disabled`; close the hardware-verification half after r50 boots with no `bq78z100-0` power supply or thermal zone. Re-enable only with a live ACK/protocol measurement. |
 | **P3 expected probe/takeover noise** | SD/MMC discovery commands, one UFS DME attribute failure, simplefb region conflict, initramfs UDC busy, CPU dummy supplies, unused clock/domain/regulator notices | Storage, DRM, gadget handoff and regulator-free CPU DVFS are live. Keep as baselines; investigate only if the associated function fails or a message repeats after steady state. The initramfs UDC retry should eventually be made quiet without weakening its fatal final check. |
 | **P4 userspace/kernel-policy cleanup** | missing `autofs4`; journald BPF-firewall and ACL warnings; unsupported `bootconfig` command-line token | No hardware failure. Align packaged systemd/kernel config and remove the inherited boot token when its LK source is understood; acceptance is a clean boot without weakening journald persistence, sandboxing, or the boot path. |
 
@@ -213,12 +213,9 @@ Ordered by user value per effort:
    the bus and ships a write-free ACK probe, but implementation remains
    blocked on exact part ID and protocol (MEMSic `mn29xxx` family;
    possibly only reachable with SCP context). [hw/sensors.md](hw/sensors.md).
-4. **Phantom `bq78z100-0` power-supply suppression** — repeated PSU
-   property/uevent errors plus enumeration pollution; small DT change,
-   but preserve the voltage-based battery fallback.
-5. **Surfaces for owner levers** — a Settings panel or extension for the
+4. **Surfaces for owner levers** — a Settings panel or extension for the
    flag opt-outs and charge-rate sysfs, so end users do not need shell
    flags ([../power.md](power.md) documents the current levers).
-6. **Kernel patch series for the lists** — the tier-3 kernel items,
+5. **Kernel patch series for the lists** — the tier-3 kernel items,
    split per driver, are also standalone upstream contributions and can
    start any time.

@@ -88,8 +88,9 @@ gap), on the same boot that verified the audio race fix and microSD.
 - Occasional empty LVTS reads remain uninvestigated (reproduced
   2026-08-22: one empty poll of lvts-ts2-3 that recovered on the next
   read).
-- `bq78z100-0` still disables itself (`Unable to get temperature`) and
-  registers a phantom power_supply — see [power.md](power.md).
+- Kernel r50 disables the non-answering `bq78z100-0` DT node, removing its
+  self-disabled thermal zone and phantom power_supply; the built DTB is
+  verified, with a packaged-kernel boot still pending — see [power.md](power.md).
 - There is **no in-kernel battery-temperature throttling of charge
   current** — only the chip-side JEITA-ish behavior plus the 110/113.5 °C
   critical shutdowns (see [power.md](power.md)).

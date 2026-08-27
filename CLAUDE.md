@@ -207,6 +207,12 @@ Keep `CONFIG_BINFMT_SCRIPT`, `CONFIG_EPOLL`, `CONFIG_SIGNALFD`,
 `CONFIG_TIMERFD`, and `CONFIG_EVENTFD`; the udhcpc hook, installer, and BlueZ
 depend on them and failures can be silent.
 
+The pack BQ78Z100 at i2c7 `0x55` does not ACK while the RT9471 at `0x53` on
+the same bus does. Keep its production DTS node disabled: binding bq27xxx
+only creates a phantom power supply, `-ENXIO` log spam, and a thermal zone
+which disables itself. `mt6358-fg` is the calibrated battery fallback.
+Re-enable the pack gauge only after a live ACK and protocol measurement.
+
 The sensor buses are SCP-connected but reachable from the AP when the pins are
 re-muxed and nothing drives the SCP:
 
