@@ -55,6 +55,7 @@ measurement was made. "Pending" items live in
 | Charger sysfs owner levers present | running r37 | 2026-08-26 | [hw/power.md](hw/power.md) |
 | usb0 gadget interface set survives boot (no host attached) | running r37/r76 | 2026-08-26 | [hw/usb.md](hw/usb.md) |
 | `rtc-s35390a` log storm observed (~24 k lines/boot) | running r37 | 2026-08-26 | [hw/power.md](hw/power.md) |
+| `rtc-s35390a` IRQ storm removed; timekeeping retained | linux r48 (`8f0bfe8f8a4c`) | 2026-08-28 | [hw/power.md](hw/power.md) |
 
 **How to record a new result:** update the subsystem record under
 `docs/hw/` with the measurement and its date, then add or update the row

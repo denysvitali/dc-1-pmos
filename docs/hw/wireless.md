@@ -80,8 +80,9 @@ service.
 `bluetoothctl show` reports the controller up — `Daylight DC-1`, public
 address, Powered yes, A2DP/AVRCP UUIDs present, Pairable/Discoverable off.
 The boot-time dmesg signature could not be re-checked on this boot: the
-kernel ring has rotated (the `rtc-s35390a` log storm, see
-[power.md](power.md), consumed it). Whether this boot used the repair
+kernel ring had rotated (the then-active `rtc-s35390a` log storm, fixed
+and hardware-verified in kernel r48; see [power.md](power.md), consumed
+it). Whether this boot used the repair
 unbind/bind or won the race outright is therefore unrecorded — the
 fresh-boot check stays in [../roadmap.md](../roadmap.md), followed by the
 pairing/streaming session that closes the row.

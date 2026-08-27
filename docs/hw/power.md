@@ -271,11 +271,16 @@ line is not behaving as the controllable INT2 signal described by the
 DT. Besides rotating away early-boot evidence, this costs CPU wakeups and
 likely idle power.
 
-Kernel `8f0bfe8f8a4c` (pinned for package r48) removes the alarm IRQ and
+Kernel `8f0bfe8f8a4c` (package r48) removes the alarm IRQ and
 `wakeup-source` properties from the board node. This deliberately keeps
 RTC timekeeping and drops a timed-wake feature that has never worked;
-suspend remains disabled independently. Compile/DTB-verified only. On
-the first r48 boot, confirm no `8-0030` entry exists in
-`/proc/interrupts`, no S35390A IRQ warning appears over ten minutes, and
-`hwclock --show` still reads retained time. Until that boot, check fresh
-signatures early because r46 still rotates the ring.
+suspend remains disabled independently.
+
+**Hardware-verified 2026-08-28 on r48:** at 10m15s uptime there was no
+`8-0030` entry in `/proc/interrupts` and no S35390A alarm/error line in
+dmesg. Probe registered `rtc0` and set the system clock from it, and
+`date`, `time`, and `since_epoch` under `/sys/class/rtc/rtc0/` advanced
+normally across the observation window. The normal account cannot run
+`hwclock --show` because `/dev/rtc0` is intentionally `root:clock` mode
+0660; that permission error is not a hardware failure. The storm is
+closed.

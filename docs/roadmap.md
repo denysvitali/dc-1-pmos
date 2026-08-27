@@ -16,7 +16,7 @@ remediation queue, not a claim that every line is a user-visible failure.
 
 | Priority / category | Signatures | Assessment and exit criterion |
 | --- | --- | --- |
-| **P0 interrupt storm — fix pinned in r48, needs one boot** | `rtc-s35390a ... alarm IRQ with INT2 flag clear` (750 printed, 74 suppression notices); GPIO14 rose by 984 interrupts in 2 s | About 492 IRQ/s is a CPU/idle-power and diagnostics defect. Two driver attempts to disarm INT2 are present in r46 and do not release the line. Kernel `8f0bfe8f8a4c` therefore stops registering the unusable board alarm IRQ while retaining RTC timekeeping. On r48, prove no `8-0030` IRQ exists in `/proc/interrupts`, the message stays absent for 10 minutes, and `hwclock --show` still works. |
+| **Closed P0 interrupt storm — hardware-verified in r48** | `rtc-s35390a ... alarm IRQ with INT2 flag clear` (750 printed, 74 suppression notices on r46); GPIO14 rose by 984 interrupts in 2 s | About 492 IRQ/s was a CPU/idle-power and diagnostics defect. Kernel `8f0bfe8f8a4c` stops registering the unusable board alarm IRQ while retaining RTC timekeeping. On the 2026-08-28 r48 boot, at 10m15s uptime: no `8-0030` IRQ existed in `/proc/interrupts`, no S35390A alarm/error line had appeared, the driver had set the system clock from the RTC, and its sysfs clock was advancing. Closed; keep this row as the baseline for later dmesg audits. |
 | **P1 real but currently non-blocking hardware gaps** | SCP `invalid resource` (10); PMIC auxadc/key child probe failures; `fhctl` clocks, `socinfo`, display `mboxes`; missing audio pinctrl states / `Playback_12`; one MUSB `VBUS_ERROR` | These expose incomplete DT/driver descriptions even where the primary desktop path works. Triage one subsystem at a time against its `docs/hw/` record; close only when the relevant function is exercised and its signatures disappear without regressing it. USB role errors get first attention if the hub session reproduces them; SCP stays behind suspend and sensorhub work. |
 | **P2 known absent hardware** | `bq78z100-0` `-ENXIO` property/uevent spam (30 printed plus suppression); its thermal zone disables itself | The pack gauge does not ACK at `0x55`; this is known hardware/bus reality, not a transient probe. Suppress the phantom DT node so it cannot pollute power-supply UI or logs, while preserving the measured MT6358 voltage-based fallback. Re-enable only with a live ACK/protocol measurement. |
 | **P3 expected probe/takeover noise** | SD/MMC discovery commands, one UFS DME attribute failure, simplefb region conflict, initramfs UDC busy, CPU dummy supplies, unused clock/domain/regulator notices | Storage, DRM, gadget handoff and regulator-free CPU DVFS are live. Keep as baselines; investigate only if the associated function fails or a message repeats after steady state. The initramfs UDC retry should eventually be made quiet without weakening its fatal final check. |
@@ -54,9 +54,7 @@ land under the nib everywhere — and flip the pen: the eraser end must
 erase (only tablet-v2 apps show tool switching), including a flip made
 quickly while hovering. If edges still miss, refit the visible envelope
 from new correspondence taps against the now-straight chain; do not
-re-open calibration generally. Check early in the boot: the dmesg ring
-rotates fast on this device (see the `rtc-s35390a` note in
-[hw/power.md](hw/power.md)). Details: [hw/input.md](hw/input.md).
+re-open calibration generally. Details: [hw/input.md](hw/input.md).
 
 ### Rotation tilt test (never yet performed — needs hands)
 
@@ -93,8 +91,8 @@ needs hands is only whether the feel/timing matches a phone. Details:
 
 ### Bluetooth — one session (needs a boot of device ≥ r65's boot image + a peer)
 
-After a boot whose initramfs stages `BT_RAM_CODE_MT7902_1_1_hdr.bin`
-(check dmesg early — the ring rotates): hci0 must complete setup with
+After a boot whose initramfs stages `BT_RAM_CODE_MT7902_1_1_hdr.bin`:
+hci0 must complete setup with
 **no** `Failed to setup 79xx firmware` line (the race won outright),
 `bluetoothctl show` reporting the controller up, and
 `dc1-bluetooth.service` inactive because its dmesg gate held. On older
