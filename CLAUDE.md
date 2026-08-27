@@ -176,6 +176,14 @@ to device mode. Never unbind it or remove configfs gadget objects to change
 roles; `musb_gadget_stop()` kills the host engine and configfs removal can
 wedge in D state.
 
+MT6375 TCPM is the VBUS authority for the charging-hub sink-host case. The
+T-PHY's independent UTMI VBUS comparator remains at SessEnd even with a valid
+PD contract, which makes MUSB raise `VBUS_ERROR` and prevents enumeration.
+Keep jagar's opt-in `mediatek,force-vbus-valid` T-PHY property: it overrides
+VBUSVALID/AVALID only in host mode and clears the override in device/OTG mode.
+The live register A/B on 2026-08-28 made the five-port USB 2.0 hub enumerate
+at 480 Mbit/s while the Type-C power role stayed sink.
+
 ### Boot image shape and diagnostics
 
 - Android boot header v4, gzip kernel, legacy-frame LZ4 ramdisk, and a

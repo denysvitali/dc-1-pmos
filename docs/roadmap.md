@@ -106,16 +106,15 @@ Plug a USB host into the port; `usb0` should carrier-up. From the host:
 `ssh <user>@172.16.42.1` (password set at install). That single command
 closes the row. Details: [hw/usb.md](hw/usb.md).
 
-### USB host — charging Type-C hub role swap (needs the new kernel and a hub)
+### USB host — packaged-kernel boot and gadget return (needs r49 and a PC)
 
-Boot with a PC attached first and confirm the installer or installed
-ACM+ECM gadget still enumerates. Then attach the charging hub and verify
-`port0-partner/type` is `hub`, `/sys/class/typec/port0/data_role` marks
-`host` active, `lsusb -t` shows the hub, and
-`/sys/class/power_supply/mt6375-charger/online` remains `1`. Finally unplug
-the hub, attach the PC again, and prove `usb0`/ECM returns without restarting
-`dc1-usb-gadget`. Do not unbind the UDC or remove configfs objects during the
-session. Details: [hw/usb.md](hw/usb.md).
+The live register A/B on 2026-08-28 proved the charging hub reaches data
+host / power sink and enumerates once the T-PHY receives valid UTMI session
+inputs. Boot linux r49, attach the hub, and confirm that packaged behavior
+without a manual register write. Then unplug the hub, attach a PC, and prove
+`usb0`/ECM returns without restarting `dc1-usb-gadget`. Do not unbind the UDC
+or remove configfs objects during the session. Details:
+[hw/usb.md](hw/usb.md).
 
 ### Charging mode — calibration session (needs a power cycle; owner only)
 

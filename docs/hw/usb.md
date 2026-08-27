@@ -53,11 +53,21 @@ D+ in the kernel without unbinding the gadget driver, then reconnects it
 when the port returns to device mode. This preserves the installer and
 recovery gadget path and avoids the measured configfs teardown wedge below.
 
-This path is 🚧 **packaged but not hardware-verified**. A boot of the new
-kernel must prove the hub enumerates in `lsusb -t`, the Type-C data role is
-host, charging stays online, and unplugging the hub then attaching a PC
-restores the gadget without restarting `dc1-usb-gadget`. The exact session
-is tracked in [../roadmap.md](../roadmap.md).
+The sink-host electrical path was verified live on 2026-08-28. The first
+role-switch build reached data host / power sink, but MUSB raised
+`VBUS_ERROR in a_wait_vrise (81, <SessEnd>)`: MT6375 TCPM saw powered VBUS
+and negotiated PD while the USB PHY's independent UTMI VBUS input stayed
+at session end. Forcing the PHY's VBUSVALID/AVALID session inputs and
+restarting the role session made the attached Lenovo/Fresco Logic five-port
+hub enumerate immediately at 480 Mbit/s; charger `online` remained `1`,
+input current remained 1.5 A, and the Type-C power role remained `[sink]`.
+Kernel `a1a5a465fb61` makes that override an opt-in T-PHY property enabled
+only for jagar and clears it outside host mode.
+
+This path remains 🚧 until the packaged kernel boots and the return path is
+exercised: unplug the hub, attach a PC, and prove the gadget reconnects
+without restarting `dc1-usb-gadget`. The exact session is tracked in
+[../roadmap.md](../roadmap.md).
 
 ## configfs teardown
 
