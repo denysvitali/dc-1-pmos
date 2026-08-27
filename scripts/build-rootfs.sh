@@ -30,7 +30,7 @@ output_dir=$(mkdir -p -- "$2" && CDPATH= cd -- "$2" && pwd)
 }
 
 if [ "$validate_only" = no ]; then
-	for tool in python3 curl tar zstd sha256sum od find awk; do
+	for tool in python3 curl tar zstd sha256sum sha512sum od find awk; do
 		command -v "$tool" >/dev/null || {
 			echo "missing required tool: $tool" >&2
 			exit 1
@@ -167,6 +167,26 @@ for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
 done
 
 pmb build --arch=aarch64 mutter-mobile
+
+# GitHub /archive tarballs have landed at full size with a bad sha512
+# (CI 2026-08-27, twice). Prefetch and verify the kernel distfile before
+# abuild's one-shot fetch turns that into "Use 'abuild checksum'".
+distfiles="$pmb_work/cache_distfiles"
+if mkdir -p "$distfiles" 2>/dev/null && [ -w "$distfiles" ]; then
+	sh "$script_dir/prefetch-kernel-distfile.sh" "$distfiles"
+else
+	stage=$(mktemp -d)
+	sh "$script_dir/prefetch-kernel-distfile.sh" "$stage"
+	if command -v sudo >/dev/null; then
+		sudo mkdir -p "$distfiles"
+		sudo cp "$stage"/* "$distfiles/"
+		rm -rf "$stage"
+	else
+		echo "cannot write kernel distfile to $distfiles" >&2
+		exit 1
+	fi
+fi
+
 pmb build --arch=aarch64 linux-postmarketos-mediatek-mt6789
 pmb build --arch=aarch64 device-daylight-jagar
 

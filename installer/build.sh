@@ -162,10 +162,23 @@ fetch() {   # fetch URL OUT -- cache-aware, fail-closed
 	# --retry alone does not cover TLS/TCP transport errors such as "Recv
 	# failure: Connection reset by peer" (curl 35), which killed a CI run
 	# mid-download from mirrors.edge.kernel.org; --retry-all-errors makes
-	# the retries apply to those too (needs curl >= 7.71).
-	curl -fsSL --retry 3 --retry-all-errors -o "$2.part" "$1" \
-		|| fatal "download failed: $1"
-	mv "$2.part" "$2"
+	# the retries apply to those too (needs curl >= 7.71). An outer loop
+	# remains because curl can still exit 22/56 after those retries
+	# (Alpine CDN 2026-08-27, libstdc++-15.2.0-r8.apk).
+	fetch_n=1
+	fetch_max=${DC1_FETCH_RETRIES:-5}
+	while [ "$fetch_n" -le "$fetch_max" ]; do
+		if curl -fsSL --retry 3 --retry-all-errors -o "$2.part" "$1"; then
+			mv "$2.part" "$2"
+			return 0
+		fi
+		echo "  fetch attempt $fetch_n/$fetch_max failed: $(basename "$2")" >&2
+		rm -f "$2.part"
+		fetch_n=$((fetch_n + 1))
+		[ "$fetch_n" -le "$fetch_max" ] || break
+		sleep $((fetch_n * 2))
+	done
+	fatal "download failed: $1"
 }
 
 mkdir -p "$DL/firmware" "$DL/apk" "$DL/apkroot"
