@@ -99,6 +99,18 @@ Panfrost's old `Failed to register cooling device` log dates from when
 there was no thermal zone to bind to; the 2026-08-20 LVTS trips/maps fixed
 it (devfreq cooler live 2026-08-22) — see [thermal.md](thermal.md).
 
+simple_ondemand always wakes the GPU at `min_freq`, so the floor is the
+first-frame smoothness knob. The hardware minimum is 390 MHz; a 545 MHz
+floor (third of 36 OPPs, 20 ms poll) was the 2026-08-25 default and still
+janked some compositor animations. Device pkgrel ≥ 82 ships a **700 MHz
+Smooth floor** as the default, with GNOME Settings → GPU
+(`dc1-gpu-settings`) to experiment: Power saver 390, Balanced 545, Smooth
+700, Performance pinned at 1.1 GHz. The helper `dc1-gpu-freq` is the
+single writer — udev, `dc1-gpu`, and the panel all call it — and persists
+`/var/lib/dc1/gpu-freq.conf` so the next boot reapplies the last
+experiment before gdm starts. Thermal devfreq cooling still caps from the
+top; panfrost's 50 ms autosuspend keeps the floor from costing idle power.
+
 ## Frontlight
 
 Dual RT4539 backlight drivers: `lcd-backlight` (white, i2c-5) and

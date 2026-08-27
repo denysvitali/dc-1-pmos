@@ -1,0 +1,331 @@
+#!/usr/bin/python3
+"""GNOME Settings panel for the DC-1 Mali-G57 frequency floor.
+
+simple_ondemand always wakes the GPU at min_freq, so the floor is the
+knob for "are the first frames of an animation smooth?". This window is
+the experiment UI: presets, then independent min/max OPPs, persisted by
+dc1-gpu-freq so the next boot reapplies them before gdm starts.
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+import threading
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+
+from gi.repository import Adw, GLib, Gtk
+
+HELPER = "/usr/libexec/dc1-gpu-freq"
+# Unpackaged checkout: run the helper next to this file so the panel can
+# be exercised without installing the apk.
+if not os.path.isfile(HELPER):
+    nearby = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dc1-gpu-freq")
+    if os.path.isfile(nearby):
+        HELPER = nearby
+
+PRESETS = (
+    ("Power saver", 390_000_000, 1_100_000_000),
+    ("Balanced", 545_000_000, 1_100_000_000),
+    ("Smooth", 700_000_000, 1_100_000_000),
+    ("Performance", 1_100_000_000, 1_100_000_000),
+)
+
+
+def mhz(hz):
+    if not hz:
+        return "—"
+    return f"{hz / 1_000_000:.0f} MHz"
+
+
+def parse_status(text):
+    data = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        data[key] = value
+    opps = []
+    for token in data.get("available_frequencies", "").split():
+        try:
+            opps.append(int(token))
+        except ValueError:
+            continue
+    def as_int(key):
+        raw = data.get(key, "")
+        try:
+            return int(raw)
+        except ValueError:
+            return 0
+    return {
+        "min_freq": as_int("min_freq"),
+        "max_freq": as_int("max_freq"),
+        "cur_freq": as_int("cur_freq"),
+        "polling_interval": as_int("polling_interval"),
+        "governor": data.get("governor", "") or "unknown",
+        "opps": opps,
+        "default_min_freq": as_int("default_min_freq"),
+        "default_max_freq": as_int("default_max_freq"),
+    }
+
+
+def run_helper(args, privileged=False):
+    cmd = [HELPER, *args]
+    if privileged:
+        pkexec = shutil.which("pkexec")
+        if pkexec:
+            cmd = [pkexec, *cmd]
+    env = os.environ.copy()
+    env.setdefault("PATH", "/usr/bin:/bin")
+    try:
+        completed = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    except OSError as exc:
+        return 127, "", str(exc)
+    return completed.returncode, completed.stdout, completed.stderr
+
+
+class GpuSettingsWindow(Adw.PreferencesWindow):
+    def __init__(self):
+        super().__init__(title="GPU")
+        self.set_search_enabled(False)
+        self.set_default_size(420, 720)
+        self._status = None
+        self._busy = False
+        self._write_id = 0
+        self._pending = None
+        self._building = True
+
+        page = Adw.PreferencesPage(title="GPU", icon_name="video-display-symbolic")
+        self.add(page)
+
+        live = Adw.PreferencesGroup(
+            title="Now",
+            description="Mali-G57 via Panfrost. The governor is simple_ondemand; "
+            "it can only start a newly-awake GPU at the minimum.",
+        )
+        page.add(live)
+        self._current_row = Adw.ActionRow(title="Current frequency")
+        live.add(self._current_row)
+        self._governor_row = Adw.ActionRow(title="Governor")
+        live.add(self._governor_row)
+
+        presets = Adw.PreferencesGroup(
+            title="Presets",
+            description="Smooth is the shipped default: 700 MHz from the first "
+            "frame of every animation, still free to ramp to 1.1 GHz. "
+            "Performance pins the ceiling so you can tell frequency jank "
+            "apart from everything else.",
+        )
+        page.add(presets)
+        self._preset_row = Adw.ComboRow(title="Profile")
+        self._preset_row.set_model(
+            Gtk.StringList.new([
+                "Power saver · 390 MHz",
+                "Balanced · 545 MHz",
+                "Smooth · 700 MHz",
+                "Performance · pinned 1.1 GHz",
+            ])
+        )
+        self._preset_row.connect("notify::selected", self._on_preset)
+        presets.add(self._preset_row)
+
+        limits = Adw.PreferencesGroup(
+            title="Limits",
+            description="Minimum is the smoothness knob. Maximum is the "
+            "thermal/power cap; cooling can still lower it under heat. "
+            "Changes apply immediately and survive reboot.",
+        )
+        page.add(limits)
+        self._min_row = Adw.ComboRow(title="Minimum")
+        self._max_row = Adw.ComboRow(title="Maximum")
+        self._min_row.connect("notify::selected", self._on_limit)
+        self._max_row.connect("notify::selected", self._on_limit)
+        limits.add(self._min_row)
+        limits.add(self._max_row)
+
+        actions = Adw.PreferencesGroup()
+        page.add(actions)
+        reset = Gtk.Button(label="Reset to Smooth (700 MHz)")
+        reset.add_css_class("pill")
+        reset.set_halign(Gtk.Align.CENTER)
+        reset.set_margin_top(8)
+        reset.set_margin_bottom(8)
+        reset.connect("clicked", self._on_reset)
+        actions.add(reset)
+
+        error = Adw.PreferencesGroup()
+        page.add(error)
+        self._error_row = Adw.ActionRow(title="")
+        self._error_row.set_visible(False)
+        error.add(self._error_row)
+
+        self._reload()
+        self._building = False
+        GLib.timeout_add(500, self._tick)
+
+    def _set_error(self, message):
+        if message:
+            self._error_row.set_title(message)
+            self._error_row.set_visible(True)
+        else:
+            self._error_row.set_visible(False)
+
+    def _reload(self):
+        code, out, err = run_helper(["status"])
+        if code != 0:
+            self._set_error(err.strip() or "Could not read GPU frequency.")
+            self._current_row.set_subtitle("unavailable")
+            self._governor_row.set_subtitle("unavailable")
+            return
+        status = parse_status(out)
+        self._status = status
+        self._current_row.set_subtitle(mhz(status["cur_freq"]))
+        gov = status["governor"]
+        poll = status["polling_interval"]
+        if poll:
+            gov = f"{gov}, {poll} ms poll"
+        self._governor_row.set_subtitle(gov)
+        self._fill_limit_rows(status)
+        self._select_preset(status["min_freq"], status["max_freq"])
+        self._set_error("")
+
+    def _fill_limit_rows(self, status):
+        opps = status["opps"]
+        labels = [mhz(v) for v in opps] or ["—"]
+        model = Gtk.StringList.new(labels)
+        was = self._building
+        self._building = True
+        self._min_row.set_model(model)
+        self._max_row.set_model(Gtk.StringList.new(labels))
+        if opps:
+            self._min_row.set_selected(_index_of(opps, status["min_freq"]))
+            self._max_row.set_selected(_index_of(opps, status["max_freq"]))
+        self._building = was
+
+    def _select_preset(self, min_hz, max_hz):
+        was = self._building
+        self._building = True
+        selected = Gtk.INVALID_LIST_POSITION
+        for i, (_name, lo, hi) in enumerate(PRESETS):
+            if lo == min_hz and hi == max_hz:
+                selected = i
+                break
+        self._preset_row.set_selected(selected)
+        self._building = was
+
+    def _on_preset(self, row, _pspec):
+        if self._building:
+            return
+        index = row.get_selected()
+        if index < 0 or index >= len(PRESETS):
+            return
+        _name, lo, hi = PRESETS[index]
+        self._queue_write(lo, hi)
+
+    def _on_limit(self, _row, _pspec):
+        if self._building or not self._status:
+            return
+        opps = self._status["opps"]
+        if not opps:
+            return
+        min_i = max(0, min(self._min_row.get_selected(), len(opps) - 1))
+        max_i = max(0, min(self._max_row.get_selected(), len(opps) - 1))
+        lo = opps[min_i]
+        hi = opps[max_i]
+        if lo > hi:
+            if _row is self._min_row:
+                hi = lo
+            else:
+                lo = hi
+        self._select_preset(lo, hi)
+        self._queue_write(lo, hi)
+
+    def _on_reset(self, _button):
+        self._queue_write(PRESETS[2][1], PRESETS[2][2])
+
+    def _queue_write(self, min_hz, max_hz):
+        self._pending = (min_hz, max_hz)
+        if self._write_id:
+            GLib.source_remove(self._write_id)
+        self._write_id = GLib.timeout_add(150, self._flush_write)
+
+    def _flush_write(self):
+        self._write_id = 0
+        pending = self._pending
+        self._pending = None
+        if not pending or self._busy:
+            if pending:
+                self._queue_write(*pending)
+            return False
+        min_hz, max_hz = pending
+        self._busy = True
+
+        def work():
+            code, _out, err = run_helper(["set", str(min_hz), str(max_hz)])
+            if code != 0:
+                code, _out, err = run_helper(
+                    ["set", str(min_hz), str(max_hz)], privileged=True
+                )
+            GLib.idle_add(self._write_done, code, err)
+            return False
+
+        threading.Thread(target=work, name="dc1-gpu-freq-set", daemon=True).start()
+        return False
+
+    def _write_done(self, code, err):
+        self._busy = False
+        if code != 0:
+            self._set_error((err or "Could not set GPU frequency.").strip())
+        else:
+            self._set_error("")
+        self._reload()
+        return False
+
+    def _tick(self):
+        if self._busy or self._pending is not None:
+            return True
+        code, out, _err = run_helper(["status"])
+        if code == 0:
+            status = parse_status(out)
+            self._current_row.set_subtitle(mhz(status["cur_freq"]))
+        return True
+
+
+def _index_of(opps, value):
+    try:
+        return opps.index(value)
+    except ValueError:
+        nearest = min(range(len(opps)), key=lambda i: abs(opps[i] - value))
+        return nearest
+
+
+class GpuSettings(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id="it.denv.dc1.GpuSettings")
+        self.connect("activate", self._on_activate)
+
+    def _on_activate(self, _app):
+        win = self.get_active_window()
+        if win is None:
+            win = GpuSettingsWindow()
+            win.set_application(self)
+        win.present()
+
+
+def main():
+    Adw.init()
+    return GpuSettings().run(sys.argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=81
+pkgrel=82
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -21,13 +21,17 @@ depends="
 	alsa-utils
 	curl
 	gnome-settings-daemon-mobile
+	gtk4.0
 	iio-sensor-proxy
+	libadwaita
 	linux-firmware-mediatek
 	linux-postmarketos-mediatek-mt6789
 	openssh-server
 	pipewire-pulse
+	polkit
 	postmarketos-base
 	py3-dbus
+	py3-gobject3
 	python3
 	wireless-regdb
 "
@@ -78,6 +82,10 @@ source="
 	dc1-display-gate.service
 	dc1-gpu
 	dc1-gpu.service
+	dc1-gpu-freq
+	dc1-gpu-settings
+	dc1-gpu-settings.desktop
+	it.denv.dc1.gpufreq.policy
 	dc1-audio
 	dc1-audio.service
 	dc1-fix-wireplumber-alsa
@@ -192,6 +200,12 @@ package() {
 	install -Dm755 "$srcdir"/dc1-debug-shell "$pkgdir"/usr/libexec/dc1-debug-shell
 	install -Dm755 "$srcdir"/dc1-display-gate "$pkgdir"/usr/libexec/dc1-display-gate
 	install -Dm755 "$srcdir"/dc1-gpu "$pkgdir"/usr/libexec/dc1-gpu
+	install -Dm755 "$srcdir"/dc1-gpu-freq "$pkgdir"/usr/libexec/dc1-gpu-freq
+	install -Dm755 "$srcdir"/dc1-gpu-settings "$pkgdir"/usr/bin/dc1-gpu-settings
+	install -Dm644 "$srcdir"/dc1-gpu-settings.desktop \
+		"$pkgdir"/usr/share/applications/it.denv.dc1.GpuSettings.desktop
+	install -Dm644 "$srcdir"/it.denv.dc1.gpufreq.policy \
+		"$pkgdir"/usr/share/polkit-1/actions/it.denv.dc1.gpufreq.policy
 	install -Dm755 "$srcdir"/dc1-audio "$pkgdir"/usr/libexec/dc1-audio
 	# tostring() guard for WirePlumber 0.5.15 alsa.lua -- see the helper.
 	# Re-applied from post-install/post-upgrade and from the apk trigger
@@ -440,7 +454,7 @@ sha512sums="
 fbf4d166a5da1d9e648696f725488d0d45f6ce1ad83ff65122187936c4275ad2b8ccfbe3cb184697298fd554a22fb2a04d4ba8ba8c50cf703089fbfb365acf4e  dc1-display-gate.initd
 a74965c50efc38879c4ce684ae1322b172d66be0b27ef2c74bff86eca12aaf8a948fc56edd37ef3249e57b1f993bda51672777137eb267bc3b26b753d1144ea2  dc1-frontlight.initd
 217b426571dd3fb8516541edf01dc79ea4433a8d8e31d6fd596a97e6f7178508a999c19793e60b621d897babbd5213a2484573d7a6e3e58b43fe1d3a411ee708  dc1-screen-backlight.initd
-efa9af2d3ccae717f209aae43383911420034fe937030e227f015167369952251ea47bf8ffa4c603e5054dd254dcdf48556e5c9f1b67c640aff20579e3e14076  dc1-gpu.initd
+80f078b01cf1dbde3d1c456f1a3784da8bd6595c60a71b2ec18accab0d35164fc2109024f3a4849ef111af943349e650abe9ce7dc5dcf20a9e80512922becc29  dc1-gpu.initd
 65d2e1e1aa73a1b8e1fc6b0232dc690332976e230eec701ddd3769a992afffc5dfedaf1aec87002552ddc71246666426da55a518f9d717f1be5b57d0bd9b165f  dc1-audio.initd
 3b454548f91e949ebb428e7f1a256de879ed42a2be541ae3bbaf8b8dc8cd240c62cb2c89306c9332170d0747c6c99ff7a856aa34ef98633e15a517bfa39fafc1  dc1-rtcsync.initd
 6ded04475b6982d02d72ed5d42d1ed257df7a8a6cd71451b71d7bb040c4202fe574371792d00eaa2ff7dfccd49d766fc10aa32fdf09a5fb6491eac0418e2ab42  dc1-debug-shell.initd
@@ -465,8 +479,12 @@ ef0b3a6abeb2f201071f8cf136aa147e818e672d2c1ef313252269aca6670e55897912cb965c5f9c
 25be71efbc7aad3cde1afa1b7051b7eac54ebf83fc889b868194f6fdee639054a21a5af3f07190eb51ec0cf2293c3e28574318b892ced7a4e47e0127f785179c  dc1-debug-shell.service
 473ba0f084e12b7ee13b0d8f3a938bc49000d70f385f79d4f58ec426eab4dca838094d125b5ec5a97d78a98c81fd1d18a628849981a94dbfa61544409750db7c  dc1-display-gate
 d435afb2025114983e8e0b545f859a0bc7fbcb86d7ddf07acdd89070e1ae7384841c8d42d3cab238445316782cb1bc5b655b07837eb372d60d526d8f4886c3d7  dc1-display-gate.service
-cbcfc899118ba9076315a16987f470473f7031184d1daa5e16554342227e2b66370f55ba8b9a2a057db70d6ce80824c04271af831fc31d833e1328760198f4fd  dc1-gpu
+a05d8ce35916b8158b7bba804075b237bbb102787654828bbdc3709d061b832b420b8bfb91dd30370e18e832345cc6a043c3121feed589ebcb8e9c8d2f9b47e9  dc1-gpu
 e9f0a80372e63be8a04a027326af59e565760c8f97640e2a6627cdf6386fedae2be4e25f4c8888908cbf3ad246ccf5f0748d2f42038ee5ba5735f8ae344963ef  dc1-gpu.service
+96d68ee3cd7a047637ca23e79d5eba3ba462f501b932bd70486714f54919a5e84f006e28707ddfcf2248d212f82fdfa7f37b5acf19f80fe194e08292876c1f3e  dc1-gpu-freq
+f58999f786dbd4c028b0b1854c8c6e7426b30d7cb0d58629018fb44738fbab7703927b5d8a4da9744650f6d9877cbe58fd8609c8a90ec224986a319092c80a68  dc1-gpu-settings
+a0fad07e2968cb79fe96a2bd68aae217327d595c68ce3a36c8dc4d12e80e63405943ca2a50154ead509e66bf6ff2a70378a956b7e9b192e66f1b4d43a786556d  dc1-gpu-settings.desktop
+67276f4b763925066e2266b9d0de298bbaa8f57e1bacce751a821f09731e62adb38d64e7e2f391ea0148bcea9952aca276af3deab59e948218a9da44b4779083  it.denv.dc1.gpufreq.policy
 422604b3942e0a7de22f59505be09287402a16f7b41c615be7f7f44a5ee87e8f097740c6694b0a72e225754bfd6720f6a81423a89e8f90a0ebd843da833b66bf  dc1-audio
 79832ac33bac32c05edad52fdba749a0471456cadced93b6645109e68be3d8c3f8249e01d33840aac709d23695dcfcd1e6b40950cf7ead769dc74888a60671ff  dc1-audio.service
 9ae8b49ceb72f45f63d59a3816dc6c1fced35fce221fda7cf6f3e1335f1fd40f665ff5fbd1d6d6fa112a1d9730b5bb3b974b3b538ba3fc9c08a1599d8fba552a  dc1-fix-wireplumber-alsa
@@ -482,7 +500,7 @@ bcbea953414f25402e10e3596f0968ab0f4308f170247f07590ea2ddd289297b41d727eba7c832f3
 7d241e69a4aaf124d949a6dc04c1ce16fc38532759f7643952b3df8645c3483bf74318c09c2eaf05742b071acbf8a5cbb4f475c96390272975efd614d2052f21  dc1-rtcsync.service
 e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99cfa9065ee15298c54054f83f997c95a99a03346d73f92d5b7  dc1-rtcsync.timer
 5f629b675945852330b28df098738852703d6df49165f3b9abfe7d53401249fd4da3dc40811d762ce37a317215b32ff5729aad650bba7ea98e4a44fc0b1788b7  80-device-daylight-jagar.preset
-b1174064ea306ae9a6ba19b96d8f14fc54a704d58c33ff0acc29e25e3feee60c981953d8e5bfacb958a9e04059a4260be747f2d91c25858df2f1f607e7d26a6c  90-device-daylight-jagar.rules
+f62c008804dda3a44228e31cfe76209fee6ae3f0681b911614368d328a59d5e5b6e5151acd7c7eed46dcf6503e8b4a62891f95c0a16e64c57a4897c05fd51281  90-device-daylight-jagar.rules
 0e7762a93506f1ec322ed7ca16469f1705d0e712716d87edbc121061ce7e3f2185d1b7beaf52c6c9380375accc7f038b37f52662515a4a981a781304d433e8d2  10-dc1-watchdog.conf
 dd5c064b6e31f266052ee99094bb3e905075b2473fd68015cdf8299aa119efe59da4db745d51e9d758ebdab58fe9da5375d60666d4704e234215553a4c6071b9  10-dc1-gnome.gschema.override
 35ed4afb186d649ece52f36dc2d1b9df640f07aaf796f3ea4a63805b7aa24674fba9b945694d0e6863f15908de91931e8766010a2e34b19bbea52e2f2006dbfd  61-daylight-jagar-keyboard.hwdb

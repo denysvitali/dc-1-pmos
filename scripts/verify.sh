@@ -158,10 +158,19 @@ grep -qF 'jagar-rootfs.ext4" jagar-root' "$script_dir/export-artifacts.sh" ||
 grep -qF 'boot_image_included=false' "$script_dir/export-artifacts.sh" ||
 	fail "provenance must record that no boot image is published"
 
+# GPU floor must stay in dc1-gpu-freq, not a hardcoded udev ATTR, or the
+# Settings panel and the boot path drift.
+grep -q 'RUN+="/usr/libexec/dc1-gpu-freq apply"' 	"$device_dir/90-device-daylight-jagar.rules" ||
+	fail "udev no longer applies GPU limits through dc1-gpu-freq"
+grep -E 'ATTR\{min_freq\}' "$device_dir/90-device-daylight-jagar.rules" &&
+	fail "udev hardcodes GPU min_freq again" || :
+
 sh -n "$device_dir/dc1-fix-wireplumber-alsa"
+sh -n "$device_dir/dc1-gpu-freq"
 sh -n "$device_dir/dc1-charging-generator"
 sh -n "$device_dir/dc1-charging-monitor"
 sh -n "$device_dir/dc1-poweroff-flag"
+python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' 	"$device_dir/dc1-gpu-settings"
 sh -n "$device_dir/device-daylight-jagar.trigger"
 sh -n "$device_dir/device-daylight-jagar.post-install"
 sh -n "$device_dir/device-daylight-jagar.post-upgrade"

@@ -14,22 +14,22 @@
 ACTION=="add|change", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LIBINPUT_CALIBRATION_MATRIX}="-1 0 1 0 -1 1"
 
 # Mali-G57 devfreq responsiveness. simple_ondemand holds the GPU at its
-# 390 MHz floor and re-evaluates only every 50 ms, so the first frames of
+# hardware floor and re-evaluates only every 50 ms, so the first frames of
 # every UI animation render at the floor and the clock catches up ~2-3
 # frames late -- visible as jank at each animation start on the 60 Hz
-# 1200x1600 panel. Sampling at 20 ms cuts the ramp lag to about one frame,
-# and a 545 MHz floor (third of 36 OPPs, verified in
-# available_frequencies) gives compositing headroom from the first frame.
-# The floor is cheap: panfrost runtime-suspends the GPU 50 ms after the
-# last job (autosuspend_delay_ms), so min_freq only applies while jobs
-# are actually running, and thermal devfreq cooling still caps from the
-# top unaffected (measured 2026-08-25: DVFS ramps 390->1100 MHz under
-# load, all zones ~40 C, cooling state 0).
+# 1200x1600 panel. dc1-gpu-freq is the single writer: 20 ms poll and a
+# 700 MHz Smooth floor by default, or whatever the GNOME Settings panel
+# last persisted in /var/lib/dc1/gpu-freq.conf. The floor is cheap:
+# panfrost runtime-suspends the GPU 50 ms after the last job, so min_freq
+# only applies while jobs are actually running, and thermal devfreq
+# cooling still caps from the top unaffected.
 #
-# The devfreq device appears when dc1-gpu re-probes the Mali node, well
-# after coldplug, so this matches that late add event too.
+# The devfreq device appears when panfrost binds (and when dc1-gpu
+# re-probes the stock-tree mali node), well after coldplug, so this
+# matches that late add event too. RUN rather than ATTR so the numeric
+# default lives in one helper and cannot drift from the Settings panel.
 ACTION=="add", SUBSYSTEM=="devfreq", KERNEL=="13000000.gpu", \
-  ATTR{polling_interval}="20", ATTR{min_freq}="545000000"
+  RUN+="/usr/libexec/dc1-gpu-freq apply"
 
 # Hide the fuel gauge from UPower while it is mute. The BQ78Z100 at i2c-7
 # 0x55 registers a power_supply and then NAKs every read (-ENXIO), so UPower

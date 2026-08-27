@@ -1,0 +1,316 @@
+#!/bin/sh
+# dc1-gpu-freq -- apply and persist Mali-G57 devfreq limits.
+#
+# simple_ondemand only ever starts a newly-awake GPU at min_freq, and
+# panfrost runtime-suspends 50 ms after the last job, so every UI
+# interaction after a pause draws its first frames at the floor. The
+# 390 MHz hardware floor is too slow for the 1200x1600@60 panel (the
+# clock caught up 2-3 frames late at the default 50 ms poll; see the
+# udev rule). This helper is the single writer for the floor/ceiling
+# so the boot path, udev, and the GNOME Settings panel cannot drift.
+#
+# Defaults:
+#   min 700 MHz  -- compositing headroom from the first frame (Smooth).
+#                   545 MHz remains the Balanced preset in Settings.
+#   max 1100 MHz -- hardware ceiling; thermal devfreq cooling still
+#                   caps from the top, unaffected.
+#   poll 20 ms   -- about one 60 Hz frame of ramp lag.
+#
+# Writable sysfs lives on 13000000.gpu. Persistence is
+# /var/lib/dc1/gpu-freq.conf so the next boot reapplies the last
+# experiment before gdm starts. Override both paths with
+# DC1_GPUFREQ_SYSFS / DC1_GPUFREQ_CONF for offline tests.
+set -eu
+
+SYSFS=${DC1_GPUFREQ_SYSFS:-/sys/class/devfreq/13000000.gpu}
+CONF=${DC1_GPUFREQ_CONF:-/var/lib/dc1/gpu-freq.conf}
+DEFAULT_MIN=700000000
+DEFAULT_MAX=1100000000
+DEFAULT_POLL=20
+
+usage() {
+	echo "usage: dc1-gpu-freq apply|status|reset|set-min HZ|set-max HZ|set MIN MAX" >&2
+	exit 2
+}
+
+fail() {
+	echo "dc1-gpu-freq: $*" >&2
+	exit 1
+}
+
+is_number() {
+	case $1 in
+	''|*[!0-9]*) return 1 ;;
+	esac
+	return 0
+}
+
+read_attr() {
+	# $1 = attr name
+	[ -r "$SYSFS/$1" ] || fail "missing $SYSFS/$1"
+	# sysfs attrs typically have a trailing newline; some kernels add \0.
+	tr -d '\n\r\0' <"$SYSFS/$1"
+}
+
+write_attr() {
+	# $1 = attr, $2 = value
+	[ -e "$SYSFS/$1" ] || fail "missing $SYSFS/$1"
+	printf '%s\n' "$2" >"$SYSFS/$1" || fail "could not write $SYSFS/$1"
+}
+
+available_opps() {
+	# One line of space-separated Hz values.
+	read_attr available_frequencies
+}
+
+# Snap $1 to an OPP from $2 (space-separated). $3 = min|max|nearest.
+# min: lowest OPP >= value (or the highest OPP if value is above all).
+# max: highest OPP <= value (or the lowest OPP if value is below all).
+snap_opp() {
+	value=$1
+	opps=$2
+	mode=$3
+	chosen=
+	for opp in $opps; do
+		is_number "$opp" || continue
+		case $mode in
+		min)
+			if [ "$opp" -ge "$value" ]; then
+				printf '%s\n' "$opp"
+				return 0
+			fi
+			chosen=$opp
+			;;
+		max)
+			if [ "$opp" -le "$value" ]; then
+				chosen=$opp
+			elif [ -n "$chosen" ]; then
+				printf '%s\n' "$chosen"
+				return 0
+			else
+				printf '%s\n' "$opp"
+				return 0
+			fi
+			;;
+		nearest)
+			if [ -z "$chosen" ]; then
+				chosen=$opp
+			else
+				# POSIX abs without $((negative)) surprises:
+				# compare squared distances via two branches.
+				if [ "$opp" -ge "$value" ]; then
+					d_new=$((opp - value))
+				else
+					d_new=$((value - opp))
+				fi
+				if [ "$chosen" -ge "$value" ]; then
+					d_old=$((chosen - value))
+				else
+					d_old=$((value - chosen))
+				fi
+				# Prefer the higher OPP on a tie so a bump
+				# never silently undershoots a smoothness
+				# target.
+				if [ "$d_new" -lt "$d_old" ] ||
+					{ [ "$d_new" -eq "$d_old" ] && [ "$opp" -gt "$chosen" ]; }; then
+					chosen=$opp
+				fi
+			fi
+			;;
+		esac
+	done
+	[ -n "$chosen" ] || fail "no operating points in available_frequencies"
+	printf '%s\n' "$chosen"
+}
+
+read_conf_value() {
+	# $1 = KEY, $2 = default
+	key=$1
+	default=$2
+	[ -f "$CONF" ] || { printf '%s\n' "$default"; return 0; }
+	# Conf is KEY=value, comments allowed. Last matching line wins.
+	value=$default
+	while IFS= read -r line || [ -n "$line" ]; do
+		case $line in
+		''|'#'*) continue ;;
+		esac
+		k=${line%%=*}
+		v=${line#*=}
+		[ "$k" = "$key" ] || continue
+		value=$v
+	done <"$CONF"
+	printf '%s\n' "$value"
+}
+
+write_conf() {
+	min=$1
+	max=$2
+	confdir=$(dirname "$CONF")
+	mkdir -p "$confdir"
+	tmp=$CONF.tmp.$$
+	{
+		printf '%s\n' "# DC-1 Mali-G57 devfreq limits (Hz). Written by dc1-gpu-freq."
+		printf 'MIN_FREQ=%s\n' "$min"
+		printf 'MAX_FREQ=%s\n' "$max"
+	} >"$tmp"
+	mv "$tmp" "$CONF"
+	if [ "$(id -u)" = 0 ]; then
+		# Session UI (group wheel) may persist the next experiment
+		# without pkexec once this file exists.
+		chown root:wheel "$CONF" 2>/dev/null || :
+		chmod 0664 "$CONF" 2>/dev/null || :
+	fi
+}
+
+relax_sysfs() {
+	[ "$(id -u)" = 0 ] || return 0
+	# Best-effort. Sysfs may ignore chmod; pkexec remains the
+	# guaranteed write path for the Settings panel.
+	for attr in min_freq max_freq; do
+		[ -e "$SYSFS/$attr" ] || continue
+		chgrp video "$SYSFS/$attr" 2>/dev/null || :
+		chmod 0664 "$SYSFS/$attr" 2>/dev/null || :
+	done
+}
+
+current_min() {
+	if [ -r "$SYSFS/min_freq" ]; then
+		read_attr min_freq
+	else
+		read_conf_value MIN_FREQ "$DEFAULT_MIN"
+	fi
+}
+
+current_max() {
+	if [ -r "$SYSFS/max_freq" ]; then
+		read_attr max_freq
+	else
+		read_conf_value MAX_FREQ "$DEFAULT_MAX"
+	fi
+}
+
+write_limits() {
+	new_min=$1
+	new_max=$2
+	[ -d "$SYSFS" ] || fail "GPU devfreq is not present ($SYSFS)"
+	opps=$(available_opps)
+	new_min=$(snap_opp "$new_min" "$opps" nearest)
+	new_max=$(snap_opp "$new_max" "$opps" nearest)
+	if [ "$new_min" -gt "$new_max" ]; then
+		fail "min $new_min exceeds max $new_max"
+	fi
+	# Kernel rejects a store that would make min > max, so the order
+	# depends on the current pair.
+	cur_min=$(read_attr min_freq)
+	cur_max=$(read_attr max_freq)
+	is_number "$cur_min" || cur_min=$new_min
+	is_number "$cur_max" || cur_max=$new_max
+	if [ "$new_min" -gt "$cur_max" ]; then
+		write_attr max_freq "$new_max"
+		write_attr min_freq "$new_min"
+	else
+		write_attr min_freq "$new_min"
+		write_attr max_freq "$new_max"
+	fi
+	write_attr polling_interval "$DEFAULT_POLL"
+	write_conf "$new_min" "$new_max"
+	relax_sysfs
+}
+
+cmd_apply() {
+	if [ ! -d "$SYSFS" ]; then
+		# udev/dc1-gpu may call us before panfrost binds; not an
+		# error -- the add event will invoke apply again.
+		echo "dc1-gpu-freq: $SYSFS not present yet" >&2
+		return 0
+	fi
+	min=$(read_conf_value MIN_FREQ "$DEFAULT_MIN")
+	max=$(read_conf_value MAX_FREQ "$DEFAULT_MAX")
+	is_number "$min" || min=$DEFAULT_MIN
+	is_number "$max" || max=$DEFAULT_MAX
+	write_limits "$min" "$max"
+}
+
+cmd_status() {
+	min=$(current_min)
+	max=$(current_max)
+	if [ -r "$SYSFS/cur_freq" ]; then
+		cur=$(read_attr cur_freq)
+	else
+		cur=
+	fi
+	if [ -r "$SYSFS/governor" ]; then
+		gov=$(read_attr governor)
+	else
+		gov=
+	fi
+	if [ -r "$SYSFS/polling_interval" ]; then
+		poll=$(read_attr polling_interval)
+	else
+		poll=$DEFAULT_POLL
+	fi
+	if [ -d "$SYSFS" ]; then
+		opps=$(available_opps)
+	else
+		opps=
+	fi
+	printf 'min_freq=%s\n' "$min"
+	printf 'max_freq=%s\n' "$max"
+	printf 'cur_freq=%s\n' "$cur"
+	printf 'polling_interval=%s\n' "$poll"
+	printf 'governor=%s\n' "$gov"
+	printf 'available_frequencies=%s\n' "$opps"
+	printf 'default_min_freq=%s\n' "$DEFAULT_MIN"
+	printf 'default_max_freq=%s\n' "$DEFAULT_MAX"
+}
+
+cmd_reset() {
+	write_limits "$DEFAULT_MIN" "$DEFAULT_MAX"
+}
+
+[ $# -ge 1 ] || usage
+cmd=$1
+shift
+case $cmd in
+apply)
+	[ $# -eq 0 ] || usage
+	cmd_apply
+	;;
+status)
+	[ $# -eq 0 ] || usage
+	cmd_status
+	;;
+reset)
+	[ $# -eq 0 ] || usage
+	cmd_reset
+	;;
+set-min)
+	[ $# -eq 1 ] || usage
+	is_number "$1" || fail "min frequency must be a Hz integer"
+	max=$(current_max)
+	is_number "$max" || max=$DEFAULT_MAX
+	if [ "$1" -gt "$max" ]; then
+		max=$1
+	fi
+	write_limits "$1" "$max"
+	;;
+set-max)
+	[ $# -eq 1 ] || usage
+	is_number "$1" || fail "max frequency must be a Hz integer"
+	min=$(current_min)
+	is_number "$min" || min=$DEFAULT_MIN
+	if [ "$1" -lt "$min" ]; then
+		min=$1
+	fi
+	write_limits "$min" "$1"
+	;;
+set)
+	[ $# -eq 2 ] || usage
+	is_number "$1" || fail "min frequency must be a Hz integer"
+	is_number "$2" || fail "max frequency must be a Hz integer"
+	write_limits "$1" "$2"
+	;;
+*)
+	usage
+	;;
+esac

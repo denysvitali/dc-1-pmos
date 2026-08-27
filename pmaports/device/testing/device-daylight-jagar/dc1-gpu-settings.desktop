@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=GPU
+Comment=Change the Mali-G57 minimum and maximum frequency
+Exec=dc1-gpu-settings
+Icon=org.gnome.Settings-display-symbolic
+Terminal=false
+Type=Application
+StartupNotify=true
+NoDisplay=false
+OnlyShowIn=GNOME;
+Categories=GNOME;GTK;Settings;HardwareSettings;X-GNOME-Settings-Panel;X-GNOME-DevicesSettings;
+Keywords=GPU;Frequency;Mali;Panfrost;Performance;Smooth;Clock;
+X-Purism-FormFactor=Workstation;Mobile;

@@ -74,5 +74,11 @@ start() {
 	[ -e /dev/dri/renderD128 ] \
 		|| { eend 1 "renderD128 did not appear"; return 1; }
 
+	# Same apply as the systemd unit: persisted floor before the
+	# compositor starts. See dc1-gpu.
+	if [ -x /usr/libexec/dc1-gpu-freq ]; then
+		/usr/libexec/dc1-gpu-freq apply || true
+	fi
+
 	eend 0
 }

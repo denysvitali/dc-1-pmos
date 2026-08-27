@@ -39,3 +39,12 @@ while [ ! -e /dev/dri/renderD128 ] && [ "$n" -lt 30 ]; do
 	n=$((n + 1)); sleep 1
 done
 [ -e /dev/dri/renderD128 ] || { echo "renderD128 did not appear" >&2; exit 1; }
+
+# Apply the persisted (or Smooth-default) GPU floor before gdm starts so
+# the first compositor frames are not drawn at the 390 MHz hardware min.
+# udev also invokes this on the devfreq add event; a second apply is
+# idempotent. Missing helper is a no-op so a partial upgrade cannot
+# fail GPU bring-up.
+if [ -x /usr/libexec/dc1-gpu-freq ]; then
+	/usr/libexec/dc1-gpu-freq apply || true
+fi

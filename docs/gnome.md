@@ -93,3 +93,8 @@ as of 2026-08-19: session 999950 + shell 999948 + an uninstallable gdm
   via the gschema override so a post-logout greeter password prompt is
   typeable on a tablet with no physical keyboard. Details in
   [hw/input.md](hw/input.md).
+- **GPU frequency panel (device r82):** `dc1-gpu-settings` is a
+  libadwaita Preferences window in the Settings category so the Mali-G57
+  min/max floor can be changed without sysfs. Default Smooth = 700 MHz;
+  the helper persists `/var/lib/dc1/gpu-freq.conf`. Details in
+  [hw/display.md](hw/display.md).
