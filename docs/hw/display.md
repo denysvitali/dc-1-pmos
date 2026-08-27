@@ -64,7 +64,7 @@ Edge-flush UI is handled by the `dc1-safe-area` shell extension in the
 device package; other shipped UI should keep a >=12 device px margin
 (~40 px in corners).
 
-A second `1200x1600@120` DSC mode is exposed by linux r43, but it is
+A second `1200x1600@120` DSC mode is exposed by linux r44, but it is
 **software availability only**: the native vertical timing remains
 hardware-unverified, and 60 Hz stays preferred. Validate any mode experiment
 with TE frequency and a DCS status read rather than kernel logs or DPMS state.
