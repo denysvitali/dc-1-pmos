@@ -10,8 +10,9 @@
 # so the boot path, udev, and the GNOME Settings panel cannot drift.
 #
 # Defaults:
-#   min 700 MHz  -- compositing headroom from the first frame (Smooth).
-#                   545 MHz remains the Balanced preset in Settings.
+#   min 812 MHz  -- compositing headroom from the first frame (Super smooth).
+#                   700 MHz (r82) and 545 MHz (Balanced) remain selectable
+#                   in Settings; 390 MHz is Power saver.
 #   max 1100 MHz -- hardware ceiling; thermal devfreq cooling still
 #                   caps from the top, unaffected.
 #   poll 20 ms   -- about one 60 Hz frame of ramp lag.
@@ -24,7 +25,7 @@ set -eu
 
 SYSFS=${DC1_GPUFREQ_SYSFS:-/sys/class/devfreq/13000000.gpu}
 CONF=${DC1_GPUFREQ_CONF:-/var/lib/dc1/gpu-freq.conf}
-DEFAULT_MIN=700000000
+DEFAULT_MIN=812000000
 DEFAULT_MAX=1100000000
 DEFAULT_POLL=20
 
@@ -53,8 +54,13 @@ read_attr() {
 }
 
 write_attr() {
-	# $1 = attr, $2 = value
+	# $1 = attr, $2 = value. $3 = optional "best-effort".
 	[ -e "$SYSFS/$1" ] || fail "missing $SYSFS/$1"
+	if [ "${3:-}" = "best-effort" ]; then
+		# Swallow ash's "can't create" on an unwritable sysfs node.
+		( printf '%s\n' "$2" >"$SYSFS/$1" ) 2>/dev/null || return 0
+		return 0
+	fi
 	printf '%s\n' "$2" >"$SYSFS/$1" || fail "could not write $SYSFS/$1"
 }
 
@@ -146,14 +152,26 @@ write_conf() {
 	min=$1
 	max=$2
 	confdir=$(dirname "$CONF")
-	mkdir -p "$confdir"
-	tmp=$CONF.tmp.$$
-	{
+	mkdir -p "$confdir" 2>/dev/null || :
+	body=$(
 		printf '%s\n' "# DC-1 Mali-G57 devfreq limits (Hz). Written by dc1-gpu-freq."
 		printf 'MIN_FREQ=%s\n' "$min"
 		printf 'MAX_FREQ=%s\n' "$max"
-	} >"$tmp"
-	mv "$tmp" "$CONF"
+	)
+	# Prefer an atomic replace when the directory is writable (root,
+	# udev). The session user can write the 0664 conf file but not
+	# create siblings in /var/lib/dc1, so fall back to an in-place
+	# overwrite via a /tmp staging file.
+	if [ -w "$confdir" ]; then
+		tmp=$CONF.tmp.$$
+		printf '%s\n' "$body" >"$tmp" || fail "could not write $tmp"
+		mv "$tmp" "$CONF" || fail "could not replace $CONF"
+	else
+		tmp=$(mktemp) || fail "mktemp failed"
+		printf '%s\n' "$body" >"$tmp" || { rm -f "$tmp"; fail "could not write $tmp"; }
+		cat "$tmp" >"$CONF" || { rm -f "$tmp"; fail "could not write $CONF"; }
+		rm -f "$tmp"
+	fi
 	if [ "$(id -u)" = 0 ]; then
 		# Session UI (group wheel) may persist the next experiment
 		# without pkexec once this file exists.
@@ -166,7 +184,7 @@ relax_sysfs() {
 	[ "$(id -u)" = 0 ] || return 0
 	# Best-effort. Sysfs may ignore chmod; pkexec remains the
 	# guaranteed write path for the Settings panel.
-	for attr in min_freq max_freq; do
+	for attr in min_freq max_freq polling_interval; do
 		[ -e "$SYSFS/$attr" ] || continue
 		chgrp video "$SYSFS/$attr" 2>/dev/null || :
 		chmod 0664 "$SYSFS/$attr" 2>/dev/null || :
@@ -212,7 +230,9 @@ write_limits() {
 		write_attr min_freq "$new_min"
 		write_attr max_freq "$new_max"
 	fi
-	write_attr polling_interval "$DEFAULT_POLL"
+	# Polling is owned by udev/boot apply. A session UI may not be
+	# able to store it; min/max are the experiment knobs.
+	write_attr polling_interval "$DEFAULT_POLL" best-effort
 	write_conf "$new_min" "$new_max"
 	relax_sysfs
 }

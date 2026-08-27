@@ -55,12 +55,12 @@ expect_status() { # $1=key $2=expected
 echo "-- apply uses Smooth defaults when no conf exists"
 mksysfs
 run apply
-expect_file "$tmp/gpu/min_freq" 700000000
+expect_file "$tmp/gpu/min_freq" 812000000
 expect_file "$tmp/gpu/max_freq" 1100000000
 expect_file "$tmp/gpu/polling_interval" 20
 [ -f "$tmp/gpu-freq.conf" ] || fail "apply did not write conf"
-expect_status min_freq 700000000
-expect_status default_min_freq 700000000
+expect_status min_freq 812000000
+expect_status default_min_freq 812000000
 
 echo "-- apply restores the persisted experiment"
 mksysfs
@@ -100,8 +100,31 @@ PATH=/bin:/usr/bin sh -c 'grep -q "^MAX_FREQ=700000000$" "$1"' _ "$tmp/gpu-freq.
 
 echo "-- reset returns to Smooth defaults"
 run reset
-expect_file "$tmp/gpu/min_freq" 700000000
+expect_file "$tmp/gpu/min_freq" 812000000
 expect_file "$tmp/gpu/max_freq" 1100000000
+
+echo "-- polling_interval EACCES does not fail a min/max set"
+mksysfs
+run apply >/dev/null
+chmod a-w "$tmp/gpu/polling_interval"
+run set-min 545000000
+expect_file "$tmp/gpu/min_freq" 545000000
+chmod u+w "$tmp/gpu/polling_interval"
+
+echo "-- session persist works when conf is writable but confdir is not"
+mksysfs
+run apply >/dev/null
+confdir=$tmp/nowrite
+mkdir -p "$confdir"
+printf 'MIN_FREQ=812000000\nMAX_FREQ=1100000000\n' >"$confdir/gpu-freq.conf"
+chmod 0664 "$confdir/gpu-freq.conf"
+chmod a-w "$confdir"
+DC1_GPUFREQ_SYSFS=$tmp/gpu DC1_GPUFREQ_CONF=$confdir/gpu-freq.conf \
+	PATH=/bin:/usr/bin "$HELPER" set-min 545000000
+expect_file "$tmp/gpu/min_freq" 545000000
+PATH=/bin:/usr/bin sh -c 'grep -q "^MIN_FREQ=545000000$" "$1"' _ "$confdir/gpu-freq.conf" \
+	|| fail "in-place persist did not update MIN_FREQ"
+chmod u+w "$confdir"
 
 echo "-- apply is a no-op (exit 0) when the GPU is absent"
 rm -rf "$tmp/gpu"

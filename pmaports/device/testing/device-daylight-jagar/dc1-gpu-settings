@@ -32,8 +32,10 @@ PRESETS = (
     ("Power saver", 390_000_000, 1_100_000_000),
     ("Balanced", 545_000_000, 1_100_000_000),
     ("Smooth", 700_000_000, 1_100_000_000),
+    ("Super smooth", 812_000_000, 1_100_000_000),
     ("Performance", 1_100_000_000, 1_100_000_000),
 )
+DEFAULT_PRESET = 3  # Super smooth; must match dc1-gpu-freq DEFAULT_MIN.
 
 
 def mhz(hz):
@@ -116,13 +118,15 @@ class GpuSettingsWindow(Adw.PreferencesWindow):
         page.add(live)
         self._current_row = Adw.ActionRow(title="Current frequency")
         live.add(self._current_row)
+        self._floor_row = Adw.ActionRow(title="Minimum")
+        live.add(self._floor_row)
         self._governor_row = Adw.ActionRow(title="Governor")
         live.add(self._governor_row)
 
         presets = Adw.PreferencesGroup(
             title="Presets",
-            description="Smooth is the shipped default: 700 MHz from the first "
-            "frame of every animation, still free to ramp to 1.1 GHz. "
+            description="Super smooth is the shipped default: 812 MHz from the "
+            "first frame of every animation, still free to ramp to 1.1 GHz. "
             "Performance pins the ceiling so you can tell frequency jank "
             "apart from everything else.",
         )
@@ -133,6 +137,7 @@ class GpuSettingsWindow(Adw.PreferencesWindow):
                 "Power saver · 390 MHz",
                 "Balanced · 545 MHz",
                 "Smooth · 700 MHz",
+                "Super smooth · 812 MHz",
                 "Performance · pinned 1.1 GHz",
             ])
         )
@@ -155,7 +160,7 @@ class GpuSettingsWindow(Adw.PreferencesWindow):
 
         actions = Adw.PreferencesGroup()
         page.add(actions)
-        reset = Gtk.Button(label="Reset to Smooth (700 MHz)")
+        reset = Gtk.Button(label="Reset to Super smooth (812 MHz)")
         reset.add_css_class("pill")
         reset.set_halign(Gtk.Align.CENTER)
         reset.set_margin_top(8)
@@ -185,11 +190,13 @@ class GpuSettingsWindow(Adw.PreferencesWindow):
         if code != 0:
             self._set_error(err.strip() or "Could not read GPU frequency.")
             self._current_row.set_subtitle("unavailable")
+            self._floor_row.set_subtitle("unavailable")
             self._governor_row.set_subtitle("unavailable")
             return
         status = parse_status(out)
         self._status = status
         self._current_row.set_subtitle(mhz(status["cur_freq"]))
+        self._floor_row.set_subtitle(mhz(status["min_freq"]))
         gov = status["governor"]
         poll = status["polling_interval"]
         if poll:
@@ -251,7 +258,9 @@ class GpuSettingsWindow(Adw.PreferencesWindow):
         self._queue_write(lo, hi)
 
     def _on_reset(self, _button):
-        self._queue_write(PRESETS[2][1], PRESETS[2][2])
+        lo = (self._status or {}).get("default_min_freq") or PRESETS[DEFAULT_PRESET][1]
+        hi = (self._status or {}).get("default_max_freq") or PRESETS[DEFAULT_PRESET][2]
+        self._queue_write(lo, hi)
 
     def _queue_write(self, min_hz, max_hz):
         self._pending = (min_hz, max_hz)

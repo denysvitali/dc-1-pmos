@@ -18,7 +18,7 @@ ACTION=="add|change", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LI
 # every UI animation render at the floor and the clock catches up ~2-3
 # frames late -- visible as jank at each animation start on the 60 Hz
 # 1200x1600 panel. dc1-gpu-freq is the single writer: 20 ms poll and a
-# 700 MHz Smooth floor by default, or whatever the GNOME Settings panel
+# 812 MHz Super smooth floor by default, or whatever the GNOME Settings panel
 # last persisted in /var/lib/dc1/gpu-freq.conf. The floor is cheap:
 # panfrost runtime-suspends the GPU 50 ms after the last job, so min_freq
 # only applies while jobs are actually running, and thermal devfreq

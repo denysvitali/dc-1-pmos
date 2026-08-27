@@ -209,9 +209,10 @@ GPU min_freq is the first-frame smoothness knob (`simple_ondemand` always
 wakes at the floor). Do not hardcode it in udev: `dc1-gpu-freq` is the
 single writer, GNOME Settings → GPU is the experiment UI, and the last
 choice persists in `/var/lib/dc1/gpu-freq.conf`. Shipped default is the
-Smooth preset at 700 MHz with a 20 ms poll; Balanced 545 MHz and Power
-saver 390 MHz remain selectable. Thermal devfreq cooling still caps from
-the top, and panfrost autosuspend keeps the floor from costing idle power.
+Super smooth preset at 812 MHz with a 20 ms poll; Smooth 700 MHz,
+Balanced 545 MHz, and Power saver 390 MHz remain selectable. Thermal
+devfreq cooling still caps from the top, and panfrost autosuspend keeps
+the floor from costing idle power.
 
 Audio invariants (measured 2026-08-17..22):
 

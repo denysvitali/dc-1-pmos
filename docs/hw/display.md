@@ -102,14 +102,20 @@ it (devfreq cooler live 2026-08-22) — see [thermal.md](thermal.md).
 simple_ondemand always wakes the GPU at `min_freq`, so the floor is the
 first-frame smoothness knob. The hardware minimum is 390 MHz; a 545 MHz
 floor (third of 36 OPPs, 20 ms poll) was the 2026-08-25 default and still
-janked some compositor animations. Device pkgrel ≥ 82 ships a **700 MHz
-Smooth floor** as the default, with GNOME Settings → GPU
-(`dc1-gpu-settings`) to experiment: Power saver 390, Balanced 545, Smooth
-700, Performance pinned at 1.1 GHz. The helper `dc1-gpu-freq` is the
-single writer — udev, `dc1-gpu`, and the panel all call it — and persists
-`/var/lib/dc1/gpu-freq.conf` so the next boot reapplies the last
-experiment before gdm starts. Thermal devfreq cooling still caps from the
-top; panfrost's 50 ms autosuspend keeps the floor from costing idle power.
+janked some compositor animations. Device r82 shipped 700 MHz. Device
+pkgrel ≥ 83 ships **812 MHz Super smooth** as the default after a
+2026-08-27 fill-rate measurement: eight blended 1200×1600 quads, pinned
+clock, median 10.6 / 7.6 / 6.0 / 5.2 / 3.9 ms at 390 / 545 / 700 / 812 /
+1100 MHz. 812 MHz leaves ~11 ms of a 60 Hz frame for the rest of mutter;
+700 MHz remains a named Smooth preset. GNOME Settings → GPU
+(`dc1-gpu-settings`) is the experiment UI: Power saver 390, Balanced 545,
+Smooth 700, Super smooth 812, Performance pinned at 1.1 GHz. The helper
+`dc1-gpu-freq` is the single writer — udev, `dc1-gpu`, and the panel all
+call it — and persists `/var/lib/dc1/gpu-freq.conf` so the next boot
+reapplies the last experiment before gdm starts. A session user in
+`wheel` can persist in place (the conf file is 0664, the directory is
+not writable). Thermal devfreq cooling still caps from the top;
+panfrost's 50 ms autosuspend keeps the floor from costing idle power.
 
 ## Frontlight
 
