@@ -92,11 +92,14 @@ Mali at 1.1 GHz did not recover tiny-fast (~110 Hz either way) and only
 partly helped large-fast (78→88). Forcing transform 0 (hardware rotate-0,
 `dc1-orientation` stopped) also left tiny-fast ~105 Hz while large-fast
 rose 78→96, so the 90° blit is an extra tax on large damage, not the
-tiny-fast limiter. Tiny-fast misses are compositor CPU/damage scheduling
-in an 8.45 ms frame; flood-moving via Xwayland pegs gnome-shell at
-~84–98% CPU and still cannot lock 118 Hz. Portrait hardware 180° skips
-the extra 90° pass. Device r84 enables mutter `kms-modifiers` so Panfrost
-can use tiled intermediates for that blit.
+tiny-fast limiter. Tiny-fast misses are compositor damage plus the
+landscape blit, not Mali clock: at 60 Hz with moves paced to 60 Hz,
+tiny-fast still lands ~53 Hz and large-fast ~43 Hz with gnome-shell at
+only ~20% CPU. Disabling GNOME animations does not recover 120 Hz drag.
+Flood-moving via Xwayland pegs gnome-shell at ~84–98% CPU and still
+cannot lock 118 Hz. Portrait hardware 180° skips the extra 90° pass.
+Device r84 enables mutter `kms-modifiers` so Panfrost can use tiled
+intermediates for that blit.
 
 The frontlight is not the panel's DRM backlight — our mainline DT has no
 panel node, so DRM exposes no `panel orientation` property and no backlight

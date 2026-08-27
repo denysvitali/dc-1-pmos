@@ -220,8 +220,9 @@ KMS OVL planes cannot rotate 90°, so landscape is a GPU offscreen blit
 and pinning Mali at 1.1 GHz does not turn that path into 120 FPS.
 Window drag is worse: the CRTC keeps 118.4 Hz with missed_seq=0, and
 mutter misses the deadline (~94 Hz tiny-fast, ~78 Hz large-fast at
-812 MHz). Tiny-fast is compositor damage/CPU, not GPU clock or the
-90° blit; 60 Hz stays preferred. Device r84 defaults mutter
+812 MHz). Tiny-fast is compositor damage plus the landscape blit, not
+GPU clock: 60 Hz still misses (~53 / ~43 Hz) with gnome-shell at ~20%
+CPU. 60 Hz stays preferred. Device r84 defaults mutter
 `kms-modifiers` on so Panfrost can use tiled intermediates for the blit.
 
 Audio invariants (measured 2026-08-17..22):
