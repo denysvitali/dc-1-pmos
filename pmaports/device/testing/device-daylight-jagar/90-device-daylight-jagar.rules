@@ -31,6 +31,15 @@ ACTION=="add|change", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LI
 ACTION=="add", SUBSYSTEM=="devfreq", KERNEL=="13000000.gpu", \
   RUN+="/usr/libexec/dc1-gpu-freq apply"
 
+# A charging Type-C hub may wait for the tablet to initiate DR_SWAP. Ask
+# TCPM for the host data role only for an identified hub while the port is
+# still UFP; the power role remains sink. PC hosts never match this rule.
+# Keep the configfs gadget bound: the kernel drops D+ while host and restores
+# it when the port returns to device mode.
+ACTION=="add", SUBSYSTEM=="typec", ENV{DEVTYPE}=="typec_partner", \
+  ATTR{type}=="hub", \
+  RUN+="/bin/sh -c 'grep -qF \"[device]\" /sys/class/typec/port0/data_role && echo host > /sys/class/typec/port0/data_role || :'"
+
 # Hide the fuel gauge from UPower while it is mute. The BQ78Z100 at i2c-7
 # 0x55 registers a power_supply and then NAKs every read (-ENXIO), so UPower
 # publishes a battery with no usable property and GNOME renders

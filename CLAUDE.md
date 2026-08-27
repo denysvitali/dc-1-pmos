@@ -165,6 +165,17 @@ comments. When touching those files, align them with `boot/dtbswap/README.md`,
 `docs/installation.md`, and this section; do not revive the old vendor_boot
 path merely to make the comments agree.
 
+### USB-C data role
+
+The single Type-C port stays a power sink but is data-role dual: a PC keeps
+the installer/installed ACM+ECM gadget path, while a charging hub DR_SWAPs
+MUSB to host. The shared DTB must keep `dr_mode = "otg"`; reverting it to
+`peripheral` removes the role switch. Keep the `g1` gadget driver bound in
+host mode — the kernel disconnects D+ while hosting and restores it on return
+to device mode. Never unbind it or remove configfs gadget objects to change
+roles; `musb_gadget_stop()` kills the host engine and configfs removal can
+wedge in D state.
+
 ### Boot image shape and diagnostics
 
 - Android boot header v4, gzip kernel, legacy-frame LZ4 ramdisk, and a

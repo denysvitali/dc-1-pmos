@@ -118,6 +118,7 @@ Every row links to its measurement record.
 | Wi-Fi | ✅ Works | MT7902 via mt7921s on the mainline DT; firmware staged in the system initramfs. — [hw/wireless.md](hw/wireless.md) |
 | Bluetooth | 🚧 In progress | Controller comes up (repair path for the firmware race; initramfs staging shipped for new installs); pairing/streaming session and a fresh-boot race check pending. — [hw/wireless.md](hw/wireless.md) |
 | USB gadget | 🚧 In progress | Serial console + ECM gadget up and verified on real boots; SSH over ECM from a host end-to-end pending. — [hw/usb.md](hw/usb.md) |
+| USB host | 🚧 Packaged, unverified | Charging Type-C hub path keeps the tablet a power sink, DR_SWAPs the data role to host, and leaves the gadget bound with D+ disconnected; hardware boot/session pending. — [hw/usb.md](hw/usb.md) |
 | configfs teardown | ✅ Resolved | Nothing removes gadget objects (any `rmdir` of a function wedges in D state — measured); the tree persists for the boot. — [hw/usb.md](hw/usb.md) |
 | Internal storage | ✅ Works | UFS. — [hw/storage.md](hw/storage.md) |
 | microSD | ✅ Works | MSDC0; `CONFIG_REGULATOR_GPIO` root cause fixed and hardware-verified 2026-08-23. — [hw/storage.md](hw/storage.md) |

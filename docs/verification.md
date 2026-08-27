@@ -27,6 +27,7 @@ measurement was made. "Pending" items live in
 | Bluetooth: pairing + A2DP streaming | — | **pending session** | [hw/wireless.md](hw/wireless.md) |
 | USB gadget: ECM completion + clean bind on real boot | device r34 | 2026-08-22 | [hw/usb.md](hw/usb.md) |
 | USB gadget: SSH over ECM from a host | — | **pending host** | [hw/usb.md](hw/usb.md) |
+| USB host: charging hub DR_SWAP, enumeration, charging, gadget return | linux/device new role-switch build | **pending boot** | [hw/usb.md](hw/usb.md) |
 | configfs: D-state wedge measurement, teardown removed | device r34 | 2026-08-17 | [hw/usb.md](hw/usb.md) |
 | Internal storage: UFS | earlier bring-up | pre-2026-08-17 | [hw/storage.md](hw/storage.md) |
 | microSD: SDXC enumeration (`CONFIG_REGULATOR_GPIO`) | linux r31 (`27918e9d5c92`) | 2026-08-23 | [hw/storage.md](hw/storage.md) |

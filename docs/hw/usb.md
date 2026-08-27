@@ -38,6 +38,27 @@ without a USB peer), and the interface set survived the boot intact.
 What remains for ✅ is plugging a USB host into the port and proving SSH
 over ECM end-to-end — tracked in [../roadmap.md](../roadmap.md).
 
+## USB host / Type-C hub
+
+The installed system is packaged to use the same port as a data host for a
+charging Type-C hub while remaining a power sink. The port advertises
+data-role dual, and the MT6375 TCPM path switches MUSB to host after a
+DR_SWAP. If a discovered partner reports `type=hub` but the active role is
+still `[device]`, a udev rule requests `host` through
+`/sys/class/typec/port0/data_role`; an ordinary PC host never matches it.
+
+The `dc1-usb-gadget` service still binds `g1` on every installed boot, and
+the installer continues to bind its ACM+ECM gadget. Host mode disconnects
+D+ in the kernel without unbinding the gadget driver, then reconnects it
+when the port returns to device mode. This preserves the installer and
+recovery gadget path and avoids the measured configfs teardown wedge below.
+
+This path is 🚧 **packaged but not hardware-verified**. A boot of the new
+kernel must prove the hub enumerates in `lsusb -t`, the Type-C data role is
+host, charging stays online, and unplugging the hub then attaching a PC
+restores the gadget without restarting `dc1-usb-gadget`. The exact session
+is tracked in [../roadmap.md](../roadmap.md).
+
 ## configfs teardown
 
 The gadget teardown used to unbind the UDC, unlink the functions, then
