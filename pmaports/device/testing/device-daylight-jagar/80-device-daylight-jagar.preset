@@ -19,3 +19,6 @@ enable dc1-update.timer
 # requires basic but never reaches multi-user, so recording must ride on
 # basic to also cover unplug-poweroffs from charge sessions.
 enable dc1-poweroff-flag.service
+# The PMIC fuel gauge's software charge anchor otherwise re-seeds from voltage
+# at every boot. Restore a recent clean-shutdown value before UPower starts.
+enable dc1-battery-state.service

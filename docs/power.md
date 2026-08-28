@@ -38,11 +38,13 @@ resets at boot — the default policy re-applies.
 ## The battery percentage
 
 Real coulomb-counting from the PMIC (calibrated against the factory
-5 mΩ shunt configuration), not a voltage guess — but two honest caveats:
+5 mΩ shunt configuration), not a voltage guess. A clean shutdown records
+the measured charge and a boot within ten minutes restores it before UPower,
+so ordinary reboots do not manufacture a percentage jump. The record is
+single-use and invalid, stale, crash, or long-power-off cases deliberately
+fall back to voltage seeding. One caveat remains:
 
-- the state of charge **re-seeds from open-circuit voltage at every
-  boot**, so the percentage can jump after a restart;
-- it is measured against design capacity; nothing on this unit has
+- the state of charge is measured against design capacity; nothing on this unit has
   learned the pack's real full-charge capacity yet (same missing gauge).
 
 If a battery UI ever lists a second, permanently-empty battery

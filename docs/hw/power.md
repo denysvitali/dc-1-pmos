@@ -14,9 +14,12 @@ sense element and integrates it in hardware. Verified on device
 `current_now` tracked -126 → -245 → -128 mA, and charge integration came
 within 1% of the measured current over 60 s (later found circular — see
 the 2× correction below — both sides shared the missing factor).
-Caveats: the state of charge is seeded from open-circuit voltage at boot
-(so it is re-seeded on every reboot) and measured against *design*
-capacity, since nothing here learns a real full-charge capacity.
+Caveats: the state of charge is initially seeded from open-circuit voltage
+and measured against *design* capacity, since nothing here learns a real
+full-charge capacity. Kernel support plus `dc1-battery-state` preserve the
+measured charge anchor across clean boots no more than ten minutes apart.
+The atomic record is consumed once; stale/corrupt state, hard resets and long
+power-offs deliberately fall back to the voltage seed.
 
 **The fuel gauge was found to under-report by almost exactly 2×
 (2026-08-21, ten-agent investigation + differential referee test):** the
@@ -57,7 +60,7 @@ nothing in software distinguishes us from the kernel that read `capacity
 100` from that address. `mt6358-fg` stands aside automatically if the
 pack gauge ever reports `present=1`. Now a hardware item: the pack
 connector's SMBus pair, or the gauge's own I²C block. Consequences while
-it stays dead: SoC re-seeds from voltage on every boot, no learned
+it stays dead: cold/stale boots seed SoC from voltage, there is no learned
 full-charge capacity, no battery-temperature-informed charge current
 (only chip-side JEITA-ish behavior plus the 110/113.5 °C critical
 shutdowns — see [thermal.md](thermal.md)), and the deliberately

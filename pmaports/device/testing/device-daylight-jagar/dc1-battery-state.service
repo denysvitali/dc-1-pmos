@@ -1,0 +1,20 @@
+# Preserve the calibrated fallback gauge's software charge anchor across
+# short clean reboots. The helper consumes its state once and fails closed to
+# the kernel's OCV seed; see dc1-battery-state for the validation contract.
+
+[Unit]
+Description=DC-1 fallback battery charge continuity
+DefaultDependencies=no
+After=local-fs.target
+RequiresMountsFor=/var/lib/dc1
+Conflicts=shutdown.target
+Before=basic.target shutdown.target upower.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/dc1-battery-state restore
+ExecStop=/usr/libexec/dc1-battery-state record
+
+[Install]
+WantedBy=basic.target

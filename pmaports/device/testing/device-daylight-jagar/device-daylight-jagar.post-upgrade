@@ -50,6 +50,11 @@ systemctl reenable dc1-update.timer 2>/dev/null || true
 # as the update timer above: enable only, no start mid-transaction.
 systemctl reenable dc1-poweroff-flag.service 2>/dev/null || true
 
+# The fallback-gauge continuity hook arrives with pkgrel 88. Presets are not
+# rerun on upgrade; enable it for existing installations, without starting it
+# in the middle of an apk transaction.
+systemctl reenable dc1-battery-state.service 2>/dev/null || true
+
 # Keep in step with post-install: rebuild the udev hwdb for the side-button
 # remap and re-trigger the input devices. Best-effort, as above.
 systemd-hwdb update 2>/dev/null || true

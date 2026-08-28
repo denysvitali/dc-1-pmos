@@ -230,6 +230,9 @@ the same bus does. Keep its production DTS node disabled: binding bq27xxx
 only creates a phantom power supply, `-ENXIO` log spam, and a thermal zone
 which disables itself. `mt6358-fg` is the calibrated battery fallback.
 Re-enable the pack gauge only after a live ACK and protocol measurement.
+The fallback's software charge anchor is restored by `dc1-battery-state`
+only from a valid, single-use clean-shutdown record no more than ten minutes
+old; every other boot keeps the driver's voltage-seed fail-safe.
 
 The sensor buses are SCP-connected but reachable from the AP when the pins are
 re-muxed and nothing drives the SCP:

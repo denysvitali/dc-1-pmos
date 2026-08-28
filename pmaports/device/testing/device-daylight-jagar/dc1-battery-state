@@ -1,0 +1,103 @@
+#!/bin/sh
+# dc1-battery-state -- preserve mt6358-fg's software charge anchor across a
+# short, clean reboot.
+#
+# The PMIC provides real current and coulomb counts, but its fallback driver
+# must seed remaining charge from voltage when it first probes.  The silent
+# BQ78Z100 pack gauge cannot provide the persistent anchor it normally would.
+# Save the kernel's measured CHARGE_NOW at clean shutdown and restore it before
+# basic.target/UPower only when the record is recent and internally valid.
+#
+# The state is consumed on every restore attempt.  A crash, hard reset, stale
+# clock, corrupt file, old kernel without the writable property, or long
+# power-off therefore falls back to the driver's conservative voltage seed.
+# Hook style deliberately avoids set -e: failure must never block boot or
+# shutdown.
+set -u
+set -f
+
+STATE=${DC1_BATTERY_STATE:-/var/lib/dc1/battery-charge}
+FG=${DC1_FG_DIR:-/sys/class/power_supply/mt6358-fg}
+MAX_AGE=${DC1_MAX_AGE:-600}
+
+is_uint() {
+	case ${1-} in
+	''|*[!0-9]*) return 1 ;;
+	*) return 0 ;;
+	esac
+}
+
+discard() {
+	rm -f "$STATE" 2>/dev/null || :
+}
+
+case ${1-} in
+restore)
+	[ -r "$STATE" ] || exit 0
+	line=$(cat "$STATE" 2>/dev/null) || {
+		discard
+		exit 0
+	}
+	# Word splitting is intentional; globbing is disabled above. Exactly
+	# three fields makes trailing junk and older formats fail closed.
+	set -- $line
+	if [ "$#" -ne 3 ] || [ "$1" != v1 ] ||
+		! is_uint "$2" || ! is_uint "$3" ||
+		[ "${#2}" -gt 12 ] || [ "${#3}" -gt 10 ] ||
+		! is_uint "$MAX_AGE" || [ "${#MAX_AGE}" -gt 10 ]; then
+		discard
+		exit 0
+	fi
+	saved_at=$2
+	charge=$3
+	now=${DC1_NOW:-$(date +%s 2>/dev/null)}
+	if ! is_uint "$now" || [ "${#now}" -gt 12 ]; then
+		discard
+		exit 0
+	fi
+	age=$((now - saved_at))
+	if [ "$age" -lt 0 ] || [ "$age" -gt "$MAX_AGE" ] ||
+		[ ! -r "$FG/charge_full_design" ] ||
+		[ ! -w "$FG/charge_now" ]; then
+		discard
+		exit 0
+	fi
+	full=$(cat "$FG/charge_full_design" 2>/dev/null) || full=
+	if ! is_uint "$full" || [ "${#full}" -gt 10 ] ||
+		[ "$charge" -gt "$full" ]; then
+		discard
+		exit 0
+	fi
+	if printf '%s\n' "$charge" >"$FG/charge_now" 2>/dev/null; then
+		logger -t dc1-battery-state \
+			"restored ${charge} uAh charge anchor (${age}s old)" 2>/dev/null || :
+	fi
+	discard
+	;;
+record)
+	[ -r "$FG/charge_now" ] && [ -r "$FG/charge_full_design" ] || exit 0
+	charge=$(cat "$FG/charge_now" 2>/dev/null) || exit 0
+	full=$(cat "$FG/charge_full_design" 2>/dev/null) || exit 0
+	now=${DC1_NOW:-$(date +%s 2>/dev/null)}
+	if ! is_uint "$charge" || ! is_uint "$full" || ! is_uint "$now" ||
+		[ "${#charge}" -gt 10 ] || [ "${#full}" -gt 10 ] ||
+		[ "${#now}" -gt 12 ] || [ "$charge" -gt "$full" ]; then
+		exit 0
+	fi
+	umask 077
+	mkdir -p "${STATE%/*}" 2>/dev/null || exit 0
+	state_tmp="$STATE.tmp.$$"
+	if printf 'v1 %s %s\n' "$now" "$charge" >"$state_tmp" 2>/dev/null &&
+		mv -f "$state_tmp" "$STATE" 2>/dev/null; then
+		logger -t dc1-battery-state \
+			"recorded ${charge} uAh charge anchor" 2>/dev/null || :
+	else
+		rm -f "$state_tmp" 2>/dev/null || :
+	fi
+	;;
+*)
+	echo "usage: dc1-battery-state [restore|record]" >&2
+	exit 2
+	;;
+esac
+exit 0

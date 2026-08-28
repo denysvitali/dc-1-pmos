@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=88
+pkgrel=89
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -137,6 +137,8 @@ source="
 	dc1-charging-monitor.service
 	dc1-poweroff-flag
 	dc1-poweroff-flag.service
+	dc1-battery-state
+	dc1-battery-state.service
 "
 
 build() {
@@ -465,6 +467,10 @@ package() {
 		"$pkgdir"/usr/lib/systemd/system/dc1-charging-monitor.service
 	install -Dm644 "$srcdir"/dc1-poweroff-flag.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-poweroff-flag.service
+	install -Dm755 "$srcdir"/dc1-battery-state \
+		"$pkgdir"/usr/libexec/dc1-battery-state
+	install -Dm644 "$srcdir"/dc1-battery-state.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-battery-state.service
 	# apk trigger script: apk runs it when /boot/vmlinuz, /usr/share/kernel/*,
 	# or WirePlumber's alsa.lua changes. Installed explicitly so it does
 	# not depend on abuild auto-installing the $pkgname.trigger from $source.
@@ -526,7 +532,7 @@ bcbea953414f25402e10e3596f0968ab0f4308f170247f07590ea2ddd289297b41d727eba7c832f3
 51c547dff77fe30aa8459ff2fbc64856ad2ad05fad2d050901fed169d72960deeb22b21e212e5e529a78044b2a62e661efb9c9de44cb3f152c37a5876889a0a7  dc1-screen-backlight.service
 7d241e69a4aaf124d949a6dc04c1ce16fc38532759f7643952b3df8645c3483bf74318c09c2eaf05742b071acbf8a5cbb4f475c96390272975efd614d2052f21  dc1-rtcsync.service
 e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99cfa9065ee15298c54054f83f997c95a99a03346d73f92d5b7  dc1-rtcsync.timer
-5f629b675945852330b28df098738852703d6df49165f3b9abfe7d53401249fd4da3dc40811d762ce37a317215b32ff5729aad650bba7ea98e4a44fc0b1788b7  80-device-daylight-jagar.preset
+db2b478a8eeac96ccbbe94b0489a1d9b0cbf93dc5f6f1e62f2a5cbfe64ba5a77100c7fcc095d5edb1bc2cf4766a9e833030f23c7e207328fe50fee04e2b0d93d  80-device-daylight-jagar.preset
 92807e4b9340ffb3b312ac11f6346095195150f39bccf14433fab24da0806d7e91c8a8654848b832cdf80b42e15c9edca2ae21d9e04215d2234f11b7844303e5  90-device-daylight-jagar.rules
 0e7762a93506f1ec322ed7ca16469f1705d0e712716d87edbc121061ce7e3f2185d1b7beaf52c6c9380375accc7f038b37f52662515a4a981a781304d433e8d2  10-dc1-watchdog.conf
 d1f9d8131b2454dea337083f8353335c3ba738739b59d454c273944de1e2561e8d07d5563af1b5f87f934c709862d0f95d27f9d69e1406cd9c0e62b2f0b2d367  10-dc1-gnome.gschema.override
@@ -559,4 +565,6 @@ c82499840dadc121164874a8cc3050ac7a1f6e12a551b0cf154bc0af562fb883d0d5cdd48f9f9204
 13a4b4c086f733906e8641c489fdbf20b12bc29c4038cdcf7e6dafb04ce084080eb4f53c0e770d459be5a9f15b040ecefad9425d84b2dd02b8350693590e2fca  dc1-charging-monitor.service
 4bd1c7c586e30ab2d4a77a4b92b0c9fb1f23d85c01cc0d4408ab4b7d04f435417ecddb8594a8fae0fb725b2e93e8b180ea163d22d9d296f57de5934f6fb4d19b  dc1-poweroff-flag
 220ecb526a384391fe0df4f05a3f154eee577b5dde545a36466e97d299b1f7c1a587edd78a1836f1ee8b159f14dd61bf29e667b7aaf59897404822cf14ec6573  dc1-poweroff-flag.service
+64c4ab1e6618c3d49019690c5ae58820ca1dd2ac9d4138e4d41497c5d6d01ab0b1cf8618c323338f3b705fcaaf5e1bc932fece5b8020a18516754cf7e09bb5a3  dc1-battery-state
+7f1dc19b99ab124a7d04b46ad007a9db235a35e958ddb2398752ff972b4900f55d039a0e3c5e3c9cbf208d36658993afe2d428bed55e349398b066d7b0fdb6d6  dc1-battery-state.service
 "
