@@ -18,12 +18,12 @@ from a touchscreen wizard: flash one image over fastboot, answer a few
 questions on the panel, and the device downloads, verifies, and installs
 the rest itself.
 
-> **Warning — read before flashing.**
+> [!CAUTION]
 > A green CI build proves the artifacts *compile*, not that they *boot*.
 > Releases record `hardware_verified=false`: individual subsystems are
 > heavily measured on real hardware ([docs/status.md](docs/status.md)),
-> but nobody has executed this release's install flow outside this
-> repository yet. Flashing is at your own risk.
+> and the install flow has been exercised by a small number of users.
+> Flashing is at your own risk.
 >
 > The DC-1 has **no general recovery channel without a working kernel** —
 > the authenticated preloader accepts no arbitrary download agent — so the
@@ -36,6 +36,12 @@ the rest itself.
 > - **Never** write `preloader`, `lk`, `dtbo`, `vendor_boot`, or the UFS
 >   boot LUNs. `lk` and `dtbo` are signature-checked; one bad write marks
 >   the slot dead before Linux starts, with no way back over USB.
+>
+> There is currently **no official, supported way to return the tablet
+> completely to stock** after installing Linux. You can make raw backups of
+> `dtbo_a`, `dtbo_b`, `boot_a`, and `boot_b` before starting and reflash them
+> later, but that is not necessary for this installation and does not amount
+> to a complete factory restore.
 
 ## Hardware support at a glance
 
@@ -46,15 +52,15 @@ Details, measurements, and dates for every row:
 | --- | --- | --- |
 | Display & touch | ✅ | 1200×1600 @ 60 Hz over DSI, GPU-accelerated (Panfrost), reliable blank/wake |
 | Pen digitizer | ✅ | Wacom EMR: pressure, barrel button, eraser end (in tablet-aware apps); edge-alignment refit awaits a final hands-on pass |
-| Screen auto-rotation | 🟡 | Accelerometer-driven end to end; the on-glass tilt matrix still awaits its hands-on test |
+| Screen auto-rotation | ✅ | Accelerometer-driven rotation works end to end and honors GNOME's rotation lock |
 | Wi-Fi | ✅ | MT7902, mainline `mt7921s`, Wi-Fi 6 |
-| Bluetooth | 🚧 | Controller comes up reliably; pairing/streaming not yet exercised |
+| Bluetooth | ✅ | Controller and nearby-device discovery verified; pairing/audio streaming not yet exercised |
 | Audio | ✅ | Stereo speakers, stereo mic capture; no headphone jack (hardware) |
 | Front light | ✅ | White + amber channels, PWM-free dimming, warmth slider in quick settings |
 | Buttons | ✅ | Phone-like power key; volume; Quick Action / Back Button, remappable in GNOME Settings |
 | Storage & microSD | ✅ | UFS internal storage; microSD slot works |
 | Battery & charging | 🟡 | USB-C PD negotiates (12 V PDO verified); charging defaults conservative (~22 %/h), tunable toward ~40 %/h via sysfs; charge % is real coulomb-counting but re-seeds from voltage at every boot |
-| USB-C networking | 🚧 | Serial console works, USB ethernet comes up; SSH from a host end-to-end still to be proven |
+| USB-C data | 🟡 | USB 2.0 only: serial and Ethernet gadget work, while host mode is partial. No SuperSpeed, DisplayPort Alt Mode, or Thunderbolt; external displays are unsupported, and Thunderbolt docks are limited to any USB 2.0 fallback they expose |
 | Suspend/sleep | 🚧 | A clean s2idle test cycle is on record, but sleep targets remain masked by design; the power key blanks instead — see [Battery life today](docs/power.md#battery-life-today) |
 | Ambient light / proximity sensor | ❌ | Part identified on the bus, no mainline driver yet |
 | Gyro, magnetometer, cellular, GPS, cameras | ❌ | Not fitted/exposed on this hardware |
@@ -66,8 +72,8 @@ Details, measurements, and dates for every row:
 Two paths lead to the same system:
 
 1. **On-device installer (recommended)** — needs a computer with `fastboot`
-   for one command, then Wi-Fi. Everything else happens on the tablet's
-   touchscreen.
+   for a brief flashing sequence, then Wi-Fi. Everything else happens on the
+   tablet's touchscreen.
 2. **USB install from a computer (fallback)** — a host script streams the
    image and answers over the cable when there is no Wi-Fi. See
    [Install from a computer](docs/installation.md#install-from-a-computer-advanced--fallback).
@@ -83,22 +89,46 @@ sha256sum --ignore-missing -c SHA256SUMS
 
 ### Walkthrough
 
-**1. Enter fastboot mode.** Power off, then hold **Power + Volume Up**
+**1. Unlock the bootloader.** In stock Android, tap **Settings > About
+tablet > Build number** seven times to enable Developer Options, then enable
+**OEM unlocking** under **Settings > System > Developer options**. Reboot to
+fastboot and check the current state:
+
+```sh
+fastboot getvar unlocked
+```
+
+> [!WARNING]
+> If the command reports `no`, copy off anything important before running
+> `fastboot flashing unlock` and confirming on the tablet. **Unlocking erases
+> all user data.**
+
+**2. Enter fastboot mode.** Power off, then hold **Power + Volume Up**
 until the bootloader menu appears, and select fastboot. From stock Android
 with USB debugging you can instead run `adb reboot bootloader`; from an
 already-installed postmarketOS, `sudo dc1-reboot-fastboot`. Confirm the
 host sees the device: `fastboot devices`.
 
-**2. Flash the installer and reboot.**
+**3. Flash the installer, select its slot, and reboot.**
 
 ```sh
-fastboot flash boot_a installer-boot.img && fastboot reboot
+fastboot flash boot_a installer-boot.img
+fastboot set_active a
+fastboot reboot
 ```
 
-The panel comes up with the installer menu. (Tethered `fastboot boot` is
-unverified on this bootloader, which is why the image is flashed.)
+> [!IMPORTANT]
+> Dual booting is not currently supported. The slot containing Linux must be
+> the active slot: because this example flashes `boot_a`, it explicitly
+> selects slot A with `fastboot set_active a` before rebooting. If a future
+> procedure uses `boot_b`, the corresponding command is `fastboot set_active
+> b`.
 
-**3. Answer the installer.** Tap **Install from network**, pick a Wi-Fi
+> [!NOTE]
+> Tethered `fastboot boot` is unverified on this bootloader, which is why the
+> image is flashed. The panel comes up with the installer menu after reboot.
+
+**4. Answer the installer.** Tap **Install from network**, pick a Wi-Fi
 network (or type an SSID), enter the passphrase, then set a username,
 password, hostname, and timezone. **Install now** warns that the Linux
 data partition will be erased, then the device downloads the release over
@@ -107,16 +137,24 @@ mountable, writes the rootfs, applies your answers (the password is hashed
 on-device; the cleartext is never stored), writes the real boot image to
 `boot_a`, and reboots.
 
-An interrupted install loses nothing: nothing half-written is ever left
-mountable, so run the flow again.
+> [!TIP]
+> If an install is interrupted, run the flow again. Nothing half-written is
+> ever left mountable.
 
-**4. First boot.** The installed system downloads the desktop app set
+**5. First boot.** The installed system downloads the desktop app set
 (Chromium, Ghostty, GNOME Console/Calculator/Text Editor, Nautilus) once
 from Alpine, then logs you in.
 
 The full procedure — including the USB fallback, pre-made answers, and
 what each menu option does — is in
 [docs/installation.md](docs/installation.md).
+
+> [!NOTE]
+> For community support, I will try to be reachable in
+> [`#linux-on-dc-1`](https://discord.gg/jNGuzVYk6F) in the Daylight Hacker
+> Wiki Community on Discord. This project is **not officially supported by
+> Daylight**, and you are expected to understand the flashing process and its
+> risks rather than rely on step-by-step recovery help.
 
 ## Living with it
 
