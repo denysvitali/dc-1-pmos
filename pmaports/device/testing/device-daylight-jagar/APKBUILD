@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=86
+pkgrel=87
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -62,6 +62,9 @@ source="
 	dc1-usb-gadget.initd
 	dc1-bluetooth.initd
 	dc1-networkmanager-usb0.conf
+	50-wwan-policy.conf
+	10-dc1-bluetooth-directory.conf
+	10-dc1-modemmanager.conf
 	dc1-sway.conf
 	00-logo-key.conf
 	dc1-reboot-fastboot.c
@@ -185,6 +188,10 @@ package() {
 		"$pkgdir"/etc/init.d/dc1-debug-shell
 	install -Dm644 "$srcdir"/dc1-networkmanager-usb0.conf \
 		"$pkgdir"/etc/NetworkManager/conf.d/60-dc1-usb0.conf
+	# Shadow the base UI's same-named vendor drop-in, whose unsupported
+	# check-connectivity key produces a warning on every NetworkManager start.
+	install -Dm644 "$srcdir"/50-wwan-policy.conf \
+		"$pkgdir"/etc/NetworkManager/conf.d/50-wwan-policy.conf
 
 	# Panel output + touch transform for the default (sway) compositor.
 	install -Dm644 "$srcdir"/dc1-sway.conf \
@@ -241,6 +248,19 @@ package() {
 		"$pkgdir"/usr/share/wireplumber/wireplumber.conf.d/55-dc1-audio.conf
 	install -Dm644 "$srcdir"/dc1-bluetooth.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-bluetooth.service
+	install -Dm644 "$srcdir"/10-dc1-bluetooth-directory.conf \
+		"$pkgdir"/etc/systemd/system/bluetooth.service.d/10-dc1-directory.conf
+	# There is no cellular modem in the DC-1. The generic GNOME base pulls in
+	# ModemManager, whose current MediaTek plugins also have an upstream ABI
+	# mismatch. A unit condition suppresses boot and D-Bus activation while
+	# leaving an explicit opt-in for administrators who attach an external
+	# cellular modem.
+	install -Dm644 "$srcdir"/10-dc1-modemmanager.conf \
+		"$pkgdir"/etc/systemd/system/ModemManager.service.d/10-dc1-hardware.conf
+	# accountsservice probes the optional TCB shadow layout even though this
+	# image uses /etc/shadow. An empty directory accurately represents that
+	# there are no TCB users and avoids a warning on every login.
+	install -dm700 "$pkgdir"/etc/tcb
 	# D-Bus activation for iio-sensor-proxy, which Alpine's aport omits -- see
 	# the file's header. Without it the accelerometer reaches no compositor.
 	install -Dm644 "$srcdir"/net.hadess.SensorProxy.service \
@@ -461,6 +481,9 @@ a74965c50efc38879c4ce684ae1322b172d66be0b27ef2c74bff86eca12aaf8a948fc56edd37ef32
 ee58289d7e49a2fd4cea545041ffda000ceb482c7929231dc6188ec25c072565879cf75ce8c14e00db5b139be9c717b8819ffd17a566a2381599bc848bdff194  dc1-usb-gadget.initd
 d21877cab43e70f3e990a887eaa25d5b951f7caec8035c306f62ca30238766c5b1db8fd2411aefad9fcb533e906746f707d5df71500739cb34be14afe5328f79  dc1-bluetooth.initd
 40cc32d4b8f241071f438bdf86c2a559b2145b004ec69aa3e17daec680385a35becfc70f4cec5d4bf1dbabd5efeca1d4163ce2ce6d69870ff4cd5996d1db527c  dc1-networkmanager-usb0.conf
+55c008eb7cbf51e99f5d98cc82f7337e7bec3cdfa79b8e7dcf7e769b282cc8e38db36afdcb1768bc0fdda2426c667fd87e5e413cbfb025fd6bdd9d24a5b01b94  50-wwan-policy.conf
+b22c45e07c7d0d330b5375e8dddae797129a74e80842660ea97abe8c119bd41172cf20a61bfa9a96da1be6b0b8737beaf830e4af1cbda10c81d061e7c9e84a3b  10-dc1-bluetooth-directory.conf
+6a7ae28a5e21263f56d169d59a2fbaaa7509841c21b04adbfd33f7b9aa309f91ea2d5c245835076ec044d4544c70681241ee526586953b7afc69dbb803802ad5  10-dc1-modemmanager.conf
 d8420d62c8033e338da2e73812924c598daa1f078521f71db5fcaf7488ab83873b28a28d7e20b2e2a9b830a4daa3a8466e1d415d8a95584590ca75c2d5efa437  dc1-sway.conf
 45bfbe7279140132e722b1bf7f34b96b71a45f4bd3b4c393d0865c0bd193eafb99104da438d67b3025401d0da4720bbc82ffc64294487c2ce9a0779f3d53724e  00-logo-key.conf
 c59b626985f89c88b4a7edb1de78291b9b3ef95453a6aa1969dfc936c2012c8714ae2b8bfef2d102a234a8518900b0748ca641b3f805d24477f7311eb4e9b983  dc1-reboot-fastboot.c
@@ -507,7 +530,7 @@ d1f9d8131b2454dea337083f8353335c3ba738739b59d454c273944de1e2561e8d07d5563af1b5f8
 d6aec155af0def9a5b480a60e713aeee0738271bfe85c397ec1f23fda73359e9280b6f3332f02e4801d940005610b4c71a82820afb3e7865ca4345cb32ff6105  daylight-dc1.tablet
 50dfd0ea25c80a97c1625dbf6dc42a8c114148cadafa20e21d210a9ea8c224e0069a75251ce11e427b51b50896929c833166988855a2c96deef03e6d3b94eb58  10-dc1-power.conf
 27d1223ba673ee4639d12a7eb2bf7b24e8baf549c3eca7dc943d2e26d30aa094fcb3d22db7d15ac150329100e4af68443ef8324e4af919612bc43b262734abec  49-device-daylight-jagar-sensors.rules
-933a723de2bc889cff35cd190d000b3b1656b0ba17b987ba6f7e9f9de41ab9c16a26b87cbf2adee5ff5d841de9068d7ac60a0177e789736c21b98591c292a9ba  dc1-orientation
+6554e24ce34bfb53b80a13282f4cc6a045af954b394dfa98229c2b60169a541e98a4d0a38026df2f908a9704d5a772aa7b850e349079fe29d506e6e824632bc2  dc1-orientation
 8049055e585a55f5c9ea488eb7e082e062d973d38c3aba0c50f7e1f6f1e649429b7b98c8532d5097712e0b6dbfa4b73a1456415de7189e1bf9ec34bd99b85d7e  dc1-orientation.service
 9ba63fe59f355b45cfc5dbad15a9e4a94d571b28eaf6b09af040be110f080ba01fccc79f96f5ff40beabc9a76e1677fb1e0fd6359f1c03f4465543cad710026b  net.hadess.SensorProxy.service
 ab9c9f540817f46f3b760cd3dc12b51502038cbf419c76628661a217fed8f51204372be8136f802b60700171989c9e64a839524eaa309ec59ec965016fb2d525  dc1-warmth-extension.js

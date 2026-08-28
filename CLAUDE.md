@@ -181,6 +181,12 @@ T-PHY's independent UTMI VBUS comparator remains at SessEnd even with a valid
 PD contract, which makes MUSB raise `VBUS_ERROR` and prevents enumeration.
 Keep jagar's opt-in `mediatek,force-vbus-valid` T-PHY property: it overrides
 VBUSVALID/AVALID only in host mode and clears the override in device/OTG mode.
+The jagar kernel is built with `CONFIG_MUSB_PIO_ONLY=y`; the MUSB host driver
+must not advertise `HCD_DMA` in that configuration. The device has 8 GiB of
+RAM, the MUSB child has a 32-bit DMA mask, and LK supplies
+`swiotlb=noforce`. A false DMA capability makes usbcore needlessly map hub
+status buffers and can reject the hub interrupt URB with `-EAGAIN`, leaving
+later port changes invisible even though the initial hub scan succeeds.
 The live register A/B on 2026-08-28 made the five-port USB 2.0 hub enumerate
 at 480 Mbit/s while the Type-C power role stayed sink. That Lenovo 40B0
 Thunderbolt dock exposed only its internal MCU and Billboard devices; its
@@ -211,6 +217,11 @@ hub.
 Keep `CONFIG_BINFMT_SCRIPT`, `CONFIG_EPOLL`, `CONFIG_SIGNALFD`,
 `CONFIG_TIMERFD`, and `CONFIG_EVENTFD`; the udhcpc hook, installer, and BlueZ
 depend on them and failures can be silent.
+Keep built-in FUSE, Landlock plus the BPF LSM dependency chain, uinput/uhid,
+and Bluetooth RFCOMM/BNEP. The GNOME document portal, Tracker sandbox,
+systemd namespace confinement, remote-input path, and BlueZ profiles otherwise
+fail independently after an apparently successful boot. Unprivileged BPF must
+remain disabled by default.
 
 The pack BQ78Z100 at i2c7 `0x55` does not ACK while the RT9471 at `0x53` on
 the same bus does. Keep its production DTS node disabled: binding bq27xxx

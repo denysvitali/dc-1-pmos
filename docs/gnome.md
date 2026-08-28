@@ -13,7 +13,7 @@ repository is mid-way through its GNOME 50 migration, so the image mixes
 Alpine's gdm 48.0-r7 with pmOS's gnome-shell-mobile 999948.0-r4 and the
 pmOS accountsservice fork. An on-device session established the exact
 minimal fix set — GNOME up, clean reboot, zero failed units — and this
-repository now codifies all five pieces so every fresh install gets them:
+repository now codifies all six pieces so every fresh install gets them:
 
 1. **libelogind → libsystemd shim** (installer provisioning,
    `apply_libelogind_shim`). Alpine's gdm links `libelogind.so.0`, and
@@ -30,7 +30,7 @@ repository now codifies all five pieces so every fresh install gets them:
    with the packaged autologin block preserved. Otherwise any session
    failure falls back to an X11 greeter on an image that ships no Xorg
    and no X11 session files — SIGABRT until start-limit-hit.
-4. **Accelerometer-driven orientation** (device package, pkgrel 56).
+4. **Accelerometer-driven orientation** (device package).
    Static GNOME and Sway 180° transforms were removed: they overrode the
    MC3416 orientation reported through `iio-sensor-proxy`. The device
    package now also installs `gnome-settings-daemon-mobile`, which
@@ -40,6 +40,9 @@ repository now codifies all five pieces so every fresh install gets them:
    `undefined`. The panel's physical scanout correction is supplied by
    the compositor's live sensor orientation, not a fixed monitor file.
    The device orientation bridge runs as a persistent user service and
+   waits for SensorProxy and Mutter ownership during session startup instead
+   of recording a failed unit before the compositor appears. It reacquires
+   the Mutter proxy after a greeter/session compositor replacement, then
    requests the compositor-owned rotation transition from the patched
    Mutter-Mobile package, avoiding a visible hard snap during rotation.
    See [hw/sensors.md](hw/sensors.md) for the sensor side.
@@ -52,6 +55,14 @@ repository now codifies all five pieces so every fresh install gets them:
    — because world constraints are sticky — survives on-device
    `apk upgrade`. Temporary until the fork's typelib matches its library
    soname.
+6. **Modem-less base policy** (device package). The generic GNOME image still
+   installs ModemManager and a WWAN NetworkManager policy, but the DC-1 has no
+   cellular modem. ModemManager therefore stays dormant, avoiding activation
+   of ABI-mismatched MediaTek plugins. An administrator attaching an external
+   modem can opt in with `touch /var/lib/dc1/enable-modemmanager` followed by
+   `systemctl start ModemManager`. The device's same-named NetworkManager
+   override preserves the WWAN route-table policy while removing the one key
+   unsupported by the installed NetworkManager.
 
 The shims themselves are hardware-verified; their delivery through the
 installer and the rootfs build has not yet been exercised end-to-end on a

@@ -74,6 +74,19 @@ full USB hub reset produced the same state. Thus Linux never received an
 electrical attach indication for the keyboard or mouse; there was no device
 descriptor, authorization failure, or driver bind to fix on the DC-1.
 
+A second attach in the same packaged-kernel session logged
+`hub 1-1:1.0: activate --> -11`. Source tracing found a separate MUSB bug:
+jagar is PIO-only, but MUSB advertised `HCD_DMA`, so usbcore tried to DMA-map
+the hub's interrupt/status buffer. This machine has 8 GiB of RAM, a 32-bit
+MUSB child mask, and `swiotlb=noforce`; an unnecessary mapping can therefore
+fail as `-EAGAIN`. Kernel `05abbc2ae75c` omits `HCD_DMA` only for
+`CONFIG_MUSB_PIO_ONLY` builds. That restores the status URB needed for later
+port-change notifications without changing DMA-capable MUSB builds. The
+high-address mapping failure is inferred from the call path rather than
+traced live, and the patch still needs a boot/reconnect test. It does not
+explain the 40B0 result: the first attachment had a healthy status URB and
+the dock still never asserted downstream connection.
+
 This path remains 🚧 until an ordinary USB 2.0-capable charging hub proves a
 keyboard or mouse and the return path is exercised: unplug the hub, attach a
 PC, and prove the gadget reconnects without restarting `dc1-usb-gadget`.

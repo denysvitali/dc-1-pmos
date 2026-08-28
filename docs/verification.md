@@ -29,6 +29,7 @@ measurement was made. "Pending" items live in
 | USB gadget: SSH over ECM from a host | — | **pending host** | [hw/usb.md](hw/usb.md) |
 | USB host: charging hub DR_SWAP, enumeration, charging | live UTMI session override equivalent to kernel `a1a5a465fb61` | 2026-08-28 | [hw/usb.md](hw/usb.md) |
 | USB host: packaged-kernel hub enumeration in sink-host mode | linux r50 / device r85 | 2026-08-28 | [hw/usb.md](hw/usb.md) |
+| USB host: PIO hub status URB survives repeated reconnect | kernel `05abbc2ae75c` | **pending patched-kernel boot** | [hw/usb.md](hw/usb.md) |
 | USB host: downstream keyboard/mouse enumeration | — | **pending ordinary USB 2.0 charging hub; Lenovo 40B0 withholds port connect** | [hw/usb.md](hw/usb.md) |
 | USB role: gadget return after host mode | linux r50 / device r85 | **pending PC session** | [hw/usb.md](hw/usb.md) |
 | configfs: D-state wedge measurement, teardown removed | device r34 | 2026-08-17 | [hw/usb.md](hw/usb.md) |

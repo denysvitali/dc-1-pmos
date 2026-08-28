@@ -50,6 +50,14 @@ installed system it writes contains none of these credentials.
 
 ## What is *not* exposed
 
+- The installed kernel enables Landlock and the BPF LSM so desktop indexers
+  and `systemd-nsresourced` can apply their intended local sandboxes. BPF JIT,
+  perf, kprobe events, and ftrace are present as BPF-LSM dependencies, while
+  unprivileged BPF defaults off. SysRq also defaults off until Alpine applies
+  its restricted mask (`16`, emergency filesystem sync only).
+- Kernel core-dump support is enabled for systemd's configured crash handler.
+  Dumps can contain process memory and must be treated as private diagnostic
+  data; none are included in build artifacts or release collection paths.
 - Published artifacts contain no user-provided credentials: the build
   signs only its APK index, `PROVENANCE` records pins, and the installer
   provisions the real account and password on-device (hashed at rest

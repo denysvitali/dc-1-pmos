@@ -39,21 +39,6 @@ def main():
         print("dc1-orientation: no graphical session bus", file=sys.stderr)
         return 1
 
-    system = dbus.SystemBus()
-    session = dbus.bus.BusConnection(session_address)
-    sensor = system.get_object("net.hadess.SensorProxy", SENSOR_PATH)
-    sensor_props = dbus.Interface(sensor, PROPERTIES_IFACE)
-    display = session.get_object("org.gnome.Mutter.DisplayConfig", DISPLAY_PATH)
-    display_props = dbus.Interface(display, PROPERTIES_IFACE)
-    display_api = dbus.Interface(display, DISPLAY_IFACE)
-
-    try:
-        sensor.ClaimAccelerometer(dbus_interface=SENSOR_IFACE)
-    except dbus.DBusException as error:
-        print("dc1-orientation: cannot claim accelerometer: %s" % error,
-              file=sys.stderr)
-        return 1
-
     running = True
 
     def stop(*_args):
@@ -62,6 +47,46 @@ def main():
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
+
+    system = dbus.SystemBus()
+    session = dbus.bus.BusConnection(session_address)
+
+    def wait_for_object(bus, name, path, description):
+        """Wait without failing the unit while a session peer starts."""
+        reported = False
+        while running:
+            try:
+                return bus.get_object(name, path)
+            except dbus.DBusException:
+                if not reported:
+                    print("dc1-orientation: waiting for %s" % description,
+                          flush=True)
+                    reported = True
+                time.sleep(0.25)
+        return None
+
+    # default.target can run before Mutter owns DisplayConfig, particularly
+    # in the greeter. Waiting here keeps the service in a healthy activating
+    # state instead of recording a failed start and relying on Restart=.
+    sensor = wait_for_object(system, "net.hadess.SensorProxy", SENSOR_PATH,
+                             "iio-sensor-proxy")
+    display = wait_for_object(session, "org.gnome.Mutter.DisplayConfig",
+                              DISPLAY_PATH, "Mutter")
+    if sensor is None or display is None:
+        return 0
+    sensor_props = dbus.Interface(sensor, PROPERTIES_IFACE)
+    display_api = dbus.Interface(display, DISPLAY_IFACE)
+
+    while running:
+        try:
+            sensor.ClaimAccelerometer(dbus_interface=SENSOR_IFACE)
+            break
+        except dbus.DBusException as error:
+            print("dc1-orientation: cannot claim accelerometer yet: %s" %
+                  error, file=sys.stderr, flush=True)
+            time.sleep(1)
+    if not running:
+        return 0
 
     # Compare against Mutter's live state instead of a cached last-applied
     # value: the compositor this bridge drives can be replaced under it (gdm
@@ -116,6 +141,15 @@ def main():
                     print("dc1-orientation: Mutter update failed: %s" %
                           error, file=sys.stderr, flush=True)
                 failing = True
+                # A ProxyObject binds to the name owner that existed when it
+                # was created. Reacquire it so a respawned greeter/session
+                # shell receives orientation without restarting this unit.
+                display = wait_for_object(
+                    session, "org.gnome.Mutter.DisplayConfig", DISPLAY_PATH,
+                    "Mutter")
+                if display is None:
+                    break
+                display_api = dbus.Interface(display, DISPLAY_IFACE)
             time.sleep(0.25)
     finally:
         try:
