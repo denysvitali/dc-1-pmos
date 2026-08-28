@@ -112,6 +112,16 @@ grep -q 'wireless-regdb' "$device_dir/APKBUILD" ||
 find "$overlay_dir" -name '*.bin' -print -quit | grep -q . &&
 	fail "a firmware blob is committed in the overlay" || :
 
+# This board has no modem. Keep generic desktop components from probing the
+# condition-skipped ModemManager, and keep LocalSearch's Landlock sandbox
+# usable with Alpine's usr-merged musl loader paths.
+grep -qF 'bluez5.hfphsp-backend-native-modem = "none"' \
+	"$device_dir/55-dc1-audio.conf" || fail "WirePlumber still probes ModemManager"
+grep -qF 'Environment=LD_LIBRARY_PATH=/usr/lib:/usr/local/lib' \
+	"$device_dir/10-dc1-localsearch.conf" || fail "LocalSearch loader path guard missing"
+grep -qF '/usr/lib/systemd/user/localsearch-3.service.d/10-dc1-landlock.conf' \
+	"$device_dir/APKBUILD" || fail "LocalSearch user-unit drop-in is not packaged"
+
 grep -q "_commit=\"$KERNEL_COMMIT\"" "$kernel_dir/APKBUILD" ||
 	fail "kernel commit drift"
 grep -q 'github.com/denysvitali/$_repository/archive/$_commit.tar.gz' \

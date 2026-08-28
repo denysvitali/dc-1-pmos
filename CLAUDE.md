@@ -217,11 +217,13 @@ hub.
 Keep `CONFIG_BINFMT_SCRIPT`, `CONFIG_EPOLL`, `CONFIG_SIGNALFD`,
 `CONFIG_TIMERFD`, and `CONFIG_EVENTFD`; the udhcpc hook, installer, and BlueZ
 depend on them and failures can be silent.
-Keep built-in FUSE, Landlock plus the BPF LSM dependency chain, uinput/uhid,
-and Bluetooth RFCOMM/BNEP. The GNOME document portal, Tracker sandbox,
-systemd namespace confinement, remote-input path, and BlueZ profiles otherwise
-fail independently after an apparently successful boot. Unprivileged BPF must
-remain disabled by default.
+Keep built-in FUSE, Landlock plus the BPF LSM dependency chain (including
+securityfs and kernel BTF), uinput/uhid, and Bluetooth RFCOMM/BNEP. The GNOME
+document portal, Tracker sandbox, systemd namespace confinement, remote-input
+path, and BlueZ profiles otherwise fail independently after an apparently
+successful boot. Alpine's usr-merged musl loader also needs the packaged
+LocalSearch `LD_LIBRARY_PATH` drop-in: removing it makes every Landlock-confined
+extractor exit 127. Unprivileged BPF must remain disabled by default.
 
 The pack BQ78Z100 at i2c7 `0x55` does not ACK while the RT9471 at `0x53` on
 the same bus does. Keep its production DTS node disabled: binding bq27xxx

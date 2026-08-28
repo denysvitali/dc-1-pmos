@@ -81,9 +81,11 @@ the hub's interrupt/status buffer. This machine has 8 GiB of RAM, a 32-bit
 MUSB child mask, and `swiotlb=noforce`; an unnecessary mapping can therefore
 fail as `-EAGAIN`. Kernel `05abbc2ae75c` omits `HCD_DMA` only for
 `CONFIG_MUSB_PIO_ONLY` builds. That restores the status URB needed for later
-port-change notifications without changing DMA-capable MUSB builds. The
-high-address mapping failure is inferred from the call path rather than
-traced live, and the patch still needs a boot/reconnect test. It does not
+port-change notifications without changing DMA-capable MUSB builds. Linux r52
+with that commit booted successfully on 2026-08-28 and registered the MUSB
+host/root hub; no external hub was present in that boot, so the repeated
+physical reconnect remains pending. The high-address mapping failure is
+inferred from the call path rather than traced live. It does not
 explain the 40B0 result: the first attachment had a healthy status URB and
 the dock still never asserted downstream connection.
 

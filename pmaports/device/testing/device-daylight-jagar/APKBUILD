@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=87
+pkgrel=88
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -95,6 +95,7 @@ source="
 	dc1-ucm-card.conf
 	dc1-ucm-hifi.conf
 	55-dc1-audio.conf
+	10-dc1-localsearch.conf
 	dc1-bluetooth
 	dc1-bluetooth.service
 	dc1-frontlight
@@ -246,6 +247,8 @@ package() {
 		"$pkgdir"/usr/share/alsa/ucm2/conf.d/mt6789-mt6366/HiFi.conf
 	install -Dm644 "$srcdir"/55-dc1-audio.conf \
 		"$pkgdir"/usr/share/wireplumber/wireplumber.conf.d/55-dc1-audio.conf
+	install -Dm644 "$srcdir"/10-dc1-localsearch.conf \
+		"$pkgdir"/usr/lib/systemd/user/localsearch-3.service.d/10-dc1-landlock.conf
 	install -Dm644 "$srcdir"/dc1-bluetooth.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-bluetooth.service
 	install -Dm644 "$srcdir"/10-dc1-bluetooth-directory.conf \
@@ -513,7 +516,8 @@ bd4eb77fda2be0f5423fff7e652442b772b236a9fb65be4a0f327d54f9bb46e0572c0898975ce493
 9ae8b49ceb72f45f63d59a3816dc6c1fced35fce221fda7cf6f3e1335f1fd40f665ff5fbd1d6d6fa112a1d9730b5bb3b974b3b538ba3fc9c08a1599d8fba552a  dc1-fix-wireplumber-alsa
 72c1f6c699d7858beffbe57ebfe0c62741915c4b703adf273eee9e604e34e0c6bc16b1178a4886eff171b01edee66ca6ea3710c6fa987cfd6491b9f11091da78  dc1-ucm-card.conf
 be91d966c1ba2b8621c668eb1617c0f94e7646fe6d058bb6352defd1cca24216c00f235403233fead474be5d1bd17058be869eb66402390b20af24b85467fe8b  dc1-ucm-hifi.conf
-d66f156ec79198795ca85f067a6c8eec28716eb249f17788a54dc0ff6e6230b7faa6646a1dbafd66099e95286496338298c5b71f92a62d30c5db67022f5c5fc6  55-dc1-audio.conf
+1592a43b238a0b41e5e15dee56a0c81b111caf95f12762c0de559f6d59c889031a3410a24b2a6eaedbacd2cfcf7dc94db78ddc9722765b05a2595ff1a44786bd  55-dc1-audio.conf
+d9309e869341a6dfd38714154492044daf11f00635385ccf948e0fba31553479ca73ea62e4bd54be4f2cebfd1365daec3bed431f7a3625113b3aca7de5b878f0  10-dc1-localsearch.conf
 58c1756389eede49ee441c1bf7b38aa2edd74939a3e9a2f650d52a8ffcf0af66ab6a8ad45bef8a0400663d4f2dd402ca8890172dd853a922478fd0b07121a61a  dc1-bluetooth
 2c0b0e3f6fe32b754521cc0022b6a1a5808f1b8c30f2e98bc4cd7c2f70a3a8c276d53f938a1fcb272f7130462f732b2a310d4d2ac53f8fc30be12968499e018d  dc1-bluetooth.service
 f29500ad474be305cd8934aa059a50921a403b0922451a8a36fce295186cbd01bde2972616857bc32d4970161be136c9b09549010c6284f69da6f9c027285b24  dc1-frontlight

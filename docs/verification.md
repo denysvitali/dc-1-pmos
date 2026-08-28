@@ -29,7 +29,7 @@ measurement was made. "Pending" items live in
 | USB gadget: SSH over ECM from a host | — | **pending host** | [hw/usb.md](hw/usb.md) |
 | USB host: charging hub DR_SWAP, enumeration, charging | live UTMI session override equivalent to kernel `a1a5a465fb61` | 2026-08-28 | [hw/usb.md](hw/usb.md) |
 | USB host: packaged-kernel hub enumeration in sink-host mode | linux r50 / device r85 | 2026-08-28 | [hw/usb.md](hw/usb.md) |
-| USB host: PIO hub status URB survives repeated reconnect | kernel `05abbc2ae75c` | **pending patched-kernel boot** | [hw/usb.md](hw/usb.md) |
+| USB host: PIO hub status URB survives repeated reconnect | linux r52 (`05abbc2ae75c`) | **patched kernel booted 2026-08-28; physical reconnect pending** | [hw/usb.md](hw/usb.md) |
 | USB host: downstream keyboard/mouse enumeration | — | **pending ordinary USB 2.0 charging hub; Lenovo 40B0 withholds port connect** | [hw/usb.md](hw/usb.md) |
 | USB role: gadget return after host mode | linux r50 / device r85 | **pending PC session** | [hw/usb.md](hw/usb.md) |
 | configfs: D-state wedge measurement, teardown removed | device r34 | 2026-08-17 | [hw/usb.md](hw/usb.md) |
@@ -52,6 +52,7 @@ measurement was made. "Pending" items live in
 | Audio: idle-gain shadow fix (live = persisted 18,18/12,12) | linux r36 fix, verified on r37 boot | 2026-08-26 | [hw/audio.md](hw/audio.md) |
 | Audio: physical `speaker-test` PCM0=DL1 probe | — | **pending permission** | [hw/audio.md](hw/audio.md) |
 | Sensors: accelerometer + SensorProxy orientation | kernel r22 nodes | 2026-08-19, re-measured 08-22 | [hw/sensors.md](hw/sensors.md) |
+| Desktop runtime: FUSE, uinput/uhid, sysctls, orientation startup, dormant ModemManager | linux r52 / device r87 | 2026-08-28 | [roadmap.md](roadmap.md) |
 | Sensors: AP i2c1/GPIO132–133 staging and write-free MN29 ACK probe | linux r42 (`a4b10323d042`) + corrected device r86 source | 2026-08-28 (`0x49` ACK; returned byte varies with the internal pointer) | [hw/sensors.md](hw/sensors.md) |
 | Sensors: physical tilt test (all four poses) | — | **never performed** | [hw/sensors.md](hw/sensors.md) |
 | Thermal: 13 LVTS hot trips + NTC trips present on hardware | linux r28 (`a2c27ab3bff1`) | 2026-08-23 | [hw/thermal.md](hw/thermal.md) |
