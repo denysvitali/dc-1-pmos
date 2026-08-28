@@ -64,10 +64,22 @@ input current remained 1.5 A, and the Type-C power role remained `[sink]`.
 Kernel `a1a5a465fb61` makes that override an opt-in T-PHY property enabled
 only for jagar and clears it outside host mode.
 
-This path remains 🚧 until the packaged kernel boots and the return path is
-exercised: unplug the hub, attach a PC, and prove the gadget reconnects
-without restarting `dc1-usb-gadget`. The exact session is tracked in
-[../roadmap.md](../roadmap.md).
+The packaged linux r50 boot reproduced that host/sink state without a manual
+register write. It did **not** prove downstream peripherals: this partner is
+a Lenovo 40B0 Thunderbolt 4 dock, not a plain USB 2.0 charging hub. Its
+Fresco Logic V1003 hub enumerated, along with the dock's internal MCU and USB
+Billboard interfaces, but raw hub GET_STATUS reported ports 3--5 as powered
+with neither the connection nor enable bit set. Per-port power cycling and a
+full USB hub reset produced the same state. Thus Linux never received an
+electrical attach indication for the keyboard or mouse; there was no device
+descriptor, authorization failure, or driver bind to fix on the DC-1.
+
+This path remains 🚧 until an ordinary USB 2.0-capable charging hub proves a
+keyboard or mouse and the return path is exercised: unplug the hub, attach a
+PC, and prove the gadget reconnects without restarting `dc1-usb-gadget`.
+The 40B0 session proves the DC-1 host controller and charging/sink coexistence,
+but its Thunderbolt/USB-C fallback behavior cannot close peripheral
+enumeration. The exact session is tracked in [../roadmap.md](../roadmap.md).
 
 ## configfs teardown
 

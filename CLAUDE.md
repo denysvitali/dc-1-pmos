@@ -182,7 +182,12 @@ PD contract, which makes MUSB raise `VBUS_ERROR` and prevents enumeration.
 Keep jagar's opt-in `mediatek,force-vbus-valid` T-PHY property: it overrides
 VBUSVALID/AVALID only in host mode and clears the override in device/OTG mode.
 The live register A/B on 2026-08-28 made the five-port USB 2.0 hub enumerate
-at 480 Mbit/s while the Type-C power role stayed sink.
+at 480 Mbit/s while the Type-C power role stayed sink. That Lenovo 40B0
+Thunderbolt dock exposed only its internal MCU and Billboard devices; its
+otherwise powered downstream ports never asserted connection, including after
+port-power and full-hub resets. Do not treat that session as keyboard/mouse
+proof; close downstream enumeration with an ordinary USB 2.0-capable charging
+hub.
 
 ### Boot image shape and diagnostics
 
