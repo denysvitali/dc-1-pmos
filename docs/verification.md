@@ -35,6 +35,7 @@ measurement was made. "Pending" items live in
 | Internal storage: UFS | earlier bring-up | pre-2026-08-17 | [hw/storage.md](hw/storage.md) |
 | microSD: SDXC enumeration (`CONFIG_REGULATOR_GPIO`) | linux r31 (`27918e9d5c92`) | 2026-08-23 | [hw/storage.md](hw/storage.md) |
 | Fuel gauge: 2× r_fg correction, referee test | kernel r22 (`d8ed2cdfd537`) | 2026-08-21 | [hw/power.md](hw/power.md) |
+| Pack gauge: suppress non-answering BQ power supply + thermal zone | linux r50 (`15fd2e78b746`) | 2026-08-28 | [hw/power.md](hw/power.md) |
 | Charger: AICR policy flips pack to charging (live i2c A/B) | kernel r21 (`4fde6edeac00`) | 2026-08-21 | [hw/power.md](hw/power.md) |
 | Charger: fast-charge default ~1.8 A | kernel r23 (`6a12a0831485`) | 2026-08-21 | [hw/power.md](hw/power.md) |
 | USB-PD: 12 V PDO contract end-to-end | kernel r25 (`5e36dfcd3193`+`55509d09d028`) | 2026-08-22/23 | [hw/power.md](hw/power.md) |

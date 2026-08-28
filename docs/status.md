@@ -122,7 +122,7 @@ Every row links to its measurement record.
 | configfs teardown | ✅ Resolved | Nothing removes gadget objects (any `rmdir` of a function wedges in D state — measured); the tree persists for the boot. — [hw/usb.md](hw/usb.md) |
 | Internal storage | ✅ Works | UFS. — [hw/storage.md](hw/storage.md) |
 | microSD | ✅ Works | MSDC0; `CONFIG_REGULATOR_GPIO` root cause fixed and hardware-verified 2026-08-23. — [hw/storage.md](hw/storage.md) |
-| Battery | 🟡 Partial | Calibrated coulomb counter (2× r_fg fix); PD 12 V PDO verified end-to-end; default charge 2 A (~22 %/h), owner lever to 3.15 A (~40 %/h); SoC re-seeds from voltage each boot; pack gauge (BQ78Z100) does not answer (P7.1). — [hw/power.md](hw/power.md) |
+| Battery | 🟡 Partial | Calibrated coulomb counter (2× r_fg fix); PD 12 V PDO verified end-to-end; default charge 2 A (~22 %/h), owner lever to 3.15 A (~40 %/h); SoC re-seeds from voltage each boot; the non-answering pack gauge (BQ78Z100, P7.1) is suppressed in r50. — [hw/power.md](hw/power.md) |
 | Charging mode | 🚧 Packaged, unverified | Headless `dc1-charging.target` (device pkgrel ≥ 79); ring mechanism verified live, `BOOT_REASON: 1` calibration session owed. — [hw/power.md](hw/power.md) |
 | Suspend/resume | 🟡 Partial | One clean s2idle cycle on record; freezer fixed; sleep targets masked by design; escalation plan open. — [hw/suspend.md](hw/suspend.md) |
 | Audio | ✅ Works | Stereo speakers + stereo DMIC capture verified; UCM2 profile adopted; idle-gain shadow fix verified on hardware 2026-08-26; one-time physical `speaker-test` probe pending. — [hw/audio.md](hw/audio.md) |

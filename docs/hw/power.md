@@ -67,9 +67,11 @@ Cosmetic suppression landed in kernel `15fd2e78b746` (pkgrel 50): the
 production DT keeps the gauge node disabled while it NAKs, so it cannot
 register a phantom power_supply, spam `-ENXIO` property warnings, or create
 a thermal zone which disables itself. The calibrated `mt6358-fg` fallback
-is unchanged. The built DTB reports `status=disabled`; a boot of r50 still
-needs to verify the signatures are absent. Re-enable the node only after a
-live ACK/protocol measurement.
+is unchanged. The built DTB reports `status=disabled`, and the r50 boot
+verified the result on 2026-08-28: only `mt6358-fg`, `mt6375-charger`, and
+`tcpm-source-psy-mt6375-tcpc` registered, all 15 thermal zones were the real
+LVTS/NTC zones, and dmesg contained no BQ signature. Re-enable the node only
+after a live ACK/protocol measurement.
 
 ## Charger and USB-PD (MT6375)
 

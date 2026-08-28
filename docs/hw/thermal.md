@@ -89,8 +89,9 @@ gap), on the same boot that verified the audio race fix and microSD.
   2026-08-22: one empty poll of lvts-ts2-3 that recovered on the next
   read).
 - Kernel r50 disables the non-answering `bq78z100-0` DT node, removing its
-  self-disabled thermal zone and phantom power_supply; the built DTB is
-  verified, with a packaged-kernel boot still pending — see [power.md](power.md).
+  self-disabled thermal zone and phantom power_supply. The 2026-08-28 r50
+  boot verified exactly 15 real LVTS/NTC zones and no BQ dmesg signature —
+  see [power.md](power.md).
 - There is **no in-kernel battery-temperature throttling of charge
   current** — only the chip-side JEITA-ish behavior plus the 110/113.5 °C
   critical shutdowns (see [power.md](power.md)).
