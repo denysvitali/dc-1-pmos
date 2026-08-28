@@ -43,6 +43,9 @@ repository now codifies all six pieces so every fresh install gets them:
    waits for SensorProxy and Mutter ownership during session startup instead
    of recording a failed unit before the compositor appears. It reacquires
    the Mutter proxy after a greeter/session compositor replacement, then
+   honors GNOME's orientation-lock setting so the Auto Rotate quick-setting
+   freezes the current transform without disabling the reliable sensor claim,
+   and on unlock immediately applies the current physical orientation. It
    requests the compositor-owned rotation transition from the patched
    Mutter-Mobile package, avoiding a visible hard snap during rotation.
    See [hw/sensors.md](hw/sensors.md) for the sensor side.

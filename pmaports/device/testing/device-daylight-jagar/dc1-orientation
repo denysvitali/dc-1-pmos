@@ -6,6 +6,7 @@ import sys
 import time
 
 import dbus
+from gi.repository import Gio
 
 
 SENSOR_PATH = "/net/hadess/SensorProxy"
@@ -13,6 +14,7 @@ SENSOR_IFACE = "net.hadess.SensorProxy"
 DISPLAY_PATH = "/org/gnome/Mutter/DisplayConfig"
 DISPLAY_IFACE = "org.gnome.Mutter.DisplayConfig"
 PROPERTIES_IFACE = "org.freedesktop.DBus.Properties"
+ORIENTATION_SCHEMA = "org.gnome.settings-daemon.peripherals.touchscreen"
 
 # Mutter's transforms are clockwise. The sensor names describe which edge is
 # physically uppermost, so left-up means a clockwise quarter-turn of scanout.
@@ -76,6 +78,7 @@ def main():
         return 0
     sensor_props = dbus.Interface(sensor, PROPERTIES_IFACE)
     display_api = dbus.Interface(display, DISPLAY_IFACE)
+    orientation_settings = Gio.Settings.new(ORIENTATION_SCHEMA)
 
     while running:
         try:
@@ -95,6 +98,15 @@ def main():
     failing = False
     try:
         while running:
+            # GNOME's quick-settings toggle writes orientation-lock.  This
+            # bridge exists because Mutter's orientation manager does not
+            # reliably claim the sensor on this device, so it must also honor
+            # the setting that Mutter would normally enforce.  Leave the live
+            # transform untouched while locked; on unlock the next tick
+            # immediately applies the current sensor orientation.
+            if orientation_settings.get_boolean("orientation-lock"):
+                time.sleep(0.25)
+                continue
             orientation = str(sensor_props.Get(SENSOR_IFACE,
                                                 "AccelerometerOrientation"))
             transform = TRANSFORMS.get(orientation, DEFAULT_TRANSFORM)

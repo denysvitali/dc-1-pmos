@@ -42,9 +42,11 @@ user manager — including the gdm greeter, whose post-logout login screen
 otherwise sat on the raw 180°-off scanout with tilt ignored — defaults
 `undefined` orientation to the glass-upright transform, and re-drives a
 respawned compositor by comparing against Mutter's live transform instead
-of a cached one). One measured gap from that session: mutter-mobile's
-orientation manager never claimed the sensor on the observed boot, so
-rotation currently runs bridge-driven as an instant flip, and whether the
+of a cached one). The bridge honors GNOME's `orientation-lock` setting,
+leaving the current transform untouched while locked and catching up to the
+live sensor orientation when unlocked. One measured gap from that session:
+mutter-mobile's orientation manager never claimed the sensor on the observed
+boot, so rotation currently runs bridge-driven as an instant flip, and whether the
 patched-Mutter animated transition ever engages is unknown — **the
 physical tilt test has still never been performed** and remains the last
 unverified link (runbook in [../roadmap.md](../roadmap.md)).
