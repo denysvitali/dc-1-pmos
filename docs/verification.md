@@ -51,7 +51,7 @@ measurement was made. "Pending" items live in
 | Audio: idle-gain shadow fix (live = persisted 18,18/12,12) | linux r36 fix, verified on r37 boot | 2026-08-26 | [hw/audio.md](hw/audio.md) |
 | Audio: physical `speaker-test` PCM0=DL1 probe | — | **pending permission** | [hw/audio.md](hw/audio.md) |
 | Sensors: accelerometer + SensorProxy orientation | kernel r22 nodes | 2026-08-19, re-measured 08-22 | [hw/sensors.md](hw/sensors.md) |
-| Sensors: AP i2c1/GPIO132–133 staging and write-free MN29 ACK probe | linux r42 (`a4b10323d042`) + device r81 tool | **pending hardware boot** | [hw/sensors.md](hw/sensors.md) |
+| Sensors: AP i2c1/GPIO132–133 staging and write-free MN29 ACK probe | linux r42 (`a4b10323d042`) + corrected device r86 source | 2026-08-28 (`0x49` ACK; returned byte varies with the internal pointer) | [hw/sensors.md](hw/sensors.md) |
 | Sensors: physical tilt test (all four poses) | — | **never performed** | [hw/sensors.md](hw/sensors.md) |
 | Thermal: 13 LVTS hot trips + NTC trips present on hardware | linux r28 (`a2c27ab3bff1`) | 2026-08-23 | [hw/thermal.md](hw/thermal.md) |
 | Thermal: DVFS + cooling devices under load | running r27 | 2026-08-22 | [hw/thermal.md](hw/thermal.md) |

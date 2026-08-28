@@ -201,7 +201,7 @@ func FsckAcceptable(rc int) bool { return rc >= 0 && rc <= 1 }
 // The MUSB UDC name candidates match the installer initramfs; the first one
 // that accepts the write wins.
 func udcCandidates() []string {
-	return []string{"musb-hdrc.1.auto", "musb-hdrc.0.auto", "11201000.usb", "11200000.usb"}
+	return []string{"musb-hdrc.4.auto", "musb-hdrc.1.auto", "musb-hdrc.0.auto", "11201000.usb", "11200000.usb"}
 }
 
 // gadgetStep is one configfs operation. Kept as data so the whole gadget shape

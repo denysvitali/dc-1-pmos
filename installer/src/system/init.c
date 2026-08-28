@@ -404,7 +404,8 @@ static void gadget(void)
 	symlink(P("/functions/acm.0"), "/sys/kernel/config/usb_gadget/g1/configs/c.1/acm.0");
 	symlink(P("/functions/acm.1"), "/sys/kernel/config/usb_gadget/g1/configs/c.1/acm.1");
 
-	static const char *cand[] = { "musb-hdrc.1.auto", "musb-hdrc.0.auto",
+	static const char *cand[] = { "musb-hdrc.4.auto", "musb-hdrc.1.auto",
+				      "musb-hdrc.0.auto",
 				      "11201000.usb", "11200000.usb", NULL };
 	for (int i = 0; cand[i]; i++) {
 		if (wr(P("/UDC"), cand[i]) == 0) { say2("gadget: bound UDC ", cand[i]); return; }

@@ -84,15 +84,23 @@ the probe ran before any SCP initialization, so AP-side behaviour may
 differ once that domain runs — do not conclude the part is broken from AP
 probes alone.
 
-**2026-08-26 bring-up staging:** the shipped DT now enables AP i2c1 and
+**2026-08-28 AP path verified:** the shipped DT enables AP i2c1 and
 muxes GPIO132/133 to SCL1/SDA1, using the same measured AP-bus-ownership
 approach as i2c6. The sensor has no child node or compatible: an exact MN29
 part identity and register protocol are still missing, and a guessed binding
 could change its mode without any safe way back. The device package ships
 root-only `dc1-mn29-probe` (`sudo dc1-mn29-probe`), which checks only the
-address ACK on `/dev/i2c-1`; it never writes a byte. This stage does not yet
-provide ambient light or proximity readings, and hardware verification of the
-controller/pinmux path still requires a boot with this kernel.
+address ACK on `/dev/i2c-1`; it never writes a byte. The original r81/r85
+helper used a zero-length message with a null buffer, which `i2c-mt65xx`
+rejects locally with `-EINVAL`; its `no ACK` result on the first r50 boot was
+therefore not a bus measurement. The corrected r86 helper performs a one-byte
+read and reports the actual ioctl error. Built directly from the r86
+source and run on that same boot, it returned `ACK at i2c1 0x49 (read 0x00)`.
+A repeat returned `0x27`; the byte is whatever the sensor's current internal
+pointer exposes and has no protocol meaning yet. The ACK closes
+controller/pinmux reachability without writing or changing sensor state. It
+does not provide ambient light or proximity readings; protocol identification
+and a real driver remain open.
 
 The mainboard carries a connector explicitly labelled Light Sensor
 (Daylight publishes nothing about sensors).

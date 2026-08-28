@@ -26,6 +26,7 @@ const (
 // so a failure here is not final.
 func UDCCandidates() []string {
 	return []string{
+		"musb-hdrc.4.auto",
 		"musb-hdrc.1.auto",
 		"musb-hdrc.0.auto",
 		"11201000.usb",

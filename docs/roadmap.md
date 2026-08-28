@@ -17,10 +17,10 @@ remediation queue, not a claim that every line is a user-visible failure.
 | Priority / category | Signatures | Assessment and exit criterion |
 | --- | --- | --- |
 | **Closed P0 interrupt storm — hardware-verified in r48** | `rtc-s35390a ... alarm IRQ with INT2 flag clear` (750 printed, 74 suppression notices on r46); GPIO14 rose by 984 interrupts in 2 s | About 492 IRQ/s was a CPU/idle-power and diagnostics defect. Kernel `8f0bfe8f8a4c` stops registering the unusable board alarm IRQ while retaining RTC timekeeping. On the 2026-08-28 r48 boot, at 10m15s uptime: no `8-0030` IRQ existed in `/proc/interrupts`, no S35390A alarm/error line had appeared, the driver had set the system clock from the RTC, and its sysfs clock was advancing. Closed; keep this row as the baseline for later dmesg audits. |
-| **P1 real but currently non-blocking hardware gaps** | SCP `invalid resource` (10); PMIC auxadc/key child probe failures; `fhctl` clocks, `socinfo`, display `mboxes`; missing audio pinctrl states / `Playback_12` | These expose incomplete DT/driver descriptions even where the primary desktop path works. Triage one subsystem at a time against its `docs/hw/` record; close only when the relevant function is exercised and its signatures disappear without regressing it. The r46 MUSB `VBUS_ERROR` is closed: packaged r50 enumerated the same dock with no VBUS or over-current error. SCP stays behind suspend and sensorhub work. |
+| **P1 fixes queued in kernel r51; boot verification pending** | SCP `invalid resource` (10); PMIC auxadc/key child probe failures; `fhctl` clocks, `socinfo`, display `mboxes`; missing optional audio pinctrl states | Kernel `ffd5800b0ba3` removes the false optional-resource errors, redundant PMIC child, disabled-FHCTL lookup, unsupported socinfo probe, absent optional DRM mailbox request and optional audio-state warnings. It also removes stale PMIC-wrapper bring-up errors. Close this row only after an r51 boot proves the signatures disappear while SCP mailboxes, PMIC keys, display and audio remain live. The r46 MUSB `VBUS_ERROR` remains closed: packaged r50 enumerated the same dock with no VBUS or over-current error. |
 | **Closed P2 known absent hardware — hardware-verified in r50** | `bq78z100-0` `-ENXIO` property/uevent spam (30 printed plus suppression); its thermal zone disables itself | The pack gauge does not ACK at `0x55`; this is known hardware/bus reality, not a transient probe. Kernel `15fd2e78b746` disables the production DT node while preserving the measured MT6358 voltage-based fallback. On the r50 boot, only the three intended power supplies and 15 real thermal zones registered, with no BQ signature in dmesg. Re-enable only with a live ACK/protocol measurement. |
-| **P3 expected probe/takeover noise** | SD/MMC discovery commands, one UFS DME attribute failure, simplefb region conflict, initramfs UDC busy, CPU dummy supplies, unused clock/domain/regulator notices | Storage, DRM, gadget handoff and regulator-free CPU DVFS are live. Keep as baselines; investigate only if the associated function fails or a message repeats after steady state. The initramfs UDC retry should eventually be made quiet without weakening its fatal final check. |
-| **P4 userspace/kernel-policy cleanup** | missing `autofs4`; journald BPF-firewall and ACL warnings; unsupported `bootconfig` command-line token | No hardware failure. Align packaged systemd/kernel config and remove the inherited boot token when its LK source is understood; acceptance is a clean boot without weakening journald persistence, sandboxing, or the boot path. |
+| **P3 expected probe/takeover noise** | SD/MMC discovery commands, one UFS DME attribute failure, simplefb region conflict, CPU dummy supplies, unused clock/domain/regulator notices; one `Playback_12` open of an intentionally unrouted FE | Storage, DRM, working UCM routes and regulator-free CPU DVFS are live. Keep as baselines; investigate only if the associated function fails or a message repeats after steady state. The initramfs now tries the hardware-observed `musb-hdrc.4.auto` UDC first; verify the four failed binds and final `UDC bind failed` line disappear on the next boot. |
+| **P4 fixes queued in kernel r51; boot verification pending** | missing `autofs4`; journald BPF-firewall and ACL warnings; unsupported `bootconfig` command-line token | Kernel `ffd5800b0ba3` enables autofs, cgroup BPF/BPF syscalls, ext4 POSIX ACLs and bootconfig. Acceptance is an r51 boot without these lines and without weakening journald persistence, sandboxing or the boot path. |
 
 The capture also contains successful `dc1-boot-watchdog` and initramfs
 handoff messages because those facilities log at warning priority; they
@@ -95,10 +95,12 @@ After a boot whose initramfs stages `BT_RAM_CODE_MT7902_1_1_hdr.bin`:
 hci0 must complete setup with
 **no** `Failed to setup 79xx firmware` line (the race won outright),
 `bluetoothctl show` reporting the controller up, and
-`dc1-bluetooth.service` inactive because its dmesg gate held. On older
-images the service may still recover the controller once — that is the
-repair path doing its job. Then: enable pairable, pair a peer, stream
-A2DP, and close the row. Details: [hw/wireless.md](hw/wireless.md).
+`dc1-bluetooth.service` active (exited) with no rebind evidence because
+its dmesg gate held; the oneshot intentionally remains active after a
+no-op. On older images the service may still recover the controller once
+— that is the repair path doing its job. Then: enable pairable, pair a
+peer, stream A2DP, and close the row. Details:
+[hw/wireless.md](hw/wireless.md).
 
 ### USB gadget — SSH over ECM end-to-end (needs a USB host)
 

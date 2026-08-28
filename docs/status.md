@@ -126,7 +126,7 @@ Every row links to its measurement record.
 | Charging mode | 🚧 Packaged, unverified | Headless `dc1-charging.target` (device pkgrel ≥ 79); ring mechanism verified live, `BOOT_REASON: 1` calibration session owed. — [hw/power.md](hw/power.md) |
 | Suspend/resume | 🟡 Partial | One clean s2idle cycle on record; freezer fixed; sleep targets masked by design; escalation plan open. — [hw/suspend.md](hw/suspend.md) |
 | Audio | ✅ Works | Stereo speakers + stereo DMIC capture verified; UCM2 profile adopted; idle-gain shadow fix verified on hardware 2026-08-26; one-time physical `speaker-test` probe pending. — [hw/audio.md](hw/audio.md) |
-| Sensors | 🟡 Partial | Accelerometer + hall switch live on the mainline DT; physical tilt test never performed; AP owns the ALS/proximity I²C bus, but the unknown MN29 protocol still prevents readings. — [hw/sensors.md](hw/sensors.md) |
+| Sensors | 🟡 Partial | Accelerometer + hall switch live on the mainline DT; physical tilt test never performed; AP i2c1 reaches the ALS/proximity part at `0x49`, but the unknown MN29 protocol still prevents readings. — [hw/sensors.md](hw/sensors.md) |
 | Thermal | 🟡 Partial | All 13 LVTS hot trips + NTC trips verified on hardware 2026-08-23; DVFS + three cooling devices live; occasional empty LVTS reads uninvestigated. — [hw/thermal.md](hw/thermal.md) |
 
 Not listed means untested or unknown. Status updates land in the

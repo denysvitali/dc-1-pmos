@@ -257,7 +257,7 @@ func TestBootOrder(t *testing.T) {
 		"mount devtmpfs /dev devtmpfs",
 		"openkmsg",
 		"mount configfs /sys/kernel/config configfs",
-		"writesys "+gadgetRoot+"/UDC=musb-hdrc.1.auto",
+		"writesys "+gadgetRoot+"/UDC=musb-hdrc.4.auto",
 		"spawn /bin/dc1tools system-init -helper kmsg",
 		"spawn /bin/dc1tools system-init -helper shell",
 		"spawn /bin/dc1tools system-init -helper watchdog",
@@ -468,12 +468,12 @@ func TestGadgetFailureDoesNotStopTheBoot(t *testing.T) {
 
 func TestGadgetBindsTheFirstUDCThatAccepts(t *testing.T) {
 	f := newFake()
-	f.sysErr[gadgetRoot+"/UDC=musb-hdrc.1.auto"] = syscall.ENODEV
+	f.sysErr[gadgetRoot+"/UDC=musb-hdrc.4.auto"] = syscall.ENODEV
 	runBoot(t, f)
-	if indexOf(f.calls, "UDC=musb-hdrc.0.auto") < 0 {
+	if indexOf(f.calls, "UDC=musb-hdrc.1.auto") < 0 {
 		t.Fatal("did not fall through to the next UDC candidate")
 	}
-	if !strings.Contains(strings.Join(f.lines, "\n"), "bound UDC musb-hdrc.0.auto") {
+	if !strings.Contains(strings.Join(f.lines, "\n"), "bound UDC musb-hdrc.1.auto") {
 		t.Fatal("did not report which UDC it bound")
 	}
 }

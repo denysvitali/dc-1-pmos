@@ -538,7 +538,8 @@ static void gadget(void)
 	int d = open("/sys/class/udc", O_RDONLY | O_DIRECTORY);
 	if (d < 0) { say("gadget: no /sys/class/udc -- MTU3 did not register a UDC"); return; }
 	close(d);
-	static const char *cand[] = { "musb-hdrc.1.auto", "musb-hdrc.0.auto",
+	static const char *cand[] = { "musb-hdrc.4.auto", "musb-hdrc.1.auto",
+				      "musb-hdrc.0.auto",
 				      "11201000.usb", "11200000.usb", NULL };
 	for (int i = 0; cand[i]; i++) {
 		if (wr(P("/UDC"), cand[i]) == 0) { say2("gadget: bound UDC ", cand[i]); return; }
