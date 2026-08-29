@@ -1,7 +1,7 @@
 # Suspend/resume — measurement record
 
 Deep-dive for the status-table row *Suspend/resume* in
-[docs/status.md](../status.md). User-facing consequences are in
+[README.md](../../README.md#hardware-support-at-a-glance). User-facing consequences are in
 [../power.md](../power.md); this page is the record. Newest facts last.
 
 ## Where it stands
@@ -61,9 +61,14 @@ cannot be armed (see [power.md](power.md)). Candidate wake paths to
 establish before real-mem testing: the PMIC RTC (`rtc-mt6397` family
 support for mt6358), the USB gadget, or the hall switch.
 
-Other enabled wakeup sources today: the hall switch, the touch controller
-(`5-0034`), the USB gadget, and the MT7902 SDIO function. The sleep
-targets stay masked until a full cycle is observed.
+Enabled wakeup sources on the r54 boot (2026-08-29): the hall switch, the
+USB gadget (`musb-hdrc`), the MT7902 SDIO function (`mmc1`), the eMMC
+controller (`mmc0`), and MT6375 TCPM (`tcpm-source-psy-mt6375-tcpc` — the
+only one with accumulated events, matching `/sys/power/wakeup_count`).
+There is no touch-controller (`5-0034`) wakeup entry; an earlier list here
+included one in error. `suspend_stats` still reads success=0/fail=0 on
+this boot, and the sleep targets stay masked until a full cycle is
+observed.
 
 ## Escalation plan (tracked in ../roadmap.md)
 

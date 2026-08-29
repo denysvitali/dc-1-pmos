@@ -1,7 +1,7 @@
 # The GNOME stack on this image — shims, pins, and why
 
 Deep-dive for the status-table row *On-device UI* in
-[status.md](status.md). The desktop is GNOME Mobile (Wayland,
+[README.md](../README.md#hardware-support-at-a-glance). The desktop is GNOME Mobile (Wayland,
 systemd) on the panel, hardware-accelerated via Panfrost. The stack is
 currently held together by an explicit, minimal set of shims and pins;
 this page is their inventory and removal conditions.
@@ -13,7 +13,13 @@ repository is mid-way through its GNOME 50 migration, so the image mixes
 Alpine's gdm 48.0-r7 with pmOS's gnome-shell-mobile 999948.0-r4 and the
 pmOS accountsservice fork. An on-device session established the exact
 minimal fix set — GNOME up, clean reboot, zero failed units — and this
-repository now codifies all six pieces so every fresh install gets them:
+repository now codifies all six pieces so every fresh install gets them.
+(Update 2026-08-29: the migration midpoint described here has moved on —
+a converged install runs the coherent GNOME-50 mobile set, gdm
+999950.2-r0 with gnome-session 999950.1-r0, with all three dc1
+extensions active. The "Device-local shims" section below is
+consequently historical on this unit; a fresh-rootfs confirmation is
+still the open check.)
 
 1. **libelogind → libsystemd shim** (installer provisioning,
    `apply_libelogind_shim`). Alpine's gdm links `libelogind.so.0`, and

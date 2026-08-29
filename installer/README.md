@@ -91,8 +91,10 @@ debug shell listens on TCP 4444 and on the second ACM port.
 ## Why the touch UI is hand-rolled (`gotools/internal/ask`)
 
 The obvious candidates cannot run against this device's pinned kernel:
-postmarketOS **buffyboard** injects keys through `/dev/uinput`, and the
-jagar kernel config does not enable `CONFIG_INPUT_UINPUT`; **unl0kr** is no
+postmarketOS **buffyboard** injects keys through `/dev/uinput` — excluded
+when the jagar kernel still lacked `CONFIG_INPUT_UINPUT` (the kernel has
+enabled it since r52, 2026-08-28, so buffyboard is viable on current
+builds); **unl0kr** is no
 longer packaged in Alpine, shows only a hardcoded password prompt, and
 needs libinput + libxkbcommon + a running udevd. `dc1-ask` is instead one
 static binary (<1 MiB) with zero runtime dependencies: it forwards each

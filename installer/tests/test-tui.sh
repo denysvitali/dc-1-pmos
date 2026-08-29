@@ -21,8 +21,20 @@ echo "== validators =="
 valid_username alice && ok "accepts alice" || bad "rejected alice"
 valid_username root 2>/dev/null && bad "accepted root" || ok "rejects root"
 valid_username 9lives 2>/dev/null && bad "accepted 9lives" || ok "rejects leading digit"
+valid_username 'ab:root' 2>/dev/null && bad "accepted ab:root" || ok "rejects account-field separator"
+valid_username 'ab/../../escape' 2>/dev/null && bad "accepted username traversal" || ok "rejects username traversal"
+user32=$(printf '%32s' '' | tr ' ' a)
+user33=$(printf '%33s' '' | tr ' ' a)
+valid_username "$user32" && ok "accepts 32-character username" || bad "rejected 32-character username"
+valid_username "$user33" 2>/dev/null && bad "accepted 33-character username" || ok "rejects 33-character username"
 valid_hostname dc1 && ok "accepts dc1" || bad "rejected dc1"
 valid_hostname -x 2>/dev/null && bad "accepted -x" || ok "rejects leading dash"
+valid_hostname 'dc1.example' 2>/dev/null && bad "accepted dotted hostname" || ok "rejects dotted hostname"
+valid_hostname 'dc1/evil' 2>/dev/null && bad "accepted hostname path" || ok "rejects hostname path"
+hostname63=$(printf '%63s' '' | tr ' ' a)
+hostname64=$(printf '%64s' '' | tr ' ' a)
+valid_hostname "$hostname63" && ok "accepts 63-character hostname" || bad "rejected 63-character hostname"
+valid_hostname "$hostname64" 2>/dev/null && bad "accepted 64-character hostname" || ok "rejects 64-character hostname"
 valid_timezone Europe/Zurich && ok "accepts Europe/Zurich" || bad "rejected Europe/Zurich"
 valid_timezone '../etc' 2>/dev/null && bad "accepted ../etc" || ok "rejects traversal"
 valid_psk 12345678 && ok "accepts 8-char psk" || bad "rejected 8-char psk"

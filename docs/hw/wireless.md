@@ -1,7 +1,7 @@
 # Wi-Fi and Bluetooth — measurement record
 
 Deep-dive for the status-table rows *Wi-Fi* and *Bluetooth* in
-[docs/status.md](../status.md). Newest facts last.
+[README.md](../../README.md#hardware-support-at-a-glance). Newest facts last.
 
 ## Wi-Fi
 

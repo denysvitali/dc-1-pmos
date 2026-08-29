@@ -301,7 +301,7 @@ pkgrel >= 79). The panel, frontlight, network, and desktop all stay off;
 the device is dark and silent. Charging itself never depends on any of
 that: the MT6375 charger runs its CC/CV profile to the pack's 4.35 V limit
 in hardware, the kernel raises the input limit to 1.5 A and the charge
-target to 2 A as soon as VBUS appears, and USB-PD contracts are negotiated
+target to 3.15 A as soon as VBUS appears, and USB-PD contracts are negotiated
 in-kernel — zero userspace is required for safe charging.
 
 | You do | The device does |

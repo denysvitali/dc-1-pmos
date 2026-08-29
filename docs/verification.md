@@ -10,16 +10,16 @@ measurement was made. "Pending" items live in
 
 | Claim | Verified at | Date | Record |
 | --- | --- | --- | --- |
-| dtbswap boots the mainline DT (model string, DRM, GNOME atomic) | pre-pin bring-up | 2026-08-19 | [status.md](status.md) |
-| Reachability watchdog incl. fastboot escalation | boot-image deploy | 2026-08-19 | [status.md](status.md) |
-| Autonomous OTA cycle (apk → slot write → first-try boot) | linux r31 era | 2026-08-23 | [status.md](status.md) |
+| dtbswap boots the mainline DT (model string, DRM, GNOME atomic) | pre-pin bring-up | 2026-08-19 | [dtbswap README](../boot/dtbswap/README.md) |
+| Reachability watchdog incl. fastboot escalation | boot-image deploy | 2026-08-19 | [debugging.md](debugging.md) |
+| Autonomous OTA cycle (apk → slot write → first-try boot) | linux r31 era | 2026-08-23 | [README.md](../README.md#living-with-it) |
 | Display: DPMS off/on relight (`DSI_SW_CTL_EN` fix, TE + DCS ground truth) | linux r37 (`2466a7f6`) | 2026-08-24 | [hw/display.md](hw/display.md) |
 | GPU: Panfrost native on mainline DT, devfreq cooling | kernel `981870b`/`0f6e730c92d6` builds | 2026-08-19 / 08-22 | [hw/display.md](hw/display.md) |
 | Frontlight warmth crossfade slider | device r66 | 2026-08-24 | [hw/display.md](hw/display.md) |
 | Touchscreen multitouch | earlier bring-up | pre-2026-08-17 | [hw/input.md](hw/input.md) |
 | Pen: kernel events (proximity/touch/barrel/eraser/pressure) | linux r31 | 2026-08-23 | [hw/input.md](hw/input.md) |
 | Pen: axis resolution, orientation, pressure scale, visible-area map | linux r32–r35 | 2026-08-23 | [hw/input.md](hw/input.md) |
-| Pen: edge alignment after `prop.max_*` refit | linux r38 | **pending r38 boot** | [hw/input.md](hw/input.md) |
+| Pen: edge-alignment fix after `prop.max_*` refit | fix present in linux r38+; r54 running | **pending hands-on alignment pass** | [hw/input.md](hw/input.md) |
 | Power key: blank/wake/menu event path | device r64-era gschema | 2026-08-23 | [hw/input.md](hw/input.md) |
 | Wi-Fi: cold-boot associate on mainline DT | kernel `231fa88`+`0c26bee` build | 2026-08-19 | [hw/wireless.md](hw/wireless.md) |
 | Bluetooth: controller up via repair path | kernel r24 / device r38 | 2026-08-17, re-measured 08-26 | [hw/wireless.md](hw/wireless.md) |
@@ -38,7 +38,7 @@ measurement was made. "Pending" items live in
 | Fuel gauge: 2× r_fg correction, referee test | kernel r22 (`d8ed2cdfd537`) | 2026-08-21 | [hw/power.md](hw/power.md) |
 | Pack gauge: suppress non-answering BQ power supply + thermal zone | linux r50 (`15fd2e78b746`) | 2026-08-28 | [hw/power.md](hw/power.md) |
 | Charger: AICR policy flips pack to charging (live i2c A/B) | kernel r21 (`4fde6edeac00`) | 2026-08-21 | [hw/power.md](hw/power.md) |
-| Charger: fast-charge default ~1.8 A | kernel r23 (`6a12a0831485`) | 2026-08-21 | [hw/power.md](hw/power.md) |
+| Charger: former r23 fast-charge default ~1.8 A | kernel r23 (`6a12a0831485`) | 2026-08-21 | [hw/power.md](hw/power.md) |
 | USB-PD: 12 V PDO contract end-to-end | kernel r25 (`5e36dfcd3193`+`55509d09d028`) | 2026-08-22/23 | [hw/power.md](hw/power.md) |
 | Charge rate at the 3.15 A ceiling (~40 %/h) | running r2x build | 2026-08-23 | [hw/power.md](hw/power.md) |
 | Charging mode: ring mechanism (BOOT_REASON readout) | device r79 | 2026-08-25 | [hw/power.md](hw/power.md) |
@@ -62,6 +62,24 @@ measurement was made. "Pending" items live in
 | usb0 gadget interface set survives boot (no host attached) | running r37/r76 | 2026-08-26 | [hw/usb.md](hw/usb.md) |
 | `rtc-s35390a` log storm observed (~24 k lines/boot) | running r37 | 2026-08-26 | [hw/power.md](hw/power.md) |
 | `rtc-s35390a` IRQ storm removed; timekeeping retained | linux r48 (`8f0bfe8f8a4c`) | 2026-08-28 | [hw/power.md](hw/power.md) |
+| r51/r53 log-noise and desktop fixes: signatures absent, features live | linux r54 / device r90 | 2026-08-29 | [roadmap.md](roadmap.md) |
+
+## Owed hardware sessions
+
+One boot or hands-on session each; runbooks live in
+[roadmap.md](roadmap.md). The README verdicts reflect the evidence already on
+record; each open check and the claim it gates are called out explicitly here.
+
+| Session | What it gates |
+| --- | --- |
+| Power off, plug USB, confirm the ring shows `BOOT_REASON: 1` (optionally pin CHRIN via debugfs regmap) | Charging mode's authoritative detection — the one calibration owed by the shipped feature |
+| Repeated physical reconnect of an ordinary USB 2.0 hub in host mode; gadget return | USB host: downstream enumeration after the r52 `HCD_DMA` fix; the Lenovo 40B0 dock limitation stays separate |
+| Hands-on pen checks: mid-proximity eraser flips and ink-under-nib alignment across the glass | Pen digitizer's last two open checks (r41+ boots long since available) |
+| Four-pose accelerometer tilt test | Sensors: orientation sign-off |
+| MN29 register protocol identification | Ambient-light/proximity sensor |
+| One-time `speaker-test` probe | Audio: physical speaker path (needs explicit permission — the speakers are loud) |
+| Bluetooth pairing + A/V streaming session; fresh-boot firmware-race check | Bluetooth verdict |
+| Full `s2idle` cycle on the current build (`suspend_stats` success > 0) with wake-path evidence | Suspend/resume |
 
 **How to record a new result:** update the subsystem record under
 `docs/hw/` with the measurement and its date, then add or update the row

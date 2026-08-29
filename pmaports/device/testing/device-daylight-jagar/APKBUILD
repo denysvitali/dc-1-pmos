@@ -364,7 +364,7 @@ package() {
 	# with the panel dark. Masking the sleep targets makes logind answer
 	# CanSuspend/CanHibernate "no", which is what GNOME's power menu keys off,
 	# so the entries are absent instead of failing when tapped. Drop these
-	# masks when suspend/resume actually works (docs/status.md).
+	# masks when suspend/resume actually works (README.md support status).
 	install -d "$pkgdir"/etc/systemd/system
 	for target in suspend sleep hibernate hybrid-sleep suspend-then-hibernate; do
 		ln -s /dev/null "$pkgdir"/etc/systemd/system/"$target".target

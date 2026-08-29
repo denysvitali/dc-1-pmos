@@ -19,8 +19,9 @@
 #   * the v4 header has one field v3 does not: signature_size, a uint32 at
 #     offset 1580 (right after the 1536-byte cmdline), which is why sizeof is
 #     1584 and not 1580. It must be 4096, matching the trailing page.
-#   * cmdline is EMPTY in known-good images; LK supplies the real one via
-#     vendor_boot / the DTB chosen node. An optional 4th argument writes the
+#   * cmdline is EMPTY in known-good images; LK builds the complete command
+#     line itself and overwrites the DTB /chosen/bootargs at handoff. An
+#     optional 4th argument writes the
 #     header's 1536-byte cmdline field, but MEASUREMENT SAYS THIS LK IGNORES
 #     THAT FIELD ENTIRELY: an image carrying marker arguments booted with a
 #     /proc/cmdline containing none of them. Do not rely on it.

@@ -1,7 +1,7 @@
 # Display, GPU, and frontlight — measurement record
 
 Deep-dive for the status-table rows *Display*, *GPU*, and *Frontlight* in
-[docs/status.md](../status.md). This page holds the measurement history and
+[README.md](../../README.md#hardware-support-at-a-glance). This page holds the measurement history and
 the invariants future changes must preserve; the table holds the current
 verdict. Newest facts last inside each section.
 
@@ -116,8 +116,7 @@ overlay and no probe poke, `renderD128` exists before the session starts,
 and gnome-shell logs `Created gbm renderer` (no llvmpipe). GPU devfreq
 cooling now binds through the LVTS ts3-0 map since kernel `0f6e730c92d6`
 (2026-08-20), live-verified 2026-08-22 — see
-[thermal.md](thermal.md). The overlay path below remains for stock-tree
-boots. `dc1-gpu` used to report failure while the GPU worked anyway:
+[thermal.md](thermal.md). `dc1-gpu` used to report failure while the GPU worked anyway:
 applying the runtime overlay only edits the live tree, and the platform
 device for the newly-enabled `mali` node is registered after that, so the
 `drivers_probe` poke issued straight after `modprobe` hit an empty

@@ -27,6 +27,9 @@ sh -n "$script_dir/export-artifacts.sh"
 sh -n "$script_dir/make-ext4-image.sh"
 sh -n "$script_dir/prefetch-kernel-distfile.sh"
 sh -n "$script_dir/verify.sh"
+sh -n "$script_dir/../boot/repack-boot.sh"
+sh -n "$script_dir/../boot/dtbswap/pack.sh"
+sh -n "$script_dir/tests/test_repack_boot.sh"
 sh -n "$device_dir/APKBUILD"
 sh -n "$kernel_dir/APKBUILD"
 sh -n "$mutter_dir/APKBUILD"
@@ -128,6 +131,17 @@ grep -q 'github.com/denysvitali/$_repository/archive/$_commit.tar.gz' \
 	"$kernel_dir/APKBUILD" || fail "kernel source is not the pinned GitHub archive"
 grep -q 'LLVM=/usr/lib/llvm20/bin/' "$kernel_dir/APKBUILD" || fail "compiler boundary drift"
 grep -q 'LD=/usr/bin/ld.lld' "$kernel_dir/APKBUILD" || fail "compiler boundary drift"
+grep -qx "pkgver=$KERNEL_VERSION" "$kernel_dir/APKBUILD" ||
+	fail "KERNEL_VERSION in versions.env does not match the kernel APKBUILD pkgver"
+
+# The committed AVB0 boot-signature page is vendor-derived with recorded
+# provenance (boot/README.md). Pin its size and hash so a different
+# 4096-byte AVB0-looking page cannot be swapped in silently.
+sig="$script_dir/../boot/boot-signature.bin"
+[ "$(stat -c%s "$sig")" = "4096" ] || fail "boot-signature.bin is not 4096 bytes"
+[ "$(sha256sum "$sig" | awk '{ print $1 }')" = \
+	"403d35c3dfd74f04d0c3e20b17f4031b3cbedb7de656b44ceb70b90580dd8009" ] ||
+	fail "boot-signature.bin hash drifted from the recorded provenance"
 
 # ccache has to be routed in through CC/HOSTCC. Alpine's ccache package ships
 # symlinks for cc/gcc/g++/c++/cpp and the musl triple only -- there is no clang
@@ -181,6 +195,18 @@ sh -n "$device_dir/dc1-charging-generator"
 sh -n "$device_dir/dc1-charging-monitor"
 sh -n "$device_dir/dc1-poweroff-flag"
 sh -n "$device_dir/dc1-battery-state"
+sh -n "$device_dir/dc1-audio"
+sh -n "$device_dir/dc1-bluetooth"
+sh -n "$device_dir/dc1-boot-sync"
+sh -n "$device_dir/dc1-debug-shell"
+sh -n "$device_dir/dc1-display-gate"
+sh -n "$device_dir/dc1-first-boot"
+sh -n "$device_dir/dc1-frontlight"
+sh -n "$device_dir/dc1-gpu"
+sh -n "$device_dir/dc1-link-apk-keys"
+sh -n "$device_dir/dc1-screen-backlight"
+sh -n "$device_dir/dc1-update"
+sh -n "$device_dir/dc1-usb-gadget"
 python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' 	"$device_dir/dc1-gpu-settings"
 python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' 	"$device_dir/dc1-charging-settings"
 python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' 	"$device_dir/dc1-orientation"
@@ -188,6 +214,7 @@ sh -n "$device_dir/device-daylight-jagar.trigger"
 sh -n "$device_dir/device-daylight-jagar.post-install"
 sh -n "$device_dir/device-daylight-jagar.post-upgrade"
 sh "$script_dir/tests/test_dc1_fix_wireplumber_alsa.sh"
+sh "$script_dir/tests/test_repack_boot.sh"
 sh "$script_dir/tests/test_make_ext4_image.sh"
 sh "$script_dir/tests/test_export_artifacts.sh"
 sh "$script_dir/tests/test_prefetch_kernel_distfile.sh"

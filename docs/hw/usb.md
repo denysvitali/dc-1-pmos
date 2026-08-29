@@ -1,7 +1,7 @@
 # USB gadget and configfs — measurement record
 
 Deep-dive for the status-table rows *USB gadget* and *configfs teardown*
-in [docs/status.md](../status.md). The exposure/ownership consequences of
+in [README.md](../../README.md#hardware-support-at-a-glance). The exposure/ownership consequences of
 these channels are documented in [../security.md](../security.md).
 
 ## USB gadget
@@ -44,7 +44,8 @@ The installed system is packaged to use the same port as a data host for a
 charging Type-C hub while remaining a power sink. The port advertises
 data-role dual, and the MT6375 TCPM path switches MUSB to host after a
 DR_SWAP. If a discovered partner reports `type=hub` but the active role is
-still `[device]`, a udev rule requests `host` through
+still `[device]`, the packaged `90-device-daylight-jagar.rules` udev rule
+requests `host` through
 `/sys/class/typec/port0/data_role`; an ordinary PC host never matches it.
 
 The `dc1-usb-gadget` service still binds `g1` on every installed boot, and
@@ -61,8 +62,12 @@ at session end. Forcing the PHY's VBUSVALID/AVALID session inputs and
 restarting the role session made the attached Lenovo/Fresco Logic five-port
 hub enumerate immediately at 480 Mbit/s; charger `online` remained `1`,
 input current remained 1.5 A, and the Type-C power role remained `[sink]`.
-Kernel `a1a5a465fb61` makes that override an opt-in T-PHY property enabled
-only for jagar and clears it outside host mode.
+Kernel `a1a5a465fb61` makes that override an opt-in T-PHY property
+(`mediatek,force-vbus-valid`) enabled
+only for jagar and clears it outside host mode. Note its placement: the
+property lives on the `usb-phy@0` child of the `t-phy@11f40000` node, not
+on the T-PHY parent — grepping only the parent looks like the property is
+missing.
 
 The packaged linux r50 boot reproduced that host/sink state without a manual
 register write. It did **not** prove downstream peripherals: this partner is
@@ -80,7 +85,9 @@ jagar is PIO-only, but MUSB advertised `HCD_DMA`, so usbcore tried to DMA-map
 the hub's interrupt/status buffer. This machine has 8 GiB of RAM, a 32-bit
 MUSB child mask, and `swiotlb=noforce`; an unnecessary mapping can therefore
 fail as `-EAGAIN`. Kernel `05abbc2ae75c` omits `HCD_DMA` only for
-`CONFIG_MUSB_PIO_ONLY` builds. That restores the status URB needed for later
+`CONFIG_MUSB_PIO_ONLY` builds (the gate is the `.flags` expression of
+`musb_hc_driver` in `drivers/usb/musb/musb_host.c`). That restores the
+status URB needed for later
 port-change notifications without changing DMA-capable MUSB builds. Linux r52
 with that commit booted successfully on 2026-08-28 and registered the MUSB
 host/root hub; no external hub was present in that boot, so the repeated

@@ -1,7 +1,7 @@
 # Touch, pen, buttons, power key — measurement record
 
 Deep-dive for the status-table rows *Touchscreen*, *Pen digitizer*, and
-*Power key* in [docs/status.md](../status.md), plus the button map.
+*Buttons* in [README.md](../../README.md#hardware-support-at-a-glance), plus the button map.
 Newest facts last inside each section.
 
 ## Touchscreen
@@ -20,7 +20,9 @@ confirmation.
 
 Wacom EMR digitizer on i2c9 `0x09`, driven by the mainline **`wacom_i2c`**
 driver — hardware-verified 2026-08-22, closed through calibration
-2026-08-23, with one final hands-on alignment check pending an r38 boot
+2026-08-23, with one final hands-on alignment check still owed (the r38
+boot requirement is long met — r54 is running as of 2026-08-29; only the
+hands-on pass remains)
 (see [../roadmap.md](../roadmap.md)). The road there had two wrong turns
 worth recording. First root cause: no Wacom driver was compiled in at all
 (`CONFIG_TOUCHSCREEN_WACOM_W9000` landed in `e2836cc1dcb4`, linux
@@ -166,7 +168,9 @@ off). gnome-shell-mobile grabs the key as a mutter keybinding — so logind's
 the blank action locks before fading out, the wake press cancels the
 running action instead of starting a new one (no flap), and an untouched
 lock screen re-darkens after a hardcoded 10 s. Suspend stays unreachable
-by design (`CanSuspend=no`, s2idle aborts with unfreezable tasks). Shipped
+by design (`CanSuspend=no` — the old unfreezable-task abort was fixed on
+2026-08-17 and a clean s2idle cycle is on record, so the mask is now an
+owner decision, not a kernel limitation). Shipped
 via the gschema override in the device package; the event path
 (mtk-pmic-keys → libinput) is proven by the working menu grab.
 

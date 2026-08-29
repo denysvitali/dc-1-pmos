@@ -1,13 +1,15 @@
 # Sensors — measurement record
 
 Deep-dive for the status-table row *Sensors* (accelerometer, hall switch,
-ambient-light part, orientation chain) in [docs/status.md](../status.md).
+ambient-light part, orientation chain) in [README.md](../../README.md#hardware-support-at-a-glance).
 Newest facts last.
 
 ## Bus ownership
 
 The sensor buses are SCP-connected but reachable from the AP when the
-pins are re-muxed and nothing drives the SCP:
+pins are re-muxed; the SCP node is enabled with only its mailbox driver
+bound and the core stays halted (wake requests time out), so no firmware
+owns the pins:
 
 - GPIO142/143, AP i2c6 at `0x1101a000`, exposes the MCube MC3416 at
   `0x4c` (`mcube,mc3416`, `drivers/iio/accel/mc3230.c`).

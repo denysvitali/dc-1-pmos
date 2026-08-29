@@ -87,6 +87,22 @@ sed 's/^DC1_USER=.*/DC1_USER=root/' "$TMP/good" > "$TMP/a"
 sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "root username accepted" \
 	|| ok "root username rejected"
 
+for user in 'ab:root' 'ab/../../escape' 'ab.BAD'; do
+	sed "s|^DC1_USER=.*|DC1_USER=$user|" "$TMP/good" > "$TMP/a"
+	sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 \
+		&& bad "invalid username '$user' accepted" \
+		|| ok "invalid username '$user' rejected"
+done
+
+user32=$(printf '%32s' '' | tr ' ' a)
+user33=$(printf '%33s' '' | tr ' ' a)
+sed "s/^DC1_USER=.*/DC1_USER=$user32/" "$TMP/good" > "$TMP/a"
+sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 \
+	&& ok "32-character username accepted" || bad "32-character username rejected"
+sed "s/^DC1_USER=.*/DC1_USER=$user33/" "$TMP/good" > "$TMP/a"
+sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 \
+	&& bad "33-character username accepted" || ok "33-character username rejected"
+
 sed 's/^DC1_PASS_HASH=.*/DC1_PASS_HASH=cleartext/' "$TMP/good" > "$TMP/a"
 sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "non-crypt hash accepted" \
 	|| ok "non-crypt hash rejected"
@@ -94,6 +110,22 @@ sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "non-crypt hash accepted" 
 sed 's/^DC1_HOSTNAME=.*/DC1_HOSTNAME=-bad-/' "$TMP/good" > "$TMP/a"
 sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "bad hostname accepted" \
 	|| ok "bad hostname rejected"
+
+for hostname in 'dc1.example' 'dc1/evil' 'dc1&evil'; do
+	sed "s|^DC1_HOSTNAME=.*|DC1_HOSTNAME=$hostname|" "$TMP/good" > "$TMP/a"
+	sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 \
+		&& bad "invalid hostname '$hostname' accepted" \
+		|| ok "invalid hostname '$hostname' rejected"
+done
+
+hostname63=$(printf '%63s' '' | tr ' ' a)
+hostname64=$(printf '%64s' '' | tr ' ' a)
+sed "s/^DC1_HOSTNAME=.*/DC1_HOSTNAME=$hostname63/" "$TMP/good" > "$TMP/a"
+sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 \
+	&& ok "63-character hostname accepted" || bad "63-character hostname rejected"
+sed "s/^DC1_HOSTNAME=.*/DC1_HOSTNAME=$hostname64/" "$TMP/good" > "$TMP/a"
+sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 \
+	&& bad "64-character hostname accepted" || ok "64-character hostname rejected"
 
 sed 's|^DC1_TZ=.*|DC1_TZ=../../etc/shadow|' "$TMP/good" > "$TMP/a"
 sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "traversal timezone accepted" \
@@ -106,6 +138,19 @@ sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "short PSK accepted" \
 write_answers "$TMP/a" "MyNet" ""
 sh "$PROV" --validate "$TMP/a" >/dev/null 2>&1 && bad "SSID without PSK accepted" \
 	|| ok "SSID without PSK rejected"
+
+# Application mode must run the same authoritative validation before touching
+# account files or home directories.
+R="$TMP/root-invalid"
+make_rootfs "$R"
+sed 's/^DC1_USER=.*/DC1_USER=ab:root/' "$TMP/good" > "$TMP/a"
+cp "$R/etc/passwd" "$TMP/passwd.before"
+sh "$PROV" "$R" "$TMP/a" >/dev/null 2>&1 \
+	&& bad "application accepted an account-field separator" \
+	|| ok "application rejects invalid username before provisioning"
+cmp -s "$R/etc/passwd" "$TMP/passwd.before" \
+	&& ok "rejected username left passwd unchanged" \
+	|| bad "rejected username mutated passwd"
 
 # ------------------------------------------------- apply: rename user
 echo "== apply: rename existing user =="

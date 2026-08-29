@@ -58,10 +58,10 @@ parse_answers() {
 
 validate_answers() {
 	case "$A_USER" in
-		[a-z_]) ;;
-		[a-z_][a-z0-9_-]*) [ ${#A_USER} -le 32 ] || die "username too long" ;;
-		*) die "invalid username: '$A_USER'" ;;
+		''|[!abcdefghijklmnopqrstuvwxyz_]*|*[!abcdefghijklmnopqrstuvwxyz0123456789_-]*)
+			die "invalid username: '$A_USER'" ;;
 	esac
+	[ ${#A_USER} -le 32 ] || die "username too long"
 	case "$A_USER" in
 		root|nobody) die "refusing reserved username: $A_USER" ;;
 	esac
@@ -76,11 +76,10 @@ validate_answers() {
 	esac
 
 	case "$A_HOSTNAME" in
-		[a-z0-9]) ;;
-		[a-z0-9][a-z0-9-]*) [ ${#A_HOSTNAME} -le 63 ] || die "hostname too long" ;;
-		*) die "invalid hostname: '$A_HOSTNAME'" ;;
+		''|[!abcdefghijklmnopqrstuvwxyz0123456789]*|*[!abcdefghijklmnopqrstuvwxyz0123456789-]*|*-)
+			die "invalid hostname: '$A_HOSTNAME'" ;;
 	esac
-	case "$A_HOSTNAME" in *-) die "hostname may not end with -" ;; esac
+	[ ${#A_HOSTNAME} -le 63 ] || die "hostname too long"
 
 	[ -n "$A_TZ" ] || die "missing DC1_TZ"
 	case "$A_TZ" in
@@ -231,7 +230,7 @@ apply_gdm_wayland_only() {
 	# display manager gives up. Pin gdm to Wayland and disable the Xorg
 	# path outright. Edited in place so the packaged autologin block in
 	# custom.conf survives. Part of the shim set hardware-verified
-	# 2026-08-19 (docs/status.md, "GNOME on fresh installs").
+	# 2026-08-19 (README.md support status, "GNOME on fresh installs").
 	conf="$ROOT/etc/gdm/custom.conf"
 	[ -f "$conf" ] || return 0
 	for _kv in WaylandEnable=true XorgEnable=false; do

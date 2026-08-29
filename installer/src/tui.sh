@@ -37,18 +37,15 @@ status() { echo "$*" > "$STATUS_FILE" 2>/dev/null; }
 valid_username() {
 	case "$1" in
 		root|nobody) return 1 ;;
-		[a-z_]) return 0 ;;
-		[a-z_][a-z0-9_-]*) [ ${#1} -le 32 ] ;;
-		*) return 1 ;;
+		''|[!abcdefghijklmnopqrstuvwxyz_]*|*[!abcdefghijklmnopqrstuvwxyz0123456789_-]*) return 1 ;;
+		*) [ ${#1} -le 32 ] ;;
 	esac
 }
 
 valid_hostname() {
 	case "$1" in
-		*-) return 1 ;;
-		[a-z0-9]) return 0 ;;
-		[a-z0-9][a-z0-9-]*) [ ${#1} -le 63 ] ;;
-		*) return 1 ;;
+		''|[!abcdefghijklmnopqrstuvwxyz0123456789]*|*[!abcdefghijklmnopqrstuvwxyz0123456789-]*|*-) return 1 ;;
+		*) [ ${#1} -le 63 ] ;;
 	esac
 }
 

@@ -60,7 +60,9 @@ boot brought the display all the way up: DRM bound OVL/RDMA/DSI, card0 formed
 with the DSI-1 connector, and gnome-shell ran with atomic modesetting. The
 kernel relocation target (`KERNEL_RELOC_PA`, 0x44000000) is therefore
 boot-proven. Not everything the stock tree described is in the mainline DTS
-yet — Wi-Fi in particular does not come up on a dtbswap boot.
+yet. Wi-Fi initially did not come up on a dtbswap boot; since 2026-08-19
+the mt7921s driver works from the mainline DT (firmware staged by the
+system initramfs) — see docs/hw/wireless.md.
 
 ## Build
 

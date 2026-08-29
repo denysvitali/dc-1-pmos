@@ -243,7 +243,8 @@ and `CHG_EN`; enabling it blind could parallel two nominal 3.15 A chargers
 while the BQ78Z100 protection/temperature monitor is unavailable.
 
 The sensor buses are SCP-connected but reachable from the AP when the pins are
-re-muxed and nothing drives the SCP:
+re-muxed; the SCP node is enabled with only its mailbox driver bound and the
+core stays halted (wake requests time out), so no firmware owns the pins:
 
 - GPIO142/143, AP i2c6 at `0x1101a000`, exposes the MCube MC3416 at `0x4c`
   (`mcube,mc3416`, `drivers/iio/accel/mc3230.c`).
@@ -276,7 +277,7 @@ Window drag is worse: the CRTC keeps 118.4 Hz with missed_seq=0, and
 mutter misses the deadline (~94 Hz tiny-fast, ~78 Hz large-fast at
 812 MHz). Tiny-fast is compositor damage plus the landscape blit, not
 GPU clock: 60 Hz still misses (~53 / ~43 Hz) with gnome-shell at ~20%
-CPU. 60 Hz stays preferred. Device r84 defaults mutter
+CPU. The shipped default stays 60 Hz. Device r84 defaults mutter
 `kms-modifiers` on so Panfrost can use tiled intermediates for the blit.
 
 Audio invariants (measured 2026-08-17..22):
@@ -299,13 +300,16 @@ Audio invariants (measured 2026-08-17..22):
   (the image's PulseAudio backend never starts under systemd, so without
   it there is no server at `$XDG_RUNTIME_DIR/pulse/native` and
   gnome-shell/g-c-c get connection refused).
-- WirePlumber 0.5.15 `scripts/monitors/alsa.lua` concatenates a nil
+- WirePlumber 0.5.15 `scripts/monitors/alsa.lua` concatenated a nil
   `node.name` when adapter bind fails (transient EBUSY on `hw:0,0`),
   which kills the ALSA monitor and leaves GNOME on Dummy Output. Do
   not fork that versioned script. `dc1-fix-wireplumber-alsa` reapplies
   a one-line `tostring()` guard from post-install/post-upgrade and from
   the apk trigger on the file, so a wireplumber upgrade cannot restore
-  the crash.
+  the crash. Alpine's current 0.5.16 ships those call sites guarded and
+  was verified guarded on-device 2026-08-29 — the fix script no-ops on
+  it; re-check its pattern at every WirePlumber bump rather than
+  assuming the guard is obsolete.
 
 Display/DSI invariants (measured 2026-08-24):
 
@@ -317,7 +321,8 @@ Display/DSI invariants (measured 2026-08-24):
   and no drive.
 - The only trustworthy liveness signals are the TE line on GPIO83
   (`gpiomon -c gpiochip0 83`; ~200 edges/2 s when the panel TCON runs, 0
-  when it does not) and a DCS read of `0x0a`, where `0x9c` is
+  when it does not — root-only, `/dev/gpiochip0` is `crw-------`) and a
+  DCS read of `0x0a`, where `0x9c` is
   booster|sleep-out|normal|display-on. Verify display work against those,
   never against dmesg.
 - A DCS read that times out latches the DSI handoff state machine into its
@@ -361,11 +366,13 @@ Display/DSI invariants (measured 2026-08-24):
 - `installer/tests/` — offline shell tests and syntax gate for installer,
   host, and initramfs scripts.
 - `boot/dtbswap/` — freestanding arm64 DT handoff stub and packer.
-- `boot/mkboot/` — Go Android boot/vendor_boot v4 tooling and Python verifier.
+- `boot/mkboot/` — Go Android boot/vendor_boot v4 tooling with a
+  byte-identical round-trip verifier.
 - `boot/repack-boot.sh` — minimal production boot-image packer.
-- `docs/` — installation, status, debugging (`docs/debugging.md`), and the
-  narrowly scoped preloader-recovery procedure. `docs/status.md` is the
-  compact verdict table plus board reference; the per-subsystem
+- `docs/` — installation, debugging (`docs/debugging.md`), and the narrowly
+  scoped preloader-recovery procedure. `README.md` contains the compact verdict
+  table; `docs/hardware.md` records the boot/update architecture and sourced
+  board specification; the per-subsystem
   measurement records live in `docs/hw/` (`display`, `input`, `audio`,
   `wireless`, `usb`, `power`, `suspend`, `thermal`, `sensors`, `storage`)
   and `docs/gnome.md` (desktop stack). `docs/roadmap.md` is the
@@ -493,8 +500,7 @@ PD contracts settle in-kernel). Constraints future changes must preserve:
 
 - `verify` on `ubuntu-24.04` (x86) runs `scripts/verify.sh`, all offline
   installer tests, installer/device C smoke builds, `boot/mkboot` Go build/vet/
-  tests, `installer/gotools` build/vet/tests plus an arm64 build, and the
-  Python boot-tool syntax check.
+  tests, and `installer/gotools` build/vet/tests plus an arm64 build.
 - `build` on `ubuntu-24.04-arm` runs natively, restores pmbootstrap source,
   package, and ccache caches, builds the pinned rootfs, builds `dtbswap`,
   creates both boot images, assembles the release, signs its APK index, and

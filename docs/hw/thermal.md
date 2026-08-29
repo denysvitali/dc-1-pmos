@@ -1,9 +1,9 @@
 # Thermal — measurement record
 
 Deep-dive for the status-table row *Thermal* in
-[docs/status.md](../status.md). Newest facts last.
+[README.md](../../README.md#hardware-support-at-a-glance). Newest facts last.
 
-## Current state
+## Bring-up state (pkgrel=27 boot, 2026-08-22)
 
 **Trips, cooling maps and CPU DVFS all exist now** — kernel
 `0f6e730c92d6` (LVTS trips + cooling maps), `ffc87512c0e2` (cpufreq-hw
@@ -15,8 +15,10 @@ devices are registered (`cpufreq-cpu0`, `cpufreq-cpu6`, and a GPU devfreq
 cooler bound through the ts3-0 map), and DVFS is up
 (`scaling_driver=mtk-cpufreq-hw`, schedutil; policy0 = cpu0-5 at
 500-2000 MHz, policy6 = cpu6-7 at 725-2200 MHz; every zone runs
-`step_wise` — `power_allocator` is offered in `available_policies` but
-selected nowhere; an earlier revision claimed power-allocator was active,
+`step_wise` — `power_allocator` is registered (dmesg governor-registration
+line) but selected nowhere; this kernel exposes no `available_policies`
+file, so the governor list is only visible in dmesg; an earlier revision
+claimed power-allocator was active,
 which re-measurement contradicts). Dynamic re-check on the same pkgrel=27
 boot (2026-08-22): eight spinning cores pin both clusters at their
 ceilings — 2000/2200 MHz on every core, hottest LVTS zone climbing
@@ -26,8 +28,8 @@ devfreq sweeps between its 390 MHz floor and 1.1 GHz ceiling under nothing
 more than compositor load (`simple_ondemand`; seven distinct OPPs sampled
 live). The missing devfreq `trans_stat` is deliberate: with 36 OPPs the
 transition table exceeds PAGE_SIZE and the kernel disables it (`devfreq
-transition table exceeds PAGE_SIZE. Disabling`, dmesg) — absence of that
-file is not a scaling failure.
+transition table exceeds PAGE_SIZE. Disabling`, dmesg) — the file exists
+but only produces the read error, which is not a scaling failure.
 
 The DVFS design is deliberately regulator-free: MCUPM firmware owns the
 MT6366 vproc/vsram_proc rails and publishes the LUT/energy-model tables,

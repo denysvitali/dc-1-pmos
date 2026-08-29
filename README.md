@@ -21,7 +21,8 @@ the rest itself.
 > [!CAUTION]
 > A green CI build proves the artifacts *compile*, not that they *boot*.
 > Releases record `hardware_verified=false`: individual subsystems are
-> heavily measured on real hardware ([docs/status.md](docs/status.md)),
+> heavily measured on real hardware (see the support summary below and the
+> [verification ledger](docs/verification.md)),
 > and the install flow has been exercised by a small number of users.
 > Flashing is at your own risk.
 >
@@ -45,21 +46,23 @@ the rest itself.
 
 ## Hardware support at a glance
 
-Details, measurements, and dates for every row:
-[docs/status.md](docs/status.md).
+Detailed measurements and dates live in the linked subsystem records under
+[`docs/hw/`](docs/hw/) and in the [verification ledger](docs/verification.md).
+The [hardware reference](docs/hardware.md) explains the boot/update safety
+model and records sourced board specifications.
 
 | Area | State | Notes |
 | --- | --- | --- |
 | Display & touch | ✅ | 1200×1600 @ 60 Hz over DSI, GPU-accelerated (Panfrost), reliable blank/wake |
-| Pen digitizer | ✅ | Wacom EMR: pressure, barrel button, eraser end (in tablet-aware apps); edge-alignment refit awaits a final hands-on pass |
-| Screen auto-rotation | ✅ | Accelerometer-driven rotation works end to end and honors GNOME's rotation lock |
+| Pen digitizer | 🟡 | Wacom EMR events, pressure, and barrel button verified; mid-hover eraser flips and edge alignment await a final hands-on pass |
+| Screen auto-rotation | 🟡 | Accelerometer/SensorProxy/Mutter chain is live and honors GNOME's rotation lock; four-pose physical sign-off remains |
 | Wi-Fi | ✅ | MT7902, mainline `mt7921s`, Wi-Fi 6 |
-| Bluetooth | ✅ | Controller and nearby-device discovery verified; pairing/audio streaming not yet exercised |
+| Bluetooth | 🟡 | Controller and nearby-device discovery verified; pairing/audio streaming and a fresh-boot firmware-race check remain |
 | Audio | ✅ | Stereo speakers, stereo mic capture; no headphone jack (hardware) |
 | Front light | ✅ | White + amber channels, PWM-free dimming, warmth slider in quick settings |
 | Buttons | ✅ | Phone-like power key; volume; Quick Action / Back Button, remappable in GNOME Settings |
 | Storage & microSD | ✅ | UFS internal storage; microSD slot works |
-| Battery & charging | 🟡 | USB-C PD negotiates (12 V PDO verified); charging defaults conservative (~22 %/h), tunable toward ~40 %/h via sysfs; charge % is real coulomb-counting but re-seeds from voltage at every boot |
+| Battery & charging | 🟡 | USB-C PD negotiates (12 V PDO verified); charging defaults to ~40 %/h (3.15 A), tunable down to ~22 %/h via sysfs; charge % is real coulomb-counting, restored across clean reboots from the shutdown record (voltage seed only as fail-safe) |
 | USB-C data | 🟡 | USB 2.0 only: serial and Ethernet gadget work, while host mode is partial. No SuperSpeed, DisplayPort Alt Mode, or Thunderbolt; external displays are unsupported, and Thunderbolt docks are limited to any USB 2.0 fallback they expose |
 | Suspend/sleep | 🚧 | A clean s2idle test cycle is on record, but sleep targets remain masked by design; the power key blanks instead — see [Battery life today](docs/power.md#battery-life-today) |
 | Ambient light / proximity sensor | ❌ | Part identified on the bus, no mainline driver yet |

@@ -37,7 +37,8 @@ Run it after changing anything in the packer.
 
 **Boot header is v4**, `header_size` 1584, page size 4096. Stock `boot_a`:
 kernel 19,558,146, ramdisk 1,380,092, `signature_size` 4096, cmdline **empty**
-(the real cmdline comes from `vendor_boot` / the DTB `chosen` node).
+(LK builds the complete command line itself and overwrites the DTB's
+`/chosen/bootargs` at handoff — the boot-image header field is ignored).
 
 The 4096-byte v4 boot-signature page must be present and non-zero; this repo
 ships it as `boot/boot-signature.bin` (see `boot/README.md` for provenance).

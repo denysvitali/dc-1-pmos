@@ -22,12 +22,24 @@ valid_username root && bad "root accepted" || ok "root rejected"
 valid_username Alice && bad "Alice accepted" || ok "Alice rejected"
 valid_username "a b" && bad "'a b' accepted" || ok "'a b' rejected"
 valid_username 1abc && bad "1abc accepted" || ok "1abc rejected"
+valid_username 'ab:root' && bad "ab:root accepted" || ok "account-field separator rejected"
+valid_username 'ab/../../escape' && bad "username traversal accepted" || ok "username traversal rejected"
+user32=$(printf '%32s' '' | tr ' ' a)
+user33=$(printf '%33s' '' | tr ' ' a)
+valid_username "$user32" && ok "32-character username" || bad "32-character username rejected"
+valid_username "$user33" && bad "33-character username accepted" || ok "33-character username rejected"
 
 valid_hostname dc1 && ok "dc1" || bad "dc1 rejected"
 valid_hostname my-tablet && ok "my-tablet" || bad "my-tablet rejected"
 valid_hostname -bad && bad "-bad accepted" || ok "-bad rejected"
 valid_hostname bad- && bad "bad- accepted" || ok "bad- rejected"
 valid_hostname "UPPER" && bad "UPPER accepted" || ok "UPPER rejected"
+valid_hostname 'dc1.example' && bad "dotted hostname accepted" || ok "dotted hostname rejected"
+valid_hostname 'dc1/evil' && bad "hostname path accepted" || ok "hostname path rejected"
+hostname63=$(printf '%63s' '' | tr ' ' a)
+hostname64=$(printf '%64s' '' | tr ' ' a)
+valid_hostname "$hostname63" && ok "63-character hostname" || bad "63-character hostname rejected"
+valid_hostname "$hostname64" && bad "64-character hostname accepted" || ok "64-character hostname rejected"
 
 valid_timezone Europe/Zurich && ok "Europe/Zurich" || bad "Europe/Zurich rejected"
 valid_timezone UTC && ok "UTC" || bad "UTC rejected"

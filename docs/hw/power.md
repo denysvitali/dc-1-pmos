@@ -1,7 +1,7 @@
 # Battery, charging, and charging mode — measurement record
 
 Deep-dive for the status-table rows *Battery* and *Charging mode* in
-[docs/status.md](../status.md). User-facing behavior is summarized in
+[README.md](../../README.md#hardware-support-at-a-glance). User-facing behavior is summarized in
 [../power.md](../power.md); this page is the measurement record. Newest
 facts last.
 
@@ -39,7 +39,8 @@ discharge was ~−500 mA; the +233 mA plateau ~+466 mA). Kernel
 parameters (`mt6358_fg.r_fg_milliohms=5`, `car_tune_permille=1010` —
 module params because the signed `lk`/`dtbo` cannot carry DT tuning),
 halves the pack-resistance estimate that had absorbed the same factor,
-and exposes raw latch counts at `.../power_supply/mt6358-fg/fgc_raw`.
+and exposes raw latch counts at
+`.../power_supply/mt6358-fg/device/fgc_raw`.
 Residuals kept honest: the shunt was never ohmmetered (a constant-ratio
 board bypass would look identical remotely; read the marking at next
 power-off), and the ~13% gap between chip IBAT and the nominal ICHG
@@ -63,8 +64,9 @@ connector's SMBus pair, or the gauge's own I²C block. Consequences while
 it stays dead: cold/stale boots seed SoC from voltage, there is no learned
 full-charge capacity, no battery-temperature-informed charge current
 (only chip-side JEITA-ish behavior plus the 110/113.5 °C critical
-shutdowns — see [thermal.md](thermal.md)), and the deliberately
-conservative 2 A charge default.
+shutdowns — see [thermal.md](thermal.md)), and the owner-selected charge
+policy. The shipped default is now the 3.15 A charger target (~2.94 A measured
+into the pack, about 40 %/h); Settings → Charging Profile can reduce it.
 
 Cosmetic suppression landed in kernel `15fd2e78b746` (pkgrel 50): the
 production DT keeps the gauge node disabled while it NAKs, so it cannot

@@ -165,12 +165,14 @@ generator votes on — read it for yourself when debugging boot-mode
 questions (journal tag `dc1-charging`). Prefer these logs over inferring
 failure from silence; pstore is **not** a reliable channel for this port.
 
-**Watch what rotates the kernel ring.** On current kernels this board
-logs `rtc-s35390a 8-0030: alarm IRQ with INT2 flag clear; disarmed INT2`
-about twice per second (~24,000 lines per long boot, observed
-2026-08-26) — early-boot signatures (driver probes, firmware races) can
-be gone by the next morning. When a fresh-boot signature matters, check
-it immediately after boot, or read the persistent journal
+**Watch what rotates the kernel ring.** Loud per-second log sources evict
+early-boot signatures (driver probes, firmware races) by the next
+morning: builds before r48 logged `rtc-s35390a 8-0030: alarm IRQ with
+INT2 flag clear; disarmed INT2` about twice per second (~24,000 lines per
+long boot, observed 2026-08-26) until kernel `8f0bfe8f8a4c` stopped
+registering the unusable alarm IRQ (verified on the 2026-08-28 r48 boot,
+and still quiet on r54, 2026-08-29). When a fresh-boot signature matters,
+check it immediately after boot, or read the persistent journal
 (`journalctl -b -k`; note journals are root-owned — the default user is
 not in `systemd-journal`).
 

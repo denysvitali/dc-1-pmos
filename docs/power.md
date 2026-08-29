@@ -63,9 +63,10 @@ fall back to voltage seeding. One caveat remains:
 - the state of charge is measured against design capacity; nothing on this unit has
   learned the pack's real full-charge capacity yet (same missing gauge).
 
-If a battery UI ever lists a second, permanently-empty battery
-(`bq78z100-0`), that is a known cosmetic artifact of the silent pack
-gauge, not a second battery.
+Installs running a kernel build older than r50 may see a second,
+permanently-empty battery (`bq78z100-0`) in a battery UI — a cosmetic
+artifact of the silent pack gauge, not a second battery. Current kernels
+disable that gauge node, so it cannot register.
 
 ## Battery life today
 

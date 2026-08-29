@@ -1,7 +1,7 @@
 # Audio — measurement record
 
 Deep-dive for the status-table row *Audio* in
-[docs/status.md](../status.md). Newest facts last.
+[README.md](../../README.md#hardware-support-at-a-glance). Newest facts last.
 
 ## Invariants
 
@@ -22,13 +22,16 @@ Deep-dive for the status-table row *Audio* in
   image's PulseAudio backend never starts under systemd, so without it
   there is no server at `$XDG_RUNTIME_DIR/pulse/native` and
   gnome-shell/g-c-c get connection refused).
-- WirePlumber 0.5.15 `scripts/monitors/alsa.lua` concatenates a nil
+- WirePlumber 0.5.15 `scripts/monitors/alsa.lua` concatenated a nil
   `node.name` when adapter bind fails (transient EBUSY on `hw:0,0`),
   which kills the ALSA monitor and leaves GNOME on Dummy Output. Do not
   fork that versioned script. `dc1-fix-wireplumber-alsa` reapplies a
   one-line `tostring()` guard from post-install/post-upgrade and from the
   apk trigger on the file, so a wireplumber upgrade cannot restore the
-  crash.
+  crash. Alpine's current wireplumber 0.5.16 ships those call sites
+  already guarded and was verified guarded on-device 2026-08-29 — the
+  fix script no-ops on it by inspection; re-verify its pattern at every
+  WirePlumber bump instead of assuming the guard is obsolete.
 
 ## History
 
@@ -119,7 +122,8 @@ dc1-audio's ordering after `alsa-restore` is what has been absorbing
 that. The fix adds `mt6358_get_volsw`, which reports the shadow — what
 the next power-up will actually apply — and leaves the write path alone;
 it is upstreamable as-is. (2) The lua crash is an upstream WirePlumber
-0.5.15 bug, exactly at `scripts/monitors/alsa.lua:425`: the failure
+0.5.15 bug, exactly at `scripts/monitors/alsa.lua:425` (0.5.15 line
+numbering; the guarded site sits near line 445 in Alpine's 0.5.16): the failure
 handler builds its message as `"Failed to create ALSA node " ..
 n:get_property("node.name") .. ": " .. tostring(err)`, and when the node
 never bound, `get_property` returns nil, so the error path itself throws

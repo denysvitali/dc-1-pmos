@@ -1,7 +1,7 @@
 # Storage and expansion — measurement record
 
 Deep-dive for the status-table rows *Internal storage* and
-*Expansion / microSD* in [docs/status.md](../status.md).
+*Storage & microSD* in [README.md](../../README.md#hardware-support-at-a-glance).
 
 ## Internal storage
 
