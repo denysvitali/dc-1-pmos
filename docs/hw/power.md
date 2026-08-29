@@ -166,6 +166,30 @@ the VBUS one-shot uses the measured **3150000 µA** target (~0.4C). The
 2 A value remains available as the conservative owner choice, while users
 can also write lower values for weaker packs or warmer conditions.
 
+**Contract/profile audit (2026-08-29):** after a cable reconnect, the live
+source advertised fixed 5 V/3 A, 9 V/3 A, 12 V/3 A, 15 V/3 A and
+20 V/3.25 A plus PPS ranges 3.3–16 V/3.25 A and 3.3–21 V/3 A. The DC-1
+correctly selected its highest compatible fixed PDO, **12 V/3 A**. Linux
+TCPM's `tcpm_pd_select_pdo()` selects the matching source PDO with the most
+power and prefers the higher voltage on a tie; jagar's sink PDO table stops
+at 12 V because the MT6375 input's highest programmed OVP bucket is 14.5 V.
+At 87%, the source-side meter showed about 11.6 V/1.32 A while the calibrated
+fuel gauge measured 2.80–2.96 A into the 4.32–4.35 V pack. Those are
+consistent: 3 A is the contract ceiling, not constant draw, and the battery
+was already at the MT6375's 3.15 A charge-current register maximum before
+normal CV taper. `dc1-charging-settings` now exposes this distinction in
+Settings and explicitly warns on a 5 V/no-PD fallback.
+
+The answering RT9471 at i2c7 `0x53` is the factory secondary charger in a
+dual-charger topology, not unused mystery silicon. Its mainline node is
+described but `CONFIG_CHARGER_RT9471` remains unset and GPIO151 parks its
+active-low CE high when the driver eventually binds. Enabling the upstream
+driver would assert CE and `CHG_EN` during probe. Do not do that until live
+measurements establish its VBUS/BAT/SYS routing, the factory current-sharing
+policy, combined thermals, and pack-temperature enforcement; the BQ78Z100 is
+still silent, so blindly combining two nominal 3.15 A paths would discard the
+very protection needed to justify the higher rate.
+
 Writable owner levers (confirmed present 2026-08-26):
 `/sys/class/power_supply/mt6375-charger/{constant_charge_current,
 constant_charge_voltage, input_current_limit, input_voltage_limit}`.

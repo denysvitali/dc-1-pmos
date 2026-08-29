@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=90
+pkgrel=91
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -88,6 +88,8 @@ source="
 	dc1-gpu-freq
 	dc1-gpu-settings
 	dc1-gpu-settings.desktop
+	dc1-charging-settings
+	dc1-charging-settings.desktop
 	it.denv.dc1.gpufreq.policy
 	dc1-audio
 	dc1-audio.service
@@ -214,6 +216,10 @@ package() {
 	install -Dm755 "$srcdir"/dc1-gpu-settings "$pkgdir"/usr/bin/dc1-gpu-settings
 	install -Dm644 "$srcdir"/dc1-gpu-settings.desktop \
 		"$pkgdir"/usr/share/applications/it.denv.dc1.GpuSettings.desktop
+	install -Dm755 "$srcdir"/dc1-charging-settings \
+		"$pkgdir"/usr/bin/dc1-charging-settings
+	install -Dm644 "$srcdir"/dc1-charging-settings.desktop \
+		"$pkgdir"/usr/share/applications/it.denv.dc1.ChargingSettings.desktop
 	install -Dm644 "$srcdir"/it.denv.dc1.gpufreq.policy \
 		"$pkgdir"/usr/share/polkit-1/actions/it.denv.dc1.gpufreq.policy
 	install -Dm755 "$srcdir"/dc1-audio "$pkgdir"/usr/libexec/dc1-audio
@@ -516,6 +522,8 @@ e9f0a80372e63be8a04a027326af59e565760c8f97640e2a6627cdf6386fedae2be4e25f4c888890
 8c2d5090d5b4af73f5dd79c2717abc258052db26989cc7cab41f1ec631a6fa0376d2ec132ae199798b74aa4029a39f95c20943ee464bff691576ca85631b0c09  dc1-gpu-freq
 13dbbd912171e0e029cd3bae4e7b434c6b3aa9cdfcc33f4a0301d03240c93c1b063cf369b9d1ee476c8377af420ebd3c3ba1fe74a382cabca46da24a1a288079  dc1-gpu-settings
 bd4eb77fda2be0f5423fff7e652442b772b236a9fb65be4a0f327d54f9bb46e0572c0898975ce49355276ef3910597d84ce53e66a8efb2b8b7ca868318fd005f  dc1-gpu-settings.desktop
+b20cffc44c14991f8033ac1aaff2bf3cf75e4bbbd6bb976390868d131edac7602b308e726919fb9ff1b7a9b2128363ca8f8aef5c56e3d04cf99acec61b4cf845  dc1-charging-settings
+4695a2905225f3499d0373b3dde270e8b2f26eb5cd6bf42b4153874a1f922ce2128da5a63f6344365a2886f6c2e73649516eb95b1e777f1166fc68ea902f8ca3  dc1-charging-settings.desktop
 67276f4b763925066e2266b9d0de298bbaa8f57e1bacce751a821f09731e62adb38d64e7e2f391ea0148bcea9952aca276af3deab59e948218a9da44b4779083  it.denv.dc1.gpufreq.policy
 422604b3942e0a7de22f59505be09287402a16f7b41c615be7f7f44a5ee87e8f097740c6694b0a72e225754bfd6720f6a81423a89e8f90a0ebd843da833b66bf  dc1-audio
 79832ac33bac32c05edad52fdba749a0471456cadced93b6645109e68be3d8c3f8249e01d33840aac709d23695dcfcd1e6b40950cf7ead769dc74888a60671ff  dc1-audio.service

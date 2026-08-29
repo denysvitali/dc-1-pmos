@@ -1,0 +1,255 @@
+#!/usr/bin/python3
+"""Read-only GNOME panel for the DC-1 USB-PD and battery charge state.
+
+The TCPM power_supply reports the negotiated contract, not instantaneous
+wall draw.  Keep those values visibly separate from the fuel gauge's real
+pack current so a 12 V / 3 A contract is not mistaken for a constant 36 W
+load.  Policy remains in the kernel: TCPM selects the highest-power fixed PDO
+compatible with jagar's 5/9/12 V sink caps, while the MT6375 charger limits
+the pack to its hardware-maximum 3.15 A target.
+"""
+
+import glob
+import os
+import sys
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+
+from gi.repository import Adw, GLib
+
+
+SYSFS = os.environ.get("DC1_SYSFS_ROOT", "/sys")
+PD_SUPPLY = os.path.join(
+    SYSFS, "class/power_supply/tcpm-source-psy-mt6375-tcpc"
+)
+CHARGER = os.path.join(SYSFS, "class/power_supply/mt6375-charger")
+BATTERY = os.path.join(SYSFS, "class/power_supply/mt6358-fg")
+TYPEC_PORT = os.path.join(SYSFS, "class/typec/port0")
+PD_CLASS = os.path.join(SYSFS, "class/usb_power_delivery")
+
+
+def read_text(directory, name, default=""):
+    try:
+        with open(os.path.join(directory, name), encoding="ascii") as stream:
+            return stream.readline().strip()
+    except (OSError, UnicodeError):
+        return default
+
+
+def read_int(directory, name):
+    try:
+        return int(read_text(directory, name))
+    except ValueError:
+        return 0
+
+
+def active_choice(value):
+    for token in value.split():
+        if token.startswith("[") and token.endswith("]"):
+            return token[1:-1]
+    return value or "unknown"
+
+
+def volts(microvolts):
+    return f"{microvolts / 1_000_000:.1f} V" if microvolts else "—"
+
+
+def amps(microamps):
+    return f"{microamps / 1_000_000:.2f} A" if microamps else "—"
+
+
+def watts(microvolts, microamps):
+    if not microvolts or not microamps:
+        return "—"
+    return f"{abs(microvolts * microamps) / 1_000_000_000_000:.1f} W"
+
+
+def read_source_profiles():
+    fixed = []
+    programmable = []
+    pattern = os.path.join(PD_CLASS, "pd*", "source-capabilities", "*")
+    for capability in glob.glob(pattern):
+        if capability.endswith(":fixed_supply"):
+            voltage = read_text(capability, "voltage")
+            current = read_text(capability, "maximum_current")
+            if voltage and current:
+                fixed.append((parse_unit(voltage, "mV"), parse_unit(current, "mA")))
+        elif capability.endswith(":programmable_supply"):
+            low = read_text(capability, "minimum_voltage")
+            high = read_text(capability, "maximum_voltage")
+            current = read_text(capability, "maximum_current")
+            if low and high and current:
+                programmable.append(
+                    (
+                        parse_unit(low, "mV"),
+                        parse_unit(high, "mV"),
+                        parse_unit(current, "mA"),
+                    )
+                )
+    return sorted(set(fixed)), sorted(set(programmable))
+
+
+def parse_unit(value, suffix):
+    try:
+        return int(value.removesuffix(suffix))
+    except ValueError:
+        return 0
+
+
+def format_source_profiles(fixed, programmable):
+    parts = [f"{mv / 1000:g} V/{ma / 1000:g} A" for mv, ma in fixed if mv and ma]
+    for low, high, ma in programmable:
+        if low and high and ma:
+            parts.append(f"PPS {low / 1000:g}–{high / 1000:g} V/{ma / 1000:g} A")
+    return " · ".join(parts) or "Not reported"
+
+
+def read_status():
+    pd_online = read_int(PD_SUPPLY, "online") == 1
+    charger_online = read_int(CHARGER, "online") == 1
+    contract_uv = read_int(PD_SUPPLY, "voltage_now") if pd_online else 0
+    contract_ua = read_int(PD_SUPPLY, "current_max") if pd_online else 0
+    battery_uv = read_int(BATTERY, "voltage_now")
+    battery_ua = read_int(BATTERY, "current_now")
+    fixed, programmable = read_source_profiles()
+
+    if pd_online:
+        headline = "USB Power Delivery"
+        detail = "Best compatible fixed profile selected automatically"
+    elif charger_online:
+        headline = "5 V fallback"
+        detail = "No PD contract; reconnect the USB-C cable"
+    else:
+        headline = "Not connected"
+        detail = "Connect a USB-C power source"
+
+    return {
+        "headline": headline,
+        "detail": detail,
+        "pd_type": active_choice(read_text(PD_SUPPLY, "usb_type")),
+        "contract_uv": contract_uv,
+        "contract_ua": contract_ua,
+        "battery_uv": battery_uv,
+        "battery_ua": battery_ua,
+        "capacity": read_int(BATTERY, "capacity"),
+        "battery_status": read_text(BATTERY, "status", "Unknown"),
+        "charge_target_ua": read_int(CHARGER, "constant_charge_current"),
+        "charge_voltage_uv": read_int(CHARGER, "constant_charge_voltage"),
+        "input_limit_ua": read_int(CHARGER, "input_current_limit"),
+        "input_floor_uv": read_int(CHARGER, "input_voltage_limit"),
+        "orientation": read_text(TYPEC_PORT, "orientation", "unknown"),
+        "source_profiles": format_source_profiles(fixed, programmable),
+    }
+
+
+class ChargingSettingsWindow(Adw.PreferencesWindow):
+    def __init__(self):
+        super().__init__(title="Charging")
+        self.set_search_enabled(False)
+        self.set_default_size(460, 720)
+
+        page = Adw.PreferencesPage(title="Charging", icon_name="battery-symbolic")
+        self.add(page)
+
+        now = Adw.PreferencesGroup(
+            title="Now",
+            description="The negotiated profile is available capacity. Actual wall "
+            "draw varies with the battery and system load.",
+        )
+        page.add(now)
+        self._connection = Adw.ActionRow(title="Connection")
+        self._contract = Adw.ActionRow(title="Negotiated profile")
+        self._battery = Adw.ActionRow(title="Battery")
+        self._rate = Adw.ActionRow(title="Into the battery")
+        for row in (self._connection, self._contract, self._battery, self._rate):
+            now.add(row)
+
+        policy = Adw.PreferencesGroup(
+            title="Automatic policy",
+            description="Linux selects the highest-power source profile that "
+            "matches the DC-1's safe 5/9/12 V capabilities. The 12 V ceiling "
+            "keeps every contract below the MT6375's 14.5 V protection bucket.",
+        )
+        page.add(policy)
+        self._selection = Adw.ActionRow(title="Selection")
+        self._source = Adw.ActionRow(title="Charger offers")
+        self._target = Adw.ActionRow(title="Pack-current target")
+        self._input = Adw.ActionRow(title="Input regulation")
+        for row in (self._selection, self._source, self._target, self._input):
+            policy.add(row)
+
+        safety = Adw.PreferencesGroup(
+            title="Why there is no faster switch",
+            description="3.15 A is the MT6375 register maximum and the measured "
+            "default. The separate RT9471 path remains disabled until its board "
+            "routing, current sharing, and pack-temperature protection are "
+            "measured; the pack's BQ78Z100 monitor does not currently answer.",
+        )
+        page.add(safety)
+
+        self._refresh()
+        GLib.timeout_add_seconds(1, self._tick)
+
+    def _refresh(self):
+        status = read_status()
+        self._connection.set_subtitle(
+            f"{status['headline']} · {status['detail']}"
+        )
+        if status["contract_uv"] and status["contract_ua"]:
+            contract = (
+                f"{volts(status['contract_uv'])} × {amps(status['contract_ua'])} "
+                f"· {watts(status['contract_uv'], status['contract_ua'])} available"
+            )
+        else:
+            contract = "No explicit contract"
+        self._contract.set_subtitle(contract)
+
+        capacity = f"{status['capacity']}%" if status["capacity"] else "—"
+        self._battery.set_subtitle(
+            f"{capacity} · {volts(status['battery_uv'])} · {status['battery_status']}"
+        )
+        self._rate.set_subtitle(
+            f"{amps(status['battery_ua'])} · "
+            f"{watts(status['battery_uv'], status['battery_ua'])} measured"
+        )
+        self._selection.set_subtitle(
+            "Highest-power compatible PDO · prefers higher voltage on a tie"
+        )
+        self._source.set_subtitle(status["source_profiles"])
+        self._target.set_subtitle(
+            f"{amps(status['charge_target_ua'])} · "
+            f"{volts(status['charge_voltage_uv'])} CV limit"
+        )
+        self._input.set_subtitle(
+            f"{amps(status['input_limit_ua'])} current limit · "
+            f"{volts(status['input_floor_uv'])} voltage floor"
+        )
+
+    def _tick(self):
+        self._refresh()
+        return True
+
+
+class ChargingSettings(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id="it.denv.dc1.ChargingSettings")
+        self.connect("activate", self._on_activate)
+
+    def _on_activate(self, _app):
+        window = self.get_active_window()
+        if window is None:
+            window = ChargingSettingsWindow()
+            window.set_application(self)
+        window.present()
+
+
+def main():
+    Adw.init()
+    return ChargingSettings().run(sys.argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

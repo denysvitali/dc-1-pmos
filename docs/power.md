@@ -14,6 +14,15 @@ runs CC/CV to the pack's 4.35 V limit — no userspace required. There is
 no charging LED; check the battery icon once booted, or trust that a
 dark powered-off device on a cable is charging (charging mode).
 
+Open **Settings → Charging Profile** to see the negotiated profile, the
+source's advertised fixed/PPS profiles, the programmed input and pack
+limits, and the measured current into the battery. The negotiated value is
+available capacity, not instantaneous wall draw: a meter showing
+11.6 V/1.3 A can coexist with a 12 V/3 A contract because the source supplies
+only what the tablet presently consumes. If the panel says **5 V fallback**,
+reconnect the cable; a healthy PD attach automatically selects the
+highest-power compatible fixed profile (12 V/3 A on a capable source).
+
 **Default rate:** ~2.94 A into the pack, roughly 40 %/h on the 8 Ah pack.
 This is the hardware-measured result of the 3.15 A charger target, with the
 hottest zone at 46 °C during the audit. Until the pack gauge answers, this
@@ -22,8 +31,8 @@ default cannot use live pack temperature as an independent control.
 **Owner lever — charge rate.** Set the charge-current target as root:
 
 ```sh
-# ~3 A into the pack ≈ 40 %/h (measured; stays within the 12 V/1.5 A
-# input contract — hottest zone measured 46 °C):
+# ~3 A into the pack ≈ 40 %/h (measured; stays below the 1.5 A input
+# limiter on the 12 V/3 A contract — hottest zone measured 46 °C):
 echo 3150000 > /sys/class/power_supply/mt6375-charger/constant_charge_current
 
 # back to the conservative setting:
@@ -34,6 +43,13 @@ Values are microamps. `input_current_limit` next to it caps the input
 side; a weak source simply delivers less (the charger folds back rather
 than sagging). `2000000` gives the earlier conservative ~22 %/h rate. These
 resets at boot — the default policy re-applies.
+
+There is no supported faster setting today. The MT6375 charge-current field
+tops out at 3.15 A. The RT9471 at i2c7 `0x53` is the factory secondary charge
+path, but it remains deliberately disabled: its enable line, current sharing,
+thermal behavior and interaction with the silent pack monitor have not been
+measured on mainline. Enabling two chargers blindly is not a safe performance
+toggle.
 
 ## The battery percentage
 

@@ -234,6 +234,14 @@ The fallback's software charge anchor is restored by `dc1-battery-state`
 only from a valid, single-use clean-shutdown record no more than ten minutes
 old; every other boot keeps the driver's voltage-seed fail-safe.
 
+The RT9471 is the factory secondary path in a dual-charger topology, but it
+is not a free fast-charge switch. Keep `CONFIG_CHARGER_RT9471` unset and its
+active-low GPIO151 CE parked high until a live session establishes its
+VBUS/BAT/SYS routing, factory current-sharing policy, combined thermals, and
+pack-temperature enforcement. The upstream driver's probe asserts both CE
+and `CHG_EN`; enabling it blind could parallel two nominal 3.15 A chargers
+while the BQ78Z100 protection/temperature monitor is unavailable.
+
 The sensor buses are SCP-connected but reachable from the AP when the pins are
 re-muxed and nothing drives the SCP:
 

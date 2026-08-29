@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Charging Profile
+Comment=Show the USB-PD contract and DC-1 battery charge rate
+Exec=dc1-charging-settings
+Icon=battery-symbolic
+Terminal=false
+Type=Application
+StartupNotify=true
+NoDisplay=false
+OnlyShowIn=GNOME;
+Categories=GNOME;GTK;Settings;HardwareSettings;X-GNOME-Settings-Panel;X-GNOME-PowerSettings;
+Keywords=Charging;Battery;Power;USB;USB-C;PD;Power Delivery;Profile;Control;Center;Settings;
+X-Purism-FormFactor=Workstation;Mobile;

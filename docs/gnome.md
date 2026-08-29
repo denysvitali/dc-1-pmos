@@ -113,6 +113,13 @@ as of 2026-08-19: session 999950 + shell 999948 + an uninstallable gdm
   smooth = 812 MHz; 700 MHz remains a Smooth preset. The helper persists
   `/var/lib/dc1/gpu-freq.conf`. Details in
   [hw/display.md](hw/display.md).
+- **Charging profile panel (device r91):** `dc1-charging-settings` is a
+  read-only libadwaita Preferences window in the Settings category. It keeps
+  the negotiated PD ceiling separate from actual pack current, lists the
+  source's fixed/PPS offers, shows the MT6375 input/CC/CV limits, and calls
+  out a 5 V fallback with a reconnect instruction. Contract selection stays
+  in kernel TCPM, which already chooses the highest-power compatible PDO.
+  Details in [hw/power.md](hw/power.md).
 - **120 Hz compositing (device r84):** the `1200x1600@120` mode's kernel
   vblank is 118.4 Hz with 0.31 ms of blanking, and KMS cannot rotate 90°,
   so landscape is an extra GPU blit. Window drag misses that deadline
