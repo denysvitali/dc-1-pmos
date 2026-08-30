@@ -243,6 +243,11 @@ jobs:
       # front, before the build, to the chroot user's UID.
       - name: Reclaim restored cache ownership (pre-build)
         run: |
+          # config_apk_keys is derived state, not a cache path. pmbootstrap
+          # populates it only when generating a new abuild key; on a restore,
+          # reconstruct the public half before its existence makes keygen skip.
+          sh scripts/restore-local-apk-key.sh \
+            work/postmarketos/pmbootstrap-work
           for d in work/postmarketos/pmbootstrap-work/cache_ccache* \
                    work/postmarketos/pmbootstrap-work/cache_distfiles \
                    work/postmarketos/pmbootstrap-work/cache_apk_aarch64 \
@@ -294,18 +299,15 @@ jobs:
           if ! env DC1_SOURCE_VERSION="${GITHUB_SHA:0:7}" \
               sh scripts/build-rootfs.sh work/postmarketos out 2>&1 \
               | tee build-rootfs.log; then
-            # Annotate the log region just above abuild's ">>> ERROR" marker:
-            # that is where the failing command's output lands, and it may
-            # contain no greppable error keyword at all.
+            # pmbootstrap keeps apk's decisive output in its own log and its
+            # marker wording varies. Always publish the failure tail instead
+            # of searching for one brittle marker (which hid an UNTRUSTED
+            # local-package signature on the first restored-cache run).
             pmblog=work/postmarketos/pmbootstrap-work/log.txt
-            ln=$(sudo grep -n -m1 '>>> ERROR' "$pmblog" 2>/dev/null | cut -d: -f1)
-            if [ -n "$ln" ]; then
-              sudo sed -n "$((ln > 8 ? ln - 8 : 1)),${ln}p" "$pmblog"
-            else
-              sudo tail -n 9 "$pmblog" 2>/dev/null
-            fi | while IFS= read -r l; do
+            sudo tail -n 40 "$pmblog" 2>/dev/null |
+              while IFS= read -r l; do
               printf '::error::pmblog: %s\n' "$l"
-            done
+              done
             exit 1
           fi
 

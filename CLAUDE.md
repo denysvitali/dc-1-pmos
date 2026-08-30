@@ -526,7 +526,10 @@ to publishing events; they must fail rather than publish an unsigned APK index.
 No workflow step may quietly turn a docs-only change into a skipped build. The
 cache is part of correctness: unchanged `pkgver-pkgrel` packages must remain
 byte-identical so the package and matching boot image do not drift across
-runs. Preserve the cache ownership handling and the final SHA256 check.
+runs. `config_abuild` carries the cached local signing key; on restore,
+`scripts/restore-local-apk-key.sh` must copy its public half into pmbootstrap's
+derived `config_apk_keys` before package/rootfs work begins. Preserve that
+handoff, the cache ownership handling, and the final SHA256 check.
 
 `claude-review.yml` plus `claude-review-comment.yml` give every pull request
 an automated Claude Code review. The split is a security boundary and must

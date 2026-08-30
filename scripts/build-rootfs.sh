@@ -174,17 +174,14 @@ pmb build --arch=aarch64 mutter-mobile
 distfiles="$pmb_work/cache_distfiles"
 if mkdir -p "$distfiles" 2>/dev/null && [ -w "$distfiles" ]; then
 	sh "$script_dir/prefetch-kernel-distfile.sh" "$distfiles"
+elif command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
+	# Restored cache paths are intentionally owned by pmbootstrap's UID, not
+	# the runner. Read/verify the cached distfile as root instead of downloading
+	# another 253 MiB into a staging directory on every warm build.
+	sudo -n sh "$script_dir/prefetch-kernel-distfile.sh" "$distfiles"
 else
-	stage=$(mktemp -d)
-	sh "$script_dir/prefetch-kernel-distfile.sh" "$stage"
-	if command -v sudo >/dev/null; then
-		sudo mkdir -p "$distfiles"
-		sudo cp "$stage"/* "$distfiles/"
-		rm -rf "$stage"
-	else
-		echo "cannot write kernel distfile to $distfiles" >&2
-		exit 1
-	fi
+	echo "cannot verify or update kernel distfile cache at $distfiles" >&2
+	exit 1
 fi
 
 pmb build --arch=aarch64 linux-postmarketos-mediatek-mt6789
