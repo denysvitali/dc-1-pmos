@@ -218,7 +218,11 @@ rootfs_dir="$pmb_work/chroot_rootfs_daylight-jagar"
 # the tree back out. Elevate only the export stage and return ownership of
 # the outputs to the invoking user.
 if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null; then
-	sudo sh "$script_dir/export-artifacts.sh" \
+	# sudo's default env_reset strips the explicit source identity CI passed.
+	# Preserve this one non-secret value so PROVENANCE does not fall back to a
+	# dirty worktree inference merely because tee created build-rootfs.log.
+	sudo env DC1_SOURCE_VERSION="${DC1_SOURCE_VERSION:-}" \
+		sh "$script_dir/export-artifacts.sh" \
 		"$rootfs_dir" "$pmb_work/packages" "$work_dir/SOURCES" "$output_dir"
 	sudo chown -R "$(id -u):$(id -g)" "$output_dir"
 else

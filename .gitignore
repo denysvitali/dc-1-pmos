@@ -1,5 +1,7 @@
 work/
 out/
+/build-rootfs.log
+/boot-images.log
 *.pyc
 __pycache__/
 .DS_Store

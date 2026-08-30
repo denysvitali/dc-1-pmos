@@ -186,6 +186,9 @@ grep -qF 'label=${3:-jagar-root}' "$script_dir/make-ext4-image.sh" ||
 	fail "ext4 default label drift"
 grep -qF 'export-artifacts.sh' "$script_dir/build-rootfs.sh" ||
 	fail "rootfs build no longer exports artifacts"
+grep -qF 'DC1_SOURCE_VERSION="${DC1_SOURCE_VERSION:-}"' \
+	"$script_dir/build-rootfs.sh" ||
+	fail "rootfs export loses the explicit source identity across sudo"
 grep -qF 'make-ext4-image.sh' "$script_dir/export-artifacts.sh" ||
 	fail "export no longer produces a filesystem image"
 grep -qF 'jagar-rootfs.ext4" jagar-root' "$script_dir/export-artifacts.sh" ||
