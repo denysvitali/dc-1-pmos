@@ -37,16 +37,33 @@ openssl dgst -sha1 -sign "$privkey" -out "$sig" "$index"
 
 # Build the signature tar with the same options abuild's apk_tar() uses
 # (POSIX format + a pax extended header, which apk-tools requires to find
-# the signature entry). GNU tar then pads the archive with trailing
-# zero-blocks; abuild-tar --cut strips those, leaving exactly the four
-# content blocks (pax header, pax data, file header, file data). For a
-# <= 512-byte RSA signature that is always 2048 bytes, so replicate the cut
-# with head -c. The keyname and 4096-bit key are fixed by this repo, so the
-# four-block layout is stable.
+# the signature entry). abuild-tar --cut strips GNU tar's two end markers.
+# Use a one-record blocking factor, validate those final blocks are zero, then
+# cut them dynamically; do not assume the signature payload is always four
+# blocks or tied forever to one RSA key size.
 tar --format=posix \
 	--pax-option=exthdr.name=%d/PaxHeaders/%f,atime:=0,ctime:=0 \
-	--no-recursion --null -c -C "$tmp" ".SIGN.RSA.$keyname" |
-	head -c 2048 | gzip -n -9 >"$tmp/sig.tar.gz"
+	--blocking-factor=1 --no-recursion --null -c -C "$tmp" \
+	".SIGN.RSA.$keyname" >"$tmp/sig.tar"
+sig_bytes=$(wc -c <"$tmp/sig.tar" | tr -d ' ')
+[ $((sig_bytes % 512)) -eq 0 ] || {
+	echo "sign-apkindex: signature tar is not 512-byte aligned" >&2
+	exit 1
+}
+tail_nonzero=$(tail -c 1024 "$tmp/sig.tar" | od -An -v -tu1 |
+	awk '{ for (i = 1; i <= NF; i++) if ($i != 0) n++ } END { print n + 0 }')
+[ "$tail_nonzero" -eq 0 ] || {
+	echo "sign-apkindex: signature tar lacks two zero end blocks" >&2
+	exit 1
+}
+content_blocks=$((sig_bytes / 512 - 2))
+[ "$content_blocks" -gt 0 ] || {
+	echo "sign-apkindex: empty signature tar" >&2
+	exit 1
+}
+dd if="$tmp/sig.tar" of="$tmp/sig.cut.tar" bs=512 \
+	count="$content_blocks" 2>/dev/null
+gzip -n -9 <"$tmp/sig.cut.tar" >"$tmp/sig.tar.gz"
 
 cat "$tmp/sig.tar.gz" "$index" >"$tmp/signed.tar.gz"
 mv "$tmp/signed.tar.gz" "$index"

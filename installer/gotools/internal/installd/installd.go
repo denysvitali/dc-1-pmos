@@ -51,6 +51,30 @@ const (
 	lockDir      = "/tmp/install.lock"
 )
 
+// sessionIdleTimeout bounds both silent clients and clients which stop reading
+// progress. It is an idle timeout, not a whole-transfer timeout: every socket
+// read/write refreshes the deadline, so a multi-gigabyte image can take as long
+// as it needs while a dead peer releases the single-session server promptly.
+var sessionIdleTimeout = 60 * time.Second
+
+type idleDeadlineConn struct {
+	net.Conn
+}
+
+func (c *idleDeadlineConn) Read(p []byte) (int, error) {
+	if err := c.SetReadDeadline(time.Now().Add(sessionIdleTimeout)); err != nil {
+		return 0, err
+	}
+	return c.Conn.Read(p)
+}
+
+func (c *idleDeadlineConn) Write(p []byte) (int, error) {
+	if err := c.SetWriteDeadline(time.Now().Add(sessionIdleTimeout)); err != nil {
+		return 0, err
+	}
+	return c.Conn.Write(p)
+}
+
 // Main is the `dc1-installd` applet entry point.
 func Main(args []string) int {
 	fs := flag.NewFlagSet("dc1-installd", flag.ContinueOnError)
@@ -85,6 +109,8 @@ func Main(args []string) int {
 // serve handles one session. Every reply the host sees is written here, and
 // the session always ends in exactly one OK or FAIL line.
 func serve(conn net.Conn, finalize string) {
+	conn = &idleDeadlineConn{Conn: conn}
+
 	// Progress goes to BOTH the host socket and the status file PID 1 paints.
 	// Measured on hardware 2026-08-15: without the second half the panel says
 	// "WAITING FOR HOST" for the entire multi-minute install, so the person

@@ -83,7 +83,8 @@ cp "$rootfs_dir/boot/dtbs/mediatek/mt8781-daylight-jagar.dtb" \
 # The deliverable a user can actually write to userdata. It is a plain file
 # here; writing it to a partition is a separate step done on the device by the
 # installer (see the installation documentation).
-ext4_result=$(as_root sh "$script_dir/make-ext4-image.sh" \
+ext4_result=$(as_root env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
+	sh "$script_dir/make-ext4-image.sh" \
 	"$rootfs_dir" "$output_dir/jagar-rootfs.ext4" jagar-root)
 echo "$ext4_result"
 ext4_uuid=${ext4_result##*uuid=}
@@ -142,10 +143,44 @@ for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
 		fail "package $package is not recorded in the rootfs database"
 	[ "$installed" = "$pkgver-r$pkgrel" ] ||
 		fail "rootfs holds $package $installed but the release ships $pkgver-r$pkgrel (stale package cache?)"
+	# Versions alone are insufficient for the kernel: a cache miss can relink a
+	# different Image under the same pkgver-pkgrel. That exact drift left a live
+	# device reporting parity while dc1-boot-sync correctly refused the release.
+	# Prove the APK we ship contains the byte-identical compressed vmlinuz that
+	# was installed in the rootfs and exported as the boot-image input.
+	if [ "$package" = linux-postmarketos-mediatek-mt6789 ]; then
+		apk_vmlinuz=$(mktemp)
+		trap 'rm -f "$apk_vmlinuz"' EXIT HUP INT TERM
+		tar -xOzf "$output_dir/packages/$wanted" boot/vmlinuz >"$apk_vmlinuz" 2>/dev/null ||
+			fail "cannot extract boot/vmlinuz from $wanted"
+		cmp -s "$apk_vmlinuz" "$rootfs_dir/boot/vmlinuz" ||
+			fail "$wanted contains a different vmlinuz than the installed rootfs (same-version cache drift?)"
+		rm -f "$apk_vmlinuz"
+		trap - EXIT HUP INT TERM
+	fi
 	# Space-separated: $(...) strips the trailing newline a printf-per-entry
 	# would produce, so the lines are split again where they are written.
 	package_provenance="$package_provenance package_$(echo "$package" | tr - _)=$installed"
 done
+
+# Deterministic installed-package inventory: this is the release SBOM and the
+# exact-version/checksum record needed to reproduce or audit a rootfs whose
+# upstream Alpine/postmarketOS repositories continue moving after publication.
+{
+	printf 'package\tversion\tarchitecture\tchecksum\n'
+	as_root awk '
+		function emit() {
+			if (p != "") print p "\t" v "\t" a "\t" c
+			p = v = a = c = ""
+		}
+		/^P:/ { p = substr($0, 3) }
+		/^V:/ { v = substr($0, 3) }
+		/^A:/ { a = substr($0, 3) }
+		/^C:/ { c = substr($0, 3) }
+		/^$/ { emit() }
+		END { emit() }
+	' "$installed_db" | LC_ALL=C sort
+} >"$output_dir/PACKAGES.tsv"
 
 cp "$sources_file" "$output_dir/SOURCES"
 {
@@ -164,10 +199,13 @@ cp "$sources_file" "$output_dir/SOURCES"
 	# -dirty on an unclean tree, unknown without git -- same rule as
 	# installer/build.sh, computed independently so the exporter also works
 	# when re-run against exported inputs.
-	installer_version=$(git -C "$script_dir/.." rev-parse --short HEAD 2>/dev/null || true)
-	if [ -n "$(git -C "$script_dir/.." status --porcelain 2>/dev/null)" ] &&
-		[ -n "$installer_version" ]; then
-		installer_version="${installer_version}-dirty"
+	installer_version=${DC1_SOURCE_VERSION:-}
+	if [ -z "$installer_version" ]; then
+		installer_version=$(git -C "$script_dir/.." rev-parse --short HEAD 2>/dev/null || true)
+		if [ -n "$(git -C "$script_dir/.." status --porcelain 2>/dev/null)" ] &&
+			[ -n "$installer_version" ]; then
+			installer_version="${installer_version}-dirty"
+		fi
 	fi
 	echo "installer_version=${installer_version:-unknown}"
 	echo "rootfs_label=jagar-root"

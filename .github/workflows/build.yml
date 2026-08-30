@@ -128,7 +128,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version: 1.23.9
           # mkboot has no dependencies (no go.sum); key its cache on go.mod.
           # installer/gotools now vendors golang.org/x/image (the
           # anti-aliased font), so key its cache on go.sum.
@@ -218,10 +218,10 @@ jobs:
       # brought down two builds). Persisting this key is the same model the
       # pmOS binary mirror uses. Threat check: it signs only the CI-LOCAL
       # repo; everything a device trusts is anchored on the dc1-apk key,
-      # which lives in repo secrets, never in a cache. The pmb3- prefix
+      # which lives in repo secrets, never in a cache. The pmb4- prefix
       # retires the pre-key cache generation atomically.
       - name: Restore pmbootstrap ccache, source and package caches
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             work/postmarketos/pmbootstrap-work/cache_ccache*
@@ -229,10 +229,10 @@ jobs:
             work/postmarketos/pmbootstrap-work/cache_apk_aarch64
             work/postmarketos/pmbootstrap-work/packages
             work/postmarketos/pmbootstrap-work/config_abuild
-          key: pmb3-${{ hashFiles('scripts/versions.env') }}-${{ github.run_id }}
+          key: pmb4-${{ hashFiles('scripts/versions.env') }}-${{ github.run_id }}
           restore-keys: |
-            pmb3-${{ hashFiles('scripts/versions.env') }}-
-            pmb3-
+            pmb4-${{ hashFiles('scripts/versions.env') }}-
+            pmb4-
 
       # The chroot build runs as pmbootstrap's `pmos` user, which is UID 12345
       # (pmb.config.chroot_uid_user), and pmbootstrap chowns the ccache mount to
@@ -245,6 +245,7 @@ jobs:
         run: |
           for d in work/postmarketos/pmbootstrap-work/cache_ccache* \
                    work/postmarketos/pmbootstrap-work/cache_distfiles \
+                   work/postmarketos/pmbootstrap-work/cache_apk_aarch64 \
                    work/postmarketos/pmbootstrap-work/packages \
                    work/postmarketos/pmbootstrap-work/config_abuild; do
             if [ -e "$d" ]; then
@@ -277,7 +278,7 @@ jobs:
       # (the anti-aliased font), so key its cache on go.sum.
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version: 1.23.9
           cache-dependency-path: installer/gotools/go.sum
 
       - name: Prepare pinned sources
@@ -290,7 +291,8 @@ jobs:
         # failure is diagnosable through the public checks API.
         run: |
           set -o pipefail
-          if ! sh scripts/build-rootfs.sh work/postmarketos out 2>&1 \
+          if ! env DC1_SOURCE_VERSION="${GITHUB_SHA:0:7}" \
+              sh scripts/build-rootfs.sh work/postmarketos out 2>&1 \
               | tee build-rootfs.log; then
             # Annotate the log region just above abuild's ">>> ERROR" marker:
             # that is where the failing command's output lands, and it may
@@ -307,22 +309,43 @@ jobs:
             exit 1
           fi
 
-      # Keep the cache owned by the chroot user (UID 12345) for the save. Its
-      # files are world-readable, so the runner can tar them, but chowning to
-      # the runner user here would poison the next run's restore (UID 12345
-      # would then fail to write -- see the pre-build reclaim above). Run even
-      # when the build failed so a failure never archives a mis-owned cache.
-      - name: Reclaim cache ownership for the post-job save
-        if: always()
+      # actions/cache/save runs as the runner user. config_abuild contains a
+      # mode-0600 private key, so leaving the tree owned by UID 12345 makes the
+      # post-action silently warn and save nothing; that exact failure rebuilt
+      # a different kernel under r54. Hand every cached path to the runner,
+      # prove it is archivable, then save in a normal (failure-visible) step.
+      # The next run chowns the restored tree back to UID 12345 above.
+      - name: Prepare cache ownership for explicit save
         run: |
+          runner_uid=$(id -u)
+          runner_gid=$(id -g)
+          cache_paths=()
           for d in work/postmarketos/pmbootstrap-work/cache_ccache* \
                    work/postmarketos/pmbootstrap-work/cache_distfiles \
+                   work/postmarketos/pmbootstrap-work/cache_apk_aarch64 \
                    work/postmarketos/pmbootstrap-work/packages \
                    work/postmarketos/pmbootstrap-work/config_abuild; do
             if [ -e "$d" ]; then
-              sudo chown -R 12345:12345 "$d"
+              sudo chown -R "$runner_uid:$runner_gid" "$d"
+              cache_paths+=("$d")
             fi
           done
+          ((${#cache_paths[@]} > 0)) || {
+            echo "::error::pmbootstrap produced no cache paths" >&2
+            exit 1
+          }
+          tar -cf /dev/null "${cache_paths[@]}"
+
+      - name: Save pmbootstrap ccache, source and package caches
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            work/postmarketos/pmbootstrap-work/cache_ccache*
+            work/postmarketos/pmbootstrap-work/cache_distfiles
+            work/postmarketos/pmbootstrap-work/cache_apk_aarch64
+            work/postmarketos/pmbootstrap-work/packages
+            work/postmarketos/pmbootstrap-work/config_abuild
+          key: pmb4-${{ hashFiles('scripts/versions.env') }}-${{ github.run_id }}
 
       # Root is required for mknod. BUSYBOX defaults to the pinned Alpine
       # busybox-static apk that installer/build.sh downloads itself (Ubuntu's
@@ -333,23 +356,23 @@ jobs:
       # clang/lld/dtc build the dtbswap stub + payload so both boot images
       # boot the MAINLINE device tree (issue #1: the stock tree black-screens
       # installation mode on some units, so installer-boot.img carries it too).
-      # Ubuntu's default clang is fine for the 6 KB freestanding stub -- a
-      # clang19 build of it was boot-proven on hardware 2026-08-19; the kernel
-      # itself keeps its pinned toolchain inside pmbootstrap.
+      # clang 19 built the hardware-proven stub on 2026-08-19. Pin that major
+      # explicitly instead of inheriting whichever clang Ubuntu later makes
+      # default; the kernel itself keeps clang/LLVM 20 inside pmbootstrap.
       - name: Install dtbswap stub toolchain
         timeout-minutes: 12
         run: |
           # Same mirror-weather tolerance as the verify job's apt step:
           # skip apt when everything is already on the image.
-          if command -v clang >/dev/null && command -v ld.lld >/dev/null \
-             && command -v llvm-objcopy >/dev/null && command -v dtc >/dev/null \
+          if command -v clang-19 >/dev/null && command -v ld.lld-19 >/dev/null \
+             && command -v llvm-objcopy-19 >/dev/null && command -v dtc >/dev/null \
              && command -v python3 >/dev/null; then
             echo "stub toolchain already present; skipping apt"
           else
             for attempt in 1 2; do
               timeout 300 sudo apt-get update && \
               timeout 300 sudo apt-get install -y --no-install-recommends \
-                clang lld llvm device-tree-compiler python3 && break
+                clang-19 lld-19 llvm-19 device-tree-compiler python3 && break
               echo "apt attempt $attempt failed or hung; retrying" >&2
               [ "$attempt" = 2 ] && exit 1
               sleep 10
@@ -368,15 +391,17 @@ jobs:
           set -o pipefail
           if [ -n "$moddir" ]; then
             echo "staging kernel modules from $moddir"
-            sudo env KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
+            sudo env DC1_SOURCE_VERSION="${GITHUB_SHA:0:7}" \
+              KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
               KERNEL_DTB="$GITHUB_WORKSPACE/out/boot/mt8781-daylight-jagar.dtb" \
-              DTBSWAP_LLVM=/usr/bin/ DTBSWAP_LLD=/usr/bin/ld.lld \
+              DTBSWAP_LLVM=/usr/lib/llvm-19/bin/ DTBSWAP_LLD=/usr/bin/ld.lld-19 \
               MODDIR="$moddir" sh installer/build.sh 2>&1 | tee boot-images.log
           else
             echo "no kernel modules directory found; building without MODDIR"
-            sudo env KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
+            sudo env DC1_SOURCE_VERSION="${GITHUB_SHA:0:7}" \
+              KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
               KERNEL_DTB="$GITHUB_WORKSPACE/out/boot/mt8781-daylight-jagar.dtb" \
-              DTBSWAP_LLVM=/usr/bin/ DTBSWAP_LLD=/usr/bin/ld.lld \
+              DTBSWAP_LLVM=/usr/lib/llvm-19/bin/ DTBSWAP_LLD=/usr/bin/ld.lld-19 \
               sh installer/build.sh 2>&1 | tee boot-images.log
           fi
           # The release must never silently regress to a stock-DT image:
@@ -397,6 +422,13 @@ jobs:
               print(f"{name} is a dtbswap payload: dtb {dlen}B @ {doff}, kernel {klen}B @ {koff}")
           EOF
 
+          kernel_apk=$(find out/packages -type f \
+            -name 'linux-postmarketos-mediatek-mt6789-*.apk' -print -quit)
+          test -n "$kernel_apk"
+          python3 scripts/verify-kernel-artifacts.py \
+            "$kernel_apk" out/boot/Image.gz \
+            installer/out/installer-boot.img installer/out/jagar-boot.img
+
       - name: Upload boot-image build log on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -407,8 +439,8 @@ jobs:
 
       # One directory holding exactly what the README promises users, with a
       # single regenerated SHA256SUMS: the exporter's manifest predates the
-      # boot images, so it cannot cover them. PROVENANCE is shipped verbatim
-      # (hardware_verified=false stays untouched).
+      # boot images, so it cannot cover them. Convert its rootfs-only scope to
+      # release-level provenance while preserving hardware_verified=false.
       - name: Assemble release directory
         run: |
           mkdir release
@@ -422,7 +454,17 @@ jobs:
           # release's SHA256SUMS at run time).
           cp installer/host/dc1-repair-apk.sh release/
           cp pmaports/device/testing/device-daylight-jagar/dc1-apk.rsa.pub release/
-          cp out/PROVENANCE out/SOURCES out/FILES.tsv release/
+          cp out/PROVENANCE out/SOURCES out/FILES.tsv out/PACKAGES.tsv release/
+          sed -i \
+            -e 's/^flash_method=none$/flash_method=dc1-installer/' \
+            -e 's/^boot_image_included=false$/boot_image_included=true/' \
+            -e 's/^deployable=rootfs-image-only$/deployable=complete-installer-release/' \
+            release/PROVENANCE
+          printf 'release_commit=%s\n' "$GITHUB_SHA" >> release/PROVENANCE
+          grep -qx 'flash_method=dc1-installer' release/PROVENANCE
+          grep -qx 'boot_image_included=true' release/PROVENANCE
+          grep -qx 'deployable=complete-installer-release' release/PROVENANCE
+          grep -qx "installer_version=${GITHUB_SHA:0:7}" release/PROVENANCE
           grep -qx 'hardware_verified=false' release/PROVENANCE
 
           # No jagar-vendor-boot.img on purpose. LK builds the kernel's tree
@@ -435,6 +477,21 @@ jobs:
           mv SHA256SUMS.tmp release/SHA256SUMS
           (cd release && sha256sum --check --strict SHA256SUMS)
           ls -l release/
+
+      # An APK filename encodes pkgver-pkgrel and is immutable. Compare against
+      # the current rolling release before signing/publishing: changed bytes
+      # under an existing filename mean the recipe needed a pkgrel bump.
+      - name: Reject cross-release same-version APK drift
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            sh scripts/check-release-version-identity.sh release \
+              https://github.com/denysvitali/dc-1-pmos/releases/download/latest/SHA256SUMS
+          else
+            echo "no existing rolling release; cross-release identity check skipped"
+          fi
 
       # Build and sign the apk repository index for the published .apk files,
       # so a running device can `apk upgrade` its device/kernel packages over
@@ -508,8 +565,9 @@ jobs:
             echo '```'
           } > notes.md
 
-      # Rolling prerelease: recreate `latest` so no stale asset from a
-      # previous build can outlive its SHA256SUMS.
+      # Rolling prerelease: preserve the existing release until replacement
+      # assets are ready. Upload SHA256SUMS last, so a partial upload can only
+      # fail verification; it can never bless a mixed old/new asset set.
       - name: Publish rolling prerelease
         if: >-
           (github.event_name == 'push' ||
@@ -518,13 +576,33 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete latest --cleanup-tag --yes || true
-          gh release create latest \
-            --prerelease \
-            --target "$GITHUB_SHA" \
-            --title "Rolling build (${GITHUB_SHA:0:12})" \
-            --notes-file notes.md \
-            release/*
+          if gh release view latest >/dev/null 2>&1; then
+            gh release edit latest \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "Rolling build (${GITHUB_SHA:0:12})" \
+              --notes-file notes.md
+          else
+            gh release create latest \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "Rolling build (${GITHUB_SHA:0:12})" \
+              --notes-file notes.md
+          fi
+          for asset in release/*; do
+            [ "${asset##*/}" = SHA256SUMS ] && continue
+            gh release upload latest "$asset" --clobber
+          done
+          # Version bumps change APK filenames. Remove assets absent from the
+          # new contract only after all replacements exist; the old manifest
+          # remains published until the final upload below, so any interrupted
+          # transition is detectably incomplete rather than falsely valid.
+          gh release view latest --json assets --jq '.assets[].name' |
+            while IFS= read -r old_asset; do
+              [ -e "release/$old_asset" ] && continue
+              gh release delete-asset latest "$old_asset" --yes
+            done
+          gh release upload latest release/SHA256SUMS --clobber
 
       - name: Publish versioned release
         if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''

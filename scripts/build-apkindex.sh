@@ -75,7 +75,10 @@ apk_url="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/$apk_pkg"
 apk_sha256="07476bd1231f7596b186a112ecd6e68a595e27814cf8ba2b0fb994608e3e6d41"
 curl -fsSL --retry 3 -o "$work/$apk_pkg" "$apk_url"
 printf '%s  %s\n' "$apk_sha256" "$work/$apk_pkg" | sha256sum -c - >/dev/null
-tar -xzf "$work/$apk_pkg" -C "$work" 2>/dev/null || true
+tar -xzf "$work/$apk_pkg" -C "$work" 2>/dev/null || {
+	echo "build-apkindex: cannot extract verified $apk_pkg" >&2
+	exit 1
+}
 APK="$work/sbin/apk.static"
 [ -x "$APK" ] || { echo "build-apkindex: failed to extract apk.static" >&2; exit 1; }
 
@@ -90,4 +93,28 @@ APK="$work/sbin/apk.static"
 
 sh "$script_dir/sign-apkindex.sh" "$privkey" "$pubkey" "$release_dir/APKINDEX.tar.gz"
 
-echo "built and signed $release_dir/APKINDEX.tar.gz with $keyname.rsa.pub"
+# Acceptance gate from the consumer's side. A correct-looking tar/signature is
+# not enough: initialize an isolated apk database with only the committed key,
+# point it at the exact flat index-file URL shape devices use, and require apk
+# itself to accept and parse the signed index. This catches signing-format,
+# key-name, and tar-cut regressions before publication.
+verify_root="$work/verify-root"
+mkdir -p "$verify_root/etc/apk/keys" "$verify_root/lib/apk" \
+	"$verify_root/var/lib/apk"
+cp "$pubkey" "$verify_root/etc/apk/keys/$keyname.rsa.pub"
+: >"$verify_root/empty-repositories"
+"$APK" --root "$verify_root" \
+	--keys-dir "$verify_root/etc/apk/keys" \
+	--repositories-file "$verify_root/empty-repositories" \
+	--no-cache add --initdb --usermode >/dev/null
+printf 'file://%s/APKINDEX.tar.gz\n' "$release_dir" \
+	>"$verify_root/repositories"
+"$APK" --root "$verify_root" \
+	--keys-dir "$verify_root/etc/apk/keys" \
+	--repositories-file "$verify_root/repositories" \
+	--no-cache update >/dev/null || {
+	echo "build-apkindex: apk rejected the signed APKINDEX with the committed key" >&2
+	exit 1
+}
+
+echo "built, signed, and apk-verified $release_dir/APKINDEX.tar.gz with $keyname.rsa.pub"

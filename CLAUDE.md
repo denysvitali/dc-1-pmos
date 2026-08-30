@@ -403,7 +403,8 @@ not a user secret; the installer provisions the real account and password.
 
 The exporter produces a tar archive, a `jagar-root` ext4 image compressed as
 zstd, exact-version copies of all three APKs, the kernel and DTB inputs under
-`boot/`, `FILES.tsv`, `SOURCES`, `PROVENANCE`, and `SHA256SUMS`. Its
+`boot/`, `FILES.tsv`, the installed package/checksum inventory `PACKAGES.tsv`,
+`SOURCES`, `PROVENANCE`, and `SHA256SUMS`. Its
 `PROVENANCE` intentionally records `flash_method=none`,
 `boot_image_included=false`, `deployable=rootfs-image-only`, and
 `hardware_verified=false`; the CI release assembly adds the boot images later.
@@ -414,8 +415,15 @@ The final published release directory contains:
 - `jagar-rootfs.ext4.zst` and `jagar-rootfs.tar.gz`;
 - the three exact-version APKs;
 - `dc1-install.sh`, `dc1-repair-apk.sh`, `dc1-apk.rsa.pub`,
-  `PROVENANCE`, `SOURCES`, `FILES.tsv`,
+  `PROVENANCE`, `SOURCES`, `FILES.tsv`, `PACKAGES.tsv`,
   signed `APKINDEX.tar.gz`, and one final `SHA256SUMS` covering all files.
+
+Release assembly changes the exporter's rootfs-only provenance to
+`flash_method=dc1-installer`, `boot_image_included=true`, and
+`deployable=complete-installer-release`, and records the full release commit.
+It must prove that the kernel APK, rootfs `Image.gz`, and both dtbswap boot
+images contain the same kernel. A rolling release may not replace the bytes of
+an existing APK filename; bump that recipe's `pkgrel` instead.
 
 Do not claim that a green CI run proves booting. Releases deliberately say
 `hardware_verified=false` until a separate hardware test has been performed.

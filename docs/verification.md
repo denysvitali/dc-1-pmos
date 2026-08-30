@@ -77,6 +77,7 @@ record; each open check and the claim it gates are called out explicitly here.
 | Next boot: confirm initramfs binds the observed UDC without failed attempts | Clean system-init USB gadget handoff |
 | Power off, plug USB, confirm the ring shows `BOOT_REASON: 1` (optionally pin CHRIN via debugfs regmap) | Charging mode's authoritative detection — the one calibration owed by the shipped feature |
 | Short/long power-key feel, lock/wake, and menu exercise | Phone-like power-key behavior rather than kernel-event presence alone |
+| GNOME logout → Wayland greeter/OSK → login | Session lifecycle and extension/orientation recovery after compositor replacement |
 | USB host reaches `ssh <user>@172.16.42.1` over ECM | Host-side USB Ethernet/SSH claim |
 | Repeated physical reconnect of an ordinary USB 2.0 hub in host mode; gadget return | USB host: downstream enumeration after the r52 `HCD_DMA` fix; the Lenovo 40B0 dock limitation stays separate |
 | Quick Action / Back Button key-event confirmation | Shipped F11/F12-to-Launch1/Launch2 remap |

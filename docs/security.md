@@ -44,11 +44,19 @@ Caveats worth knowing:
 | --- | --- | --- |
 | sshd, TCP 22 | `172.16.42.1` (usb0) only | root, **blank password** |
 | Root shell, TCP 4444 | `172.16.42.1` only | none |
+| Installer protocol, TCP 5555 | `172.16.42.1` only | **None**; stream size and SHA-256 are integrity checks, not authentication |
 | sh on ttyGS1/ttyACM0/ttyS0/tty1 | USB serial / console | none |
 
 Installer mode is a transient recovery environment on a USB link-local
-address; it never joins Wi-Fi before credentials are given, and the
-installed system it writes contains none of these credentials.
+address. The touch path joins Wi-Fi after credentials are given, but all
+three TCP listeners remain bound to `172.16.42.1`, never a wildcard or the
+wireless address. The installer daemon waits for that address before it
+starts and closes a session after 60 seconds without socket progress. TCP
+5555 is deliberately unauthenticated: anyone with physical USB data access
+while installation mode is running can request an install and erase
+`userdata`. The protocol verifies exact bytes and scrubs a failed image; it
+does not identify the host. The installed system contains none of the
+installer credentials.
 
 ## What is *not* exposed
 

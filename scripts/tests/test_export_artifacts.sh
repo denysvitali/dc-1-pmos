@@ -33,10 +33,10 @@ printf '7.2.0-rc5-postmarketos-mediatek-mt6789\n' \
 write_installed_db() {
 	mkdir -p "$1/lib/apk/db"
 	: >"$1/lib/apk/db/installed"
-	[ "$2" = - ] || printf 'P:mutter-mobile\nV:%s\n\n' "$2" >>"$1/lib/apk/db/installed"
-	[ "$3" = - ] || printf 'P:linux-postmarketos-mediatek-mt6789\nV:%s\n\n' "$3" \
+	[ "$2" = - ] || printf 'P:mutter-mobile\nV:%s\nA:aarch64\nC:Q1-mutter\n\n' "$2" >>"$1/lib/apk/db/installed"
+	[ "$3" = - ] || printf 'P:linux-postmarketos-mediatek-mt6789\nV:%s\nA:aarch64\nC:Q1-kernel\n\n' "$3" \
 		>>"$1/lib/apk/db/installed"
-	[ "$4" = - ] || printf 'P:device-daylight-jagar\nV:%s\n\n' "$4" \
+	[ "$4" = - ] || printf 'P:device-daylight-jagar\nV:%s\nA:aarch64\nC:Q1-device\n\n' "$4" \
 		>>"$1/lib/apk/db/installed"
 }
 
@@ -63,7 +63,9 @@ write_installed_db "$root" \
 kernel_apk="linux-postmarketos-mediatek-mt6789-$kernel_ver-r$kernel_rel.apk"
 device_apk="device-daylight-jagar-$device_ver-r$device_rel.apk"
 mutter_apk="mutter-mobile-$mutter_ver-r$mutter_rel.apk"
-printf 'fake\n' >"$packages/$kernel_apk"
+mkdir -p "$tmp/kernel-apk/boot"
+cp "$root/boot/vmlinuz" "$tmp/kernel-apk/boot/vmlinuz"
+tar -czf "$packages/$kernel_apk" -C "$tmp/kernel-apk" boot/vmlinuz
 printf 'fake\n' >"$packages/$device_apk"
 printf 'fake\n' >"$packages/$mutter_apk"
 printf 'stale\n' >"$packages/linux-postmarketos-mediatek-mt6789-0.1_git1-r0.apk"
@@ -74,7 +76,7 @@ mkdir "$out"
 PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$root" "$tmp/packages" "$tmp/SOURCES" \
 	"$out" >"$tmp/log" 2>&1 || { cat "$tmp/log" >&2; fail "export refused a valid tree"; }
 
-for f in jagar-rootfs.tar.gz jagar-rootfs.ext4.zst FILES.tsv SOURCES \
+for f in jagar-rootfs.tar.gz jagar-rootfs.ext4.zst FILES.tsv PACKAGES.tsv SOURCES \
 	PROVENANCE SHA256SUMS boot/Image.gz \
 	boot/mt8781-daylight-jagar.dtb \
 	"packages/$kernel_apk" "packages/$device_apk" "packages/$mutter_apk"; do
@@ -100,6 +102,11 @@ for line in flash_method=none boot_image_included=false \
 done
 grep -qE '^rootfs_uuid=[0-9a-f]{8}-' "$out/PROVENANCE" ||
 	fail "PROVENANCE lacks a filesystem UUID"
+awk -F '\t' -v version="$kernel_ver-r$kernel_rel" '
+	$1 == "linux-postmarketos-mediatek-mt6789" &&
+	$2 == version && $3 == "aarch64" && $4 == "Q1-kernel" { found = 1 }
+	END { exit !found }
+' "$out/PACKAGES.tsv" || fail "PACKAGES.tsv lacks the exact kernel inventory"
 
 # Gate A refusals: an installed database that disagrees with the shipped
 # packages, or that lost a package entirely, must stop the export.
@@ -127,6 +134,21 @@ if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$root" "$tmp/packages" \
 fi
 write_installed_db "$root" \
 	"$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel"
+
+# Content Gate A: a same-version kernel APK containing different bytes must be
+# rejected even though its filename and the installed package database agree.
+cp -a "$tmp/packages" "$tmp/packages-kernel-drift"
+mkdir -p "$tmp/kernel-apk-drift/boot"
+printf 'different synthetic kernel\n' | gzip -n \
+	>"$tmp/kernel-apk-drift/boot/vmlinuz"
+tar -czf "$tmp/packages-kernel-drift/aarch64/$kernel_apk" \
+	-C "$tmp/kernel-apk-drift" boot/vmlinuz
+mkdir "$tmp/out-kernel-drift"
+if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$root" \
+	"$tmp/packages-kernel-drift" "$tmp/SOURCES" \
+	"$tmp/out-kernel-drift" >/dev/null 2>&1; then
+	fail "Gate A accepted a same-version kernel APK with different content"
+fi
 
 # Refusals: a non-empty output directory, a kernel that is not a kernel, and a
 # missing device package must each stop the export rather than publish.

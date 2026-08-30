@@ -91,6 +91,23 @@ after ~10 s. The event path is proven by the working menu grab; what
 needs hands is only whether the feel/timing matches a phone. Details:
 [hw/input.md](hw/input.md).
 
+### Quick Action / Back Button — physical key confirmation (needs hands)
+
+Press each spare side button once while watching `wev` or `evtest`. Quick
+Action must arrive as `XF86Launch1`/`KEY_PROG1`, and Back Button as
+`XF86Launch2`/`KEY_PROG2`; then confirm the shipped screenshot and overview
+shortcuts fire once each. This closes the last yellow portion of the Buttons
+row. Details: [hw/input.md](hw/input.md).
+
+### GNOME session lifecycle — logout and greeter (needs hands)
+
+Log out of the owner session, confirm gdm's Wayland greeter appears with its
+on-screen keyboard, log back in, and confirm the three DC-1 shell extensions
+and orientation bridge recover after the compositor replacement. This is
+separate from autologin: the greeter path was once observed aborting during
+the GNOME migration and has not been exercised on the converged GNOME-50
+stack. Run only with a working USB recovery path. Details: [gnome.md](gnome.md).
+
 ### Bluetooth — one session (needs a boot of device ≥ r65's boot image + a peer)
 
 After a boot whose initramfs stages `BT_RAM_CODE_MT7902_1_1_hdr.bin`:
@@ -109,6 +126,14 @@ peer, stream A2DP, and close the row. Details:
 Plug a USB host into the port; `usb0` should carrier-up. From the host:
 `ssh <user>@172.16.42.1` (password set at install). That single command
 closes the row. Details: [hw/usb.md](hw/usb.md).
+
+### System initramfs — clean UDC bind (needs the next ordinary boot)
+
+On the next normal boot, inspect the initramfs log and require the first bind
+to use the hardware-observed `musb-hdrc.4.auto` UDC, with no earlier failed
+candidate binds and no final `UDC bind failed`. The currently running system
+predates that candidate-order fix; checking files on disk cannot close a boot
+handoff claim. Details: [hw/usb.md](hw/usb.md).
 
 ### USB host — downstream peripheral and gadget return (needs a USB 2.0 hub and a PC)
 
@@ -149,11 +174,14 @@ second opinion. Until this session happens, the feature stays
    delivery of the GNOME shim set (the shims are verified, their
    delivery is not — [gnome.md](gnome.md)), and the full release
    artifact chain as published.
-2. After that, a release may record `hardware_verified=true` **for the
+2. Close or explicitly scope every Tier 1 hardware row against the same
+   release. A successful install alone does not prove its USB host return,
+   Bluetooth peer, physical controls, greeter, or charging-boot calibration.
+3. After that, a release may record `hardware_verified=true` **for the
    artifact set actually booted** (kernel pkgrel, device pkgrel, boot
    image hash — see `PROVENANCE`), with the
    [verification.md](verification.md) ledger as the fine print.
-3. The README hardware table reaches all ✅ except deliberate,
+4. The README hardware table reaches all ✅ except deliberate,
    documented limits (suspend; ALS) — or those close too (see the
    feature track).
 
@@ -193,7 +221,7 @@ landed there — but it blocks promotion beyond testing and inflates
 review surface.
 
 **Blocking, evidence:** releases honestly say `hardware_verified=false`
-until tier 1 closes. With a single public unit, the mitigation for
+until tiers 1 and 2 close for one exact published artifact set. With a single public unit, the mitigation for
 reviewer skepticism is measurement depth: README.md (plus the
 docs/hw/ records) should travel with any MR as the wiki page's backbone.
 

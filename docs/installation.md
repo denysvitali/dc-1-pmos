@@ -155,9 +155,10 @@ from a computer* — the advanced path below — and *Reboot to fastboot*.)
 - **Account.** Set up now: choose a **username**, a **password** (entered
   twice), a **hostname**, and a **timezone** (a short list of common zones,
   plus *Type another* for anything else). The password is hashed on the device
-  before it is stored; the cleartext is never written anywhere. The installer
-  also offers a *set up later* option that skips account setup; setting
-  everything up now is the recommended path.
+  before it is stored; the cleartext is never written anywhere. Account setup
+  is mandatory on the touch path: there is no installed-system onboarding,
+  and skipping it would leave the known build-time placeholder account on a
+  network-connected device.
 - **Install now.** Tap **Install now** (it warns that this erases the Linux
   data partition). The device downloads the release over Wi-Fi, verifies each
   file, writes the rootfs, grows it, applies your answers, writes the boot
@@ -225,7 +226,8 @@ The script:
 - waits for the installer's USB network interface (fixed host-side MAC
   `02:1a:11:00:00:01`), assigns `172.16.42.2/24`, and waits for the device
   at `172.16.42.1`. The device's USB listener runs from boot; nothing has
-  to be selected on the panel;
+  to be selected on the panel. It binds only that USB address, never Wi-Fi,
+  and drops a session after 60 seconds without socket progress;
 - decompresses the rootfs, hashes it, and streams it with the answers to
   the device on TCP port 5555, fail-closed: a short or mismatched stream is
   scrubbed rather than left mountable;
@@ -238,7 +240,9 @@ If the device is already in installation mode, run the script without
 reboot`. Other options:
 `--answers FILE` supplies pre-made answers non-interactively;
 `--skip-provision` installs with **no** answers at all — the image is written
-but not provisioned;
+but not provisioned. This is a recovery/development option, not onboarding:
+the installed system auto-logs in as its known build-time placeholder account
+and must be provisioned manually before any network is enabled;
 `--device-ip` / `--host-ip` override the defaults. See the header comment
 of `installer/host/dc1-install.sh` for the full usage.
 

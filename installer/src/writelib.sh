@@ -234,14 +234,13 @@ wr_finalize() {
 	# the "not yet resized" default.
 	WR_RESIZE_NOTE="NOT-RESIZED"
 
-	# Provisioning is SKIPPED for an unprovisioned install: the rootfs is
-	# written and resized, but no user/hostname/timezone/Wi-Fi is applied and
-	# the idempotence marker is left unset. On first boot the installed
-	# system's own onboarding runs and provisions itself. This is the
-	# "flash and interact with the touchscreen immediately" flow; the classic
-	# provisioned install (answers applied here) is still the default.
+	# Provisioning is skipped only for the host tool's explicit recovery option.
+	# The rootfs is written and resized, but no user/hostname/timezone/Wi-Fi is
+	# applied and the idempotence marker is left unset. There is no first-boot
+	# onboarding: the result auto-logs in as the build-time placeholder account
+	# and must be provisioned manually before it is exposed to a network.
 	if [ -n "${DC1_SKIP_PROVISION:-}" ]; then
-		say "SKIPPING PROVISIONING (unprovisioned install: onboard on first boot)"
+		say "SKIPPING PROVISIONING (recovery-only placeholder account)"
 	else
 		say "PROVISIONING"
 		if ! /etc/installer/provision.sh /mnt/root "$wr_answers"; then

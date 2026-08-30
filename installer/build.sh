@@ -36,9 +36,8 @@
 #     UNI commands -- a same-named file with the wrong hash FAILS the build.
 #   * userland beyond busybox (curl, zstd, wpa_supplicant + libraries, the
 #     musl loader) is extracted from Alpine edge apks pinned by exact
-#     version below. These are public binaries fetched from the official
-#     mirror; when Alpine bumps a version the URL 404s and the build fails
-#     closed -- bump the pin deliberately.
+#     version and SHA-256 below. These are public binaries fetched from the
+#     official mirror; a replaced file under the same version fails closed.
 #
 # Facts this build depends on (measured during bring-up; see also the
 # comments in src/init.c):
@@ -61,6 +60,7 @@ CC=${CC:-gcc}
 STRIP=${STRIP:-strip}
 MODDIR=${MODDIR:-}
 KERNEL_IMAGE=${KERNEL_IMAGE:-}
+. "$HERE/../scripts/versions.env"
 
 fatal() {
 	echo "FATAL: $*" >&2
@@ -103,10 +103,10 @@ REGDB_SHA256=2fb33ca0074db573e05ef7dd50bb45b63c0ff98b7e852e1105ebad536fae8e6b
 REGDB_SIG_SIZE=1085
 REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e919179
 
-# Alpine edge/main aarch64 packages, pinned by exact version (resolved
-# 2026-08-28). The mirror serves exactly one file per version, so a version
-# pin IS the content pin for build reproducibility purposes; when edge moves
-# on, the URL 404s and the build fails closed.
+# Alpine edge/main aarch64 packages, pinned by exact version AND content hash
+# (resolved 2026-08-30). A filename is not a content pin: mirrors may replace
+# bytes under one version, and dl/ is a persistent cache. Every cached or newly
+# downloaded APK is therefore verified before extraction.
 ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64"
 ALPINE_APKS="
 busybox-static-1.38.0-r4
@@ -142,6 +142,52 @@ libblkid-2.42.2-r1
 libuuid-2.42.2-r1
 libeconf-0.8.4-r0
 "
+ALPINE_APK_SHA256S="
+652bfd6acbc073a6a6ae9defe6e490fc80bcd107a820ee40db75aefb98439cb6 busybox-static-1.38.0-r4
+c6e74d765f7029fdc4389340181616eb834a6e692b16144c0ca8f8d0662578b3 musl-1.2.6-r2
+e1f53173f2ee16013e8b88cea2f57e6c6c9e35b9ae02dd5cc36802f9ce7998dc curl-8.21.0-r0
+44c388db3ab087d81b093dcab9dff6444d8aade5f9210bc7c0bc3270f6bd037a libcurl-8.21.0-r0
+b6263f8453b37537725a17bdfdcecdf7f6cd016b3421d3238e36f1005776e332 ca-certificates-bundle-20260611-r0
+1d355054e19b7dd843d225c878a8e92b205270f4f7c89fb218151d21c9ae87e0 brotli-libs-1.2.0-r1
+b16ca578a8718851e2d3068120c0e60753a66f2df1fe44c530198b3ef5882b67 c-ares-1.34.8-r0
+0b101a0db4509872143cc46f9bf7d27f1a484c7f935f31e957630d20026958cd libcrypto3-3.5.7-r0
+1269473ad8e7c09f00c164efb761840eaef348b4b3f39f242f6cd4155b049086 libssl3-3.5.7-r0
+3c6f9af20e672e880e2d719445750ad5ba41dceb53158fef9f256f17dc828f09 libidn2-2.3.8-r0
+2c2a871d7cf19eae35e3a6a57d74fd194bd3d68742d78d7b54b698f62fcdde0e libunistring-1.4.2-r0
+a552fb542888b300e353c960be884d448e789e8fb96be5e12873f0102540c363 nghttp2-libs-1.70.0-r0
+6758fc2b54987b260855e95ede93e7a5aefdf5955a5915aba25ea172fbc301ca libpsl-0.21.5-r3
+1d354ed1ef4e7bd9f6459b56a5e0d5c81ec78788d165b6a459f0b41ff3f4c037 zlib-1.3.2-r0
+5ddea5d959e1ec4464042fa6c58bf10cfaf9212d634a7540d7c4f96251ccbd1d zstd-1.5.7-r2
+67f0803cc07bad0dd866d21fdaca1fa742b541a4e5e96e0159bd8b0054d348ac zstd-libs-1.5.7-r2
+23653103b2adf85dab73e4e35047f64b8671cd654e2d0291f44bec549084afd1 libgcc-15.2.0-r9
+36e8a2cee1ee14df5180c1f5737f0ffb59004ef92dd4f0bedff425968c4855ae libstdc++-15.2.0-r9
+7060615b397fd9ddca3b430fe98b6dd50494e09a6d7275a8fd0b255c0cd04a3e wpa_supplicant-2.11-r4
+97b0eb3ddbae79c151320f0c48762ffc5ef675379bf61363a34a373c354ad774 dbus-libs-1.16.2-r2
+49d92bf6e6c55da94fdd0dde05a66af761258458e6db3c7b87d773c4517a50e1 libnl3-3.11.0-r0
+a5cd0931a100efd4eeedb1ab54443f67fdb7341060463e64017d0de6986b54fd pcsc-lite-libs-2.5.1-r0
+445c25a5cbd99ce1881df61fd1a191705e937e0c6e9963cbb8b04f2acf3541ac dropbear-2026.94-r0
+230e4a1749df6ece26852f552e84789fac750eef613e6f9cca0c5aedcd75514a utmps-libs-0.1.3.4-r0
+f14960b7a1d40c20d6c045874682f73c0aa4e8f36bae11583d3b860fb10b6764 skalibs-libs-2.15.1.0-r0
+7071d075262b1fdd3996e86c7955f219e00ce55e0774e54a62566c2bd11c493f e2fsprogs-1.47.4-r0
+44096fa251d7cf4a5d8c6c1ffb4014e28fc63ccd4e02534d0e2908fc5e7bc850 e2fsprogs-extra-1.47.4-r0
+476555b7a8178a8acf7cd94e0b3d10deb12ac236b9e78e04fc1648f0a29e3ea5 e2fsprogs-libs-1.47.4-r0
+b8d23585a851bfc732cfb39638b5d92c88a309ba1eb52243796c69c18a978b10 libcom_err-1.47.4-r0
+33f45bb795525b207a6786c85cc8a9d6211f3b854b285d7e3fb7a0b7b8cde7dc libblkid-2.42.2-r1
+fe30d437021b58332454aa0a066fef98c90388717d17851aaaa3c9c9fdab7e67 libuuid-2.42.2-r1
+dd863710179743e49a6f2d446576aec31dbc5ab61f88da254e054f530b99cdb1 libeconf-0.8.4-r0
+"
+
+set -- $ALPINE_APKS
+alpine_apk_count=$#
+alpine_pin_count=$(printf '%s\n' "$ALPINE_APK_SHA256S" |
+	awk 'NF == 2 { n++ } END { print n + 0 }')
+[ "$alpine_pin_count" -eq "$alpine_apk_count" ] ||
+	fatal "Alpine package/pin count mismatch ($alpine_apk_count packages, $alpine_pin_count pins)"
+printf '%s\n' "$ALPINE_APK_SHA256S" | awk '
+	NF == 0 { next }
+	NF != 2 || length($1) != 64 || $1 ~ /[^0-9a-f]/ { exit 1 }
+	seen[$2]++ { exit 1 }
+' || fatal "malformed or duplicate Alpine package SHA-256 pin"
 
 verify_blob() {
 	vb_label=$1 vb_path=$2 vb_size=$3 vb_sha=$4
@@ -217,11 +263,19 @@ regdb_magic=$(od -An -tx1 -N4 "$DL/firmware/regulatory.db" | tr -d ' \n')
 # checked to exist afterwards, so a bad extraction fails closed.
 for pkg in $ALPINE_APKS; do
 	fetch "$ALPINE_MIRROR/$pkg.apk" "$DL/apk/$pkg.apk"
+	want=$(printf '%s\n' "$ALPINE_APK_SHA256S" |
+		awk -v pkg="$pkg" '$2 == pkg { print $1; exit }')
+	[ -n "$want" ] || fatal "no SHA-256 pin for Alpine package $pkg"
+	got=$(sha256sum "$DL/apk/$pkg.apk" | cut -d' ' -f1)
+	[ "$got" = "$want" ] ||
+		fatal "Alpine package $pkg has SHA-256 $got, expected $want"
+	echo "  verified Alpine package $pkg"
 done
 rm -rf "$DL/apkroot"
 mkdir -p "$DL/apkroot"
 for pkg in $ALPINE_APKS; do
-	tar -xzf "$DL/apk/$pkg.apk" -C "$DL/apkroot" 2>/dev/null || true
+	tar -xzf "$DL/apk/$pkg.apk" -C "$DL/apkroot" 2>/dev/null ||
+		fatal "cannot extract verified Alpine package $pkg"
 done
 rm -rf "$DL/apkroot/.SIGN"* 2>/dev/null || true
 
@@ -288,10 +342,13 @@ GOTOOLS_SRC="$HERE/gotools"
 # `dc1-debug version` and the on-screen debug report show, so a device can
 # answer "what is running on me". Short SHA, -dirty on an unclean tree,
 # "unknown" when git is not there (tarball builds).
-DC1_VER=$(git -C "$HERE/.." rev-parse --short HEAD 2>/dev/null || true)
-[ -n "$DC1_VER" ] || DC1_VER=unknown
-if [ -n "$(git -C "$HERE/.." status --porcelain 2>/dev/null)" ]; then
-	DC1_VER="${DC1_VER}-dirty"
+DC1_VER=${DC1_SOURCE_VERSION:-}
+if [ -z "$DC1_VER" ]; then
+	DC1_VER=$(git -C "$HERE/.." rev-parse --short HEAD 2>/dev/null || true)
+	[ -n "$DC1_VER" ] || DC1_VER=unknown
+	if [ -n "$(git -C "$HERE/.." status --porcelain 2>/dev/null)" ]; then
+		DC1_VER="${DC1_VER}-dirty"
+	fi
 fi
 
 ( cd "$GOTOOLS_SRC" && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
@@ -339,7 +396,6 @@ ln -sf dc1tools "$d/bin/dc1-ask"
 ln -sf dc1tools "$d/bin/dc1-debug"
 install -m 0755 "$BUSYBOX" "$d/bin/busybox"
 install -m 0755 "$SRC/rc.sh" "$d/etc/rc.sh"
-install -m 0755 "$SRC/receive.sh" "$d/etc/installer/receive.sh"
 install -m 0755 "$SRC/finalize.sh" "$d/etc/installer/finalize.sh"
 install -m 0755 "$SRC/provision.sh" "$d/etc/installer/provision.sh"
 install -m 0755 "$SRC/netinstall.sh" "$d/etc/installer/netinstall.sh"
@@ -581,14 +637,16 @@ if find "$ROOT" -name 'authorized_keys' -o -name 'wifi.conf' -o -name '*.pem' \
 fi
 
 # ------------------------------------------------------------------- 4. pack
-# newc is the only format the kernel's unpacker accepts. Reproducible: sorted
-# file list, everything root:root via -R, gzip -n for no timestamp.
+# newc is the only format the kernel's unpacker accepts. Reproducible: normalize
+# every staged mtime to SOURCE_DATE_EPOCH, sort the file list, renumber cpio
+# inodes, force root:root ownership, and use gzip -n for no wrapper timestamp.
 # lz4 -l = LEGACY frame (magic 02 21 4c 18): the modern frame (04 22 4d 18)
 # is rejected by the kernel's initramfs path on this boot chain.
 pack() {
 	pd=$1; base=$2
+	find "$pd" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
 	( cd "$pd" && find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort \
-	    | cpio -o -H newc -R 0:0 --quiet ) > "$base.cpio"
+	    | cpio -o -H newc -R 0:0 --renumber-inodes --quiet ) > "$base.cpio"
 	gzip -9 -n < "$base.cpio" > "$base.cpio.gz"
 	lz4 -l -9 -f "$base.cpio" "$base.cpio.lz4" >/dev/null
 	rm -f "$base.cpio"

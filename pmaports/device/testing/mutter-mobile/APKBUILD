@@ -1,7 +1,7 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=mutter-mobile
 pkgver=999948.0
-pkgrel=4
+pkgrel=5
 pkgdesc="clutter-based window manager and compositor with smooth display rotation"
 url="https://gitlab.gnome.org/verdre/mutter-mobile"
 arch="aarch64"

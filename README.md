@@ -227,10 +227,11 @@ Every successful push build on `main` republishes the rolling prerelease:
 - the three overlay packages as `.apk`, plus the signed
   `APKINDEX.tar.gz`;
 - `dc1-install.sh` and `dc1-repair-apk.sh` (host-side helpers),
-  `dc1-apk.rsa.pub`, `PROVENANCE`, `SOURCES`, `FILES.tsv`, and one
-  `SHA256SUMS` covering all of it.
+  `dc1-apk.rsa.pub`, `PROVENANCE`, `SOURCES`, `FILES.tsv`, the exact installed
+  package inventory `PACKAGES.tsv`, and one `SHA256SUMS` covering all of it.
 
-`PROVENANCE` records exact source pins and honestly says
+Release-level `PROVENANCE` records exact source pins, the release commit,
+`flash_method=dc1-installer`, both boot images' inclusion, and honestly says
 `hardware_verified=false`. No secrets, credentials, or proprietary Android
 blobs are ever baked into published artifacts: MT7902 Wi-Fi/Bluetooth
 firmware and `regulatory.db` come from upstream `linux-firmware` /

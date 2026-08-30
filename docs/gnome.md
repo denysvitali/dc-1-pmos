@@ -79,10 +79,12 @@ installer and the rootfs build has not yet been exercised end-to-end on a
 device (tracked in [roadmap.md](roadmap.md) tier 2). Two known risks:
 
 - the gdm greeter path (the `gdm` user's own Wayland session) was
-  observed once aborting with "no session desktop files installed" —
-  after a user rename or a logout the greeter may still be broken even
-  with the set above applied (the greeter OSK default shipped in device
-  r68 addresses the untypeable half; see [hw/input.md](hw/input.md));
+  observed once aborting with "no session desktop files installed" during
+  the older migration state. Logout → greeter OSK → login, including shell
+  extension and orientation-bridge recovery, is still an explicit owed
+  hardware session on the converged GNOME-50 stack (the greeter OSK default
+  shipped in device r68 addresses the untypeable half; see
+  [hw/input.md](hw/input.md));
 - screen orientation after removing the static transforms still needs a
   physical tilt test on hardware (runbook in [roadmap.md](roadmap.md)).
 

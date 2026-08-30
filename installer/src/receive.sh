@@ -1,10 +1,11 @@
 #!/bin/sh
-# receive.sh -- device-side handler for one DC1-INSTALL-V1 session (the USB
-# fallback transport; the primary path is the on-device tui.sh/netinstall.sh).
+# receive.sh -- retired shell reference for one DC1-INSTALL-V1 session.
 #
-# Run by busybox `nc -l -p 5555 -e` with the socket on stdin/stdout. The host
-# (installer/host/dc1-install.sh) sends a text header, a blank line, then the
-# raw (uncompressed) ext4 rootfs image:
+# This implementation is kept only for offline parser/write-core regression
+# tests. It is not staged or served: busybox buffering can discard body bytes
+# read past the header. The live USB transport is dc1-installd, bound only to
+# 172.16.42.1:5555. The host sends a text header, a blank line, then the raw
+# (uncompressed) ext4 rootfs image:
 #
 #   DC1-INSTALL-V1
 #   size=<decimal bytes of the raw image>

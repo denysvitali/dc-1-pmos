@@ -24,6 +24,8 @@ done
 sh -n "$script_dir/prepare.sh"
 sh -n "$script_dir/build-rootfs.sh"
 sh -n "$script_dir/export-artifacts.sh"
+sh -n "$script_dir/check-release-version-identity.sh"
+sh -n "$script_dir/sign-apkindex.sh"
 sh -n "$script_dir/make-ext4-image.sh"
 sh -n "$script_dir/prefetch-kernel-distfile.sh"
 sh -n "$script_dir/verify.sh"
@@ -31,6 +33,7 @@ sh -n "$script_dir/../boot/repack-boot.sh"
 sh -n "$script_dir/../boot/dtbswap/pack.sh"
 sh -n "$script_dir/tests/test_repack_boot.sh"
 sh -n "$script_dir/tests/test_prepare_safety.sh"
+sh -n "$script_dir/tests/test_sign_apkindex.sh"
 sh -n "$device_dir/APKBUILD"
 sh -n "$kernel_dir/APKBUILD"
 sh -n "$mutter_dir/APKBUILD"
@@ -43,6 +46,7 @@ python3 "$script_dir/tests/test_make_rootfs_archive.py"
 python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' \
 	"$script_dir/apk_version_compare.py"
 python3 "$script_dir/tests/test_apk_version_compare.py"
+python3 "$script_dir/tests/test_verify_kernel_artifacts.py"
 
 (
 	cd "$device_dir"
@@ -188,6 +192,10 @@ grep -qF 'jagar-rootfs.ext4" jagar-root' "$script_dir/export-artifacts.sh" ||
 	fail "rootfs image is not built with the jagar-root label"
 grep -qF 'boot_image_included=false' "$script_dir/export-artifacts.sh" ||
 	fail "provenance must record that no boot image is published"
+grep -qF 'touch -h -d "@$SOURCE_DATE_EPOCH"' "$script_dir/../installer/build.sh" ||
+	fail "initramfs staging mtimes are not normalized"
+grep -qF -- '--renumber-inodes' "$script_dir/../installer/build.sh" ||
+	fail "initramfs cpio inode allocation is not reproducible"
 
 # GPU floor must stay in dc1-gpu-freq, not a hardcoded udev ATTR, or the
 # Settings panel and the boot path drift.
@@ -227,6 +235,8 @@ sh "$script_dir/tests/test_make_ext4_image.sh"
 sh "$script_dir/tests/test_export_artifacts.sh"
 sh "$script_dir/tests/test_prefetch_kernel_distfile.sh"
 sh "$script_dir/tests/test_prepare_safety.sh"
+sh "$script_dir/tests/test_release_version_identity.sh"
+sh "$script_dir/tests/test_sign_apkindex.sh"
 
 # LK ignores vendor_boot's DTB; keep the exporter aligned with the dtbswap
 # delivery path so stale comments do not revive an unsafe flash recipe.

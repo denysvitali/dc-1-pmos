@@ -274,13 +274,10 @@ net_install() {
 
 	wr_lock || fail "another install is running"
 
-	# An unprovisioned install (DC1_SKIP_PROVISION, set by tui.sh's "set up
-	# later" or the USB host's unprovisioned=1 header) has no answers to
-	# validate: first-boot onboarding provisions instead.
-	if [ -z "${DC1_SKIP_PROVISION:-}" ]; then
-		/etc/installer/provision.sh --validate "$answers" \
-			|| fail "answers failed validation"
-	fi
+	# Account setup is mandatory in the touch/network flow; the installed
+	# system has no first-boot onboarding for a missing account.
+	/etc/installer/provision.sh --validate "$answers" \
+		|| fail "answers failed validation"
 
 	mkdir -p "$NET_DIR"
 	chmod 700 "$NET_DIR"

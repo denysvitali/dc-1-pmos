@@ -16,10 +16,10 @@
 #      one-way kmsg stream on ttyGS0.
 #   4. the on-device touch front-end (tui.sh: Wi-Fi + network install; if
 #      the touch UI cannot run it exits and only the USB flow remains).
-#   5. the USB installer daemon: one connection at a time on TCP 5555,
-#      handled by /etc/installer/receive.sh. Always running, so a host can
-#      take over regardless of what the touch UI is doing (a writelib lock
-#      keeps the two transports from ever writing concurrently).
+#   5. the USB installer daemon: one connection at a time on 172.16.42.1:5555,
+#      handled by dc1-installd (or receive.sh as a last-resort fallback). It
+#      never binds Wi-Fi: a writelib lock keeps the USB and on-device transports
+#      from writing concurrently, while the address bind keeps LAN peers out.
 
 PATH=/bin:/sbin:/usr/bin:/usr/sbin
 export PATH
@@ -184,18 +184,30 @@ fi
 # splits exactly (io.ReadFull) and reads the image back off the device before
 # calling the install a success.
 #
-# receive.sh is still staged as a fallback: if the daemon cannot start, an
-# install over USB is the only way back into a device with no working root.
+# Binding is the security boundary. The touch installer brings Wi-Fi up before
+# the destructive phase, so 0.0.0.0 here would expose an unauthenticated raw
+# userdata writer to every peer on that LAN. Wait for the USB-only address and
+# refuse to substitute a wildcard bind if gadget setup failed. The old shell
+# receiver is deliberately not served as a fallback: it cannot preserve bytes
+# already buffered past the header and is therefore unsafe for real installs.
+for _ in $(seq 1 60); do
+    ip addr show usb0 2>/dev/null | grep -q '172\.16\.42\.1' && break
+    sleep 1
+done
+if ! ip addr show usb0 2>/dev/null | grep -q '172\.16\.42\.1'; then
+    log "usb0 never got 172.16.42.1 -- NOT starting installer receiver"
+    status "ERROR: NO USB INSTALL RECEIVER"
+    while :; do sleep 60; done
+fi
+
 if [ -x /bin/dc1-installd ]; then
-    log "installer daemon (dc1-installd) listening on TCP 5555"
+    log "installer daemon (dc1-installd) listening on 172.16.42.1:5555"
     while : ; do
-        /bin/dc1-installd -listen 0.0.0.0:5555
+        /bin/dc1-installd -listen 172.16.42.1:5555
         sleep 1
     done
 else
-    log "dc1-installd missing; falling back to the shell receiver"
-    while : ; do
-        /bin/busybox nc -l -p 5555 -e /etc/installer/receive.sh
-        sleep 1
-    done
+    log "dc1-installd missing -- NOT starting the unsafe shell receiver"
+    status "ERROR: USB INSTALL DAEMON MISSING"
+    while :; do sleep 60; done
 fi

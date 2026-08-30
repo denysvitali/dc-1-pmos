@@ -45,15 +45,20 @@ ext4 image with its SHA-256 over the USB gadget network (CDC-ECM, device
 reboots into LK fastboot, flashes the real boot image over the installer.
 The USB daemon runs even while the touch UI is up (a lock in
 `src/writelib.sh` keeps the two transports from writing concurrently), so a
-host can always take over a device in installation mode.
+host can always take over a device in installation mode. It waits for and
+binds only `172.16.42.1:5555`, has a 60-second idle timeout, and never listens
+on the Wi-Fi interface. The protocol is not authenticated; physical USB data
+access to an installer-mode device is authority to replace `userdata`.
 
 Tethered `fastboot boot <img>` (no flash) is **unverified** on this LK, which
 is why the installer is flashed and later replaced.
 
 ## Device side, fail-closed by construction
 
-`src/writelib.sh` is the single write/verify core; both transports
-(`src/receive.sh` on TCP 5555 and `src/netinstall.sh`) go through it:
+`src/writelib.sh` is the shell write/finalize core used by the network path
+and by dc1-installd's post-write finalization. The live USB byte path is the Go
+daemon's exact-read/read-back implementation; the retired `src/receive.sh`
+shell parser remains only for offline regression tests:
 
 - target resolved **by GPT partition name** (`PARTNAME=userdata` in sysfs),
   required unique and ≥ 32 GiB — never a hardcoded `/dev/sdX`, and the
@@ -69,7 +74,7 @@ is why the installer is flashed and later replaced.
 - a failed device write (`dd`) is fatal and scrubs; the written filesystem
   must be ext4 labelled `jagar-root` (the label the boot initramfs mounts
   by) before it is mounted;
-- online `resize2fs` to the full partition (non-fatal, loudly reported);
+- offline `resize2fs` to the full partition after unmount (fatal on failure);
 - `src/provision.sh` applies the answers as pure file edits (user rename or
   creation with uid/group preservation, shadow hash, hostname, timezone,
   Wi-Fi as NetworkManager keyfile / wpa_supplicant.conf / parked file,
