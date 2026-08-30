@@ -11,8 +11,9 @@ Plug any USB-C source. Power Delivery is negotiated in the kernel (the
 port declares 5 V/3 A, 9 V/3 A, 12 V/3 A sink capabilities; a 12 V
 contract has been verified end-to-end), and the charger autonomously
 runs CC/CV to the pack's 4.35 V limit — no userspace required. There is
-no charging LED; check the battery icon once booted, or trust that a
-dark powered-off device on a cable is charging (charging mode).
+no charging LED; check the battery icon once booted. Charging mode's real
+charger-insert calibration is still pending, so a dark powered-off device is
+not by itself proof that the expected path ran.
 
 Open **Settings → Charging Profile** to see the negotiated profile, the
 source's advertised fixed/PPS profiles, the programmed input and pack
@@ -22,13 +23,17 @@ available capacity, not instantaneous wall draw: a meter showing
 only what the tablet presently consumes. If the panel says **5 V fallback**,
 reconnect the cable; a healthy PD attach automatically selects the
 highest-power compatible fixed profile (12 V/3 A on a capable source).
+The same panel selects the live **Measured default (3.15 A)** or
+**Conservative (2.00 A)** target and controls the persistent Charging mode and
+Automatic updates opt-outs. These policy changes require authorization.
 
 **Default rate:** ~2.94 A into the pack, roughly 40 %/h on the 8 Ah pack.
 This is the hardware-measured result of the 3.15 A charger target, with the
 hottest zone at 46 °C during the audit. Until the pack gauge answers, this
 default cannot use live pack temperature as an independent control.
 
-**Owner lever — charge rate.** Set the charge-current target as root:
+**Owner lever — charge rate.** Prefer the two profiles in Charging Profile.
+The equivalent root commands are:
 
 ```sh
 # ~3 A into the pack ≈ 40 %/h (measured; stays below the 1.5 A input

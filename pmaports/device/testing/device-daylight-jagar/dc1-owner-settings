@@ -1,0 +1,139 @@
+#!/bin/sh
+# dc1-owner-settings -- narrow privileged backend for Charging Profile.
+#
+# The desktop process must not receive arbitrary root file-write capability.
+# This helper owns exactly three user choices:
+#   * live MT6375 charge-current target: 2.00 A or 3.15 A;
+#   * headless charging mode enabled/disabled;
+#   * automatic updates enabled/disabled.
+#
+# Production paths are fixed even when the caller supplies environment
+# variables through pkexec. Fixture overrides exist only when the file is
+# explicitly sourced in library mode by the offline tests.
+set -eu
+
+if [ "${DC1_OWNER_SETTINGS_LIB:-0}" = 1 ]; then
+	VAR_DIR=${DC1_OWNER_VAR_DIR:-/var/lib/dc1}
+	CHARGE_CURRENT=${DC1_OWNER_CHARGE_CURRENT:-/sys/class/power_supply/mt6375-charger/constant_charge_current}
+	TEST_MODE=1
+else
+	VAR_DIR=/var/lib/dc1
+	CHARGE_CURRENT=/sys/class/power_supply/mt6375-charger/constant_charge_current
+	TEST_MODE=0
+fi
+
+usage() {
+	echo "usage: dc1-owner-settings status | charge-current 2000000|3150000 | charging-mode on|off | auto-update on|off" >&2
+	exit 2
+}
+
+fail() {
+	echo "dc1-owner-settings: $*" >&2
+	return 1
+}
+
+require_root() {
+	[ "$TEST_MODE" = 1 ] || [ "$(id -u)" -eq 0 ] ||
+		fail "changing owner settings requires root"
+}
+
+read_charge_current() {
+	[ -r "$CHARGE_CURRENT" ] || return 1
+	tr -d '\n\r\0' <"$CHARGE_CURRENT"
+}
+
+marker_state() {
+	# The UI presents positive switches; the persistent API is an opt-out.
+	[ -e "$VAR_DIR/$1" ] && printf 'off\n' || printf 'on\n'
+}
+
+cmd_status() {
+	charge=$(read_charge_current 2>/dev/null) || charge=unavailable
+	case $charge in
+	''|*[!0-9]*) charge=unavailable ;;
+	esac
+	printf 'charge_current=%s\n' "$charge"
+	printf 'charging_mode=%s\n' "$(marker_state no-charging-mode)"
+	printf 'auto_update=%s\n' "$(marker_state no-auto-update)"
+}
+
+write_marker() {
+	marker=$1
+	mkdir -p "$VAR_DIR" || fail "cannot create $VAR_DIR"
+	tmp="$VAR_DIR/.$marker.tmp.$$"
+	if ! (umask 022; : >"$tmp"); then
+		rm -f "$tmp"
+		fail "cannot stage $marker"
+		return 1
+	fi
+	if ! mv -f "$tmp" "$VAR_DIR/$marker"; then
+		rm -f "$tmp"
+		fail "cannot enable $marker opt-out"
+		return 1
+	fi
+}
+
+set_feature() {
+	feature=$1
+	state=$2
+	case $feature in
+	charging-mode) marker=no-charging-mode ;;
+	auto-update) marker=no-auto-update ;;
+	*) fail "unknown feature: $feature"; return 1 ;;
+	esac
+	case $state in
+	on) rm -f "$VAR_DIR/$marker" || fail "cannot remove $marker" ;;
+	off) write_marker "$marker" ;;
+	*) fail "$feature must be on or off"; return 1 ;;
+	esac
+}
+
+set_charge_current() {
+	value=$1
+	case $value in
+	2000000|3150000) : ;;
+	*) fail "charge current must be 2000000 or 3150000 microamps"; return 1 ;;
+	esac
+	[ -e "$CHARGE_CURRENT" ] || {
+		fail "charger control is unavailable"
+		return 1
+	}
+	printf '%s\n' "$value" >"$CHARGE_CURRENT" 2>/dev/null || {
+		fail "cannot write the charger current target"
+		return 1
+	}
+	actual=$(read_charge_current 2>/dev/null) || actual=
+	[ "$actual" = "$value" ] || {
+		fail "charger readback is $actual, expected $value"
+		return 1
+	}
+}
+
+# Library mode exposes the pure, fixture-rooted functions and never dispatches
+# privileged commands.
+if [ "$TEST_MODE" = 1 ]; then
+	return 0 2>/dev/null || exit 0
+fi
+
+[ "$#" -ge 1 ] || usage
+command=$1
+shift
+case $command in
+status)
+	[ "$#" -eq 0 ] || usage
+	cmd_status
+	;;
+charge-current)
+	[ "$#" -eq 1 ] || usage
+	require_root
+	set_charge_current "$1"
+	;;
+charging-mode|auto-update)
+	[ "$#" -eq 1 ] || usage
+	require_root
+	set_feature "$command" "$1"
+	;;
+*)
+	usage
+	;;
+esac

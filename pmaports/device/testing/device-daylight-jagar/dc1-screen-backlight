@@ -4,9 +4,10 @@
 # the same sequence and rationale.
 #
 # The DC-1's two RT4539 frontlights are independent i2c devices, not the
-# panel's DRM backlight. The device boots LK's stock device tree (compatible
-# "mediatek,MT6789"), not ours, and the stock nt36523 panel node carries no
-# backlight phandle -- so drm_panel_{enable,disable} never touches them. A
+# panel's DRM backlight. The dtbswap-delivered mainline panel node deliberately
+# has no backlight phandle because the two independently controlled RT4539
+# channels cannot be represented as one ordinary panel backlight. Therefore
+# drm_panel_{enable,disable} never touches them. A
 # compositor DPMS-off stops the DSI and leaves the frontlight burning: an
 # evenly lit, empty panel that reads as a wedged display rather than an off
 # screen.

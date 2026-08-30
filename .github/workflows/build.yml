@@ -453,6 +453,7 @@ jobs:
       # The committed dc1-apk.rsa.pub must be the mate of the secret, or the
       # build fails here (the mate check is below).
       - name: Build and sign APKINDEX
+        if: github.event_name != 'pull_request'
         env:
           DC1_APK_PRIVATE_KEY: ${{ secrets.DC1_APK_PRIVATE_KEY }}
         run: |
@@ -469,6 +470,16 @@ jobs:
           mv SHA256SUMS.tmp release/SHA256SUMS
           (cd release && sha256sum --check --strict SHA256SUMS)
           ls -l release/APKINDEX.tar.gz
+
+      # Pull-request code never receives or executes with the production APK
+      # signing key. Its downloadable artifact proves the packages/rootfs/boot
+      # images build, but intentionally omits the production-signed repository
+      # index; only publish events produce the final release contract.
+      - name: Verify pull-request artifact is unsigned and non-publishing
+        if: github.event_name == 'pull_request'
+        run: |
+          test ! -e release/APKINDEX.tar.gz
+          (cd release && sha256sum --check --strict SHA256SUMS)
 
       # PR runs: upload a workflow artifact so reviewers can download the
       # outputs. Main-branch push and workflow_dispatch runs publish a GitHub

@@ -20,7 +20,8 @@ confirmation.
 
 Wacom EMR digitizer on i2c9 `0x09`, driven by the mainline **`wacom_i2c`**
 driver — hardware-verified 2026-08-22, closed through calibration
-2026-08-23, with one final hands-on alignment check still owed (the r38
+2026-08-23 at the kernel-event/calibration-history level, with one final
+hands-on alignment check still owed (the r38
 boot requirement is long met — r54 is running as of 2026-08-29; only the
 hands-on pass remains)
 (see [../roadmap.md](../roadmap.md)). The road there had two wrong turns
@@ -117,8 +118,8 @@ and the glass center nearly aligned (which is why the error read as an
 and back-solved with the declared maxima, so its recorded "hardware frame"
 sits offset by (-311, +225); r38 refreshes `prop.max_*` after the override
 and shifts the jagar window into true frame: x 311..16018 / y 87..21119.
-Compile-checked (W=1) and DTB-verified only — hardware verification needs
-the r38 boot.
+The fix is present in the booted r54 build; physical edge alignment is still
+unverified.
 
 Separately, the eraser end: the kernel has delivered `BTN_TOOL_RUBBER`
 since r31, but only Wayland tablet-v2 clients ever see tool types
@@ -132,7 +133,7 @@ Pen + Eraser styli after a driver rebind. Rnote and Xournal++
 installed on the device for verification.
 
 **Eraser-as-pen root-caused 2026-08-26 (linux r41, kernel `050e66ab`;
-compile-checked only, hands-on flip check pending).** In real use,
+present in booted r54, hands-on flip check pending).** In real use,
 flipping the pen to the eraser end produced pen-tip strokes: `wacom_i2c`
 chose `BTN_TOOL_PEN` vs `BTN_TOOL_RUBBER` only on the frame that entered
 proximity and ignored every later ERASER/INVERT flag change, and this

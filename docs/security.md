@@ -6,12 +6,14 @@ can always get in. This page states exactly what is exposed, to whom,
 and how to close each channel if you do not want it. The matrix below
 was measured on a running installed system on 2026-08-26 (device pkgrel
 r76, kernel r37); the code that establishes each property is referenced.
+USB gadget configuration is measured device-side, but host-side ECM/SSH
+reachability remains a pending end-to-end check.
 
 ## Exposure matrix — installed system
 
 | Channel | Binds to | Authentication | Reachable via | How to close |
 | --- | --- | --- | --- | --- |
-| sshd, TCP 22 | `0.0.0.0` + `[::]` (all interfaces) | Password of the account created at install (sshd defaults; no `PermitRootLogin`/`PasswordAuthentication` overrides are shipped) | Wi-Fi **and** USB | `systemctl disable --now sshd`, or restrict with a `ListenAddress`/firewall |
+| sshd, TCP 22 | `0.0.0.0` + `[::]` (all interfaces) | Password of the account created at install (sshd defaults; no `PermitRootLogin`/`PasswordAuthentication` overrides are shipped) | Wi-Fi; USB is configured device-side but host reachability remains unverified | `systemctl disable --now sshd`, or restrict with a `ListenAddress`/firewall |
 | Root shell, TCP 4444 | `172.16.42.1` **only** (usb0) — never `0.0.0.0` | **None** (busybox `nc -lk -e /bin/sh`) | USB cable only | `systemctl disable --now dc1-debug-shell` |
 | kmsg stream, `/dev/ttyGS0` | USB ACM function | None (one-way log stream) | USB cable only | same unit as above |
 | Interactive root shell, `/dev/ttyGS1` | USB ACM function | **None** | USB cable only | same unit as above |

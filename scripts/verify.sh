@@ -30,6 +30,7 @@ sh -n "$script_dir/verify.sh"
 sh -n "$script_dir/../boot/repack-boot.sh"
 sh -n "$script_dir/../boot/dtbswap/pack.sh"
 sh -n "$script_dir/tests/test_repack_boot.sh"
+sh -n "$script_dir/tests/test_prepare_safety.sh"
 sh -n "$device_dir/APKBUILD"
 sh -n "$kernel_dir/APKBUILD"
 sh -n "$mutter_dir/APKBUILD"
@@ -151,6 +152,12 @@ grep -qF 'CC="ccache clang-20"' "$kernel_dir/APKBUILD" ||
 	fail "kernel build no longer routes the compiler through ccache"
 grep -qF 'HOSTCC="ccache clang-20"' "$kernel_dir/APKBUILD" ||
 	fail "kernel build no longer routes the host compiler through ccache"
+grep -qF 'HOSTLD=/usr/bin/ld.lld' "$kernel_dir/APKBUILD" ||
+	fail "kernel host linker boundary drift"
+grep -qF 'HOSTCC="gcc"' "$kernel_dir/APKBUILD" ||
+	fail "DTB host compiler workaround drift"
+grep -qF -- '-j1 dtbs' "$kernel_dir/APKBUILD" ||
+	fail "DTB build is no longer serial"
 grep -qF 'CCACHE_DIR="/home/pmos/.ccache"' "$kernel_dir/APKBUILD" ||
 	fail "kernel build does not pin CCACHE_DIR to pmbootstrap's cache mount"
 grep -qF 'ccache saw zero compiles' "$kernel_dir/APKBUILD" ||
@@ -204,6 +211,7 @@ sh -n "$device_dir/dc1-first-boot"
 sh -n "$device_dir/dc1-frontlight"
 sh -n "$device_dir/dc1-gpu"
 sh -n "$device_dir/dc1-link-apk-keys"
+sh -n "$device_dir/dc1-owner-settings"
 sh -n "$device_dir/dc1-screen-backlight"
 sh -n "$device_dir/dc1-update"
 sh -n "$device_dir/dc1-usb-gadget"
@@ -218,5 +226,11 @@ sh "$script_dir/tests/test_repack_boot.sh"
 sh "$script_dir/tests/test_make_ext4_image.sh"
 sh "$script_dir/tests/test_export_artifacts.sh"
 sh "$script_dir/tests/test_prefetch_kernel_distfile.sh"
+sh "$script_dir/tests/test_prepare_safety.sh"
+
+# LK ignores vendor_boot's DTB; keep the exporter aligned with the dtbswap
+# delivery path so stale comments do not revive an unsafe flash recipe.
+! grep -qF 'DTB from vendor_boot' "$script_dir/export-artifacts.sh" ||
+	fail "exporter still claims vendor_boot supplies the device tree"
 
 echo "postmarketOS packaging verification passed"

@@ -224,10 +224,11 @@ Ordered by user value per effort:
    the bus and ships a write-free ACK probe, but implementation remains
    blocked on exact part ID and protocol (MEMSic `mn29xxx` family;
    possibly only reachable with SCP context). [hw/sensors.md](hw/sensors.md).
-4. **Surfaces for the remaining owner levers** — the Charging Profile panel
-   now covers live PD/charger status and the charge-rate sysfs control. Add a
-   UI for the charging-mode/auto-update flag opt-outs so end users do not need
-   shell commands ([../power.md](power.md) documents the current levers).
+4. **Owner control surfaces — completed in device r92.** Charging Profile
+   shows live PD/charger state, selects the 2.00/3.15 A charge-current target,
+   and exposes authenticated Charging mode and Automatic updates switches.
+   The existing marker/sysfs interfaces remain documented in
+   [power.md](power.md).
 5. **Kernel patch series for the lists** — the tier-3 kernel items,
    split per driver, are also standalone upstream contributions and can
    start any time.

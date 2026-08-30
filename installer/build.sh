@@ -454,10 +454,10 @@ if [ -n "$MODDIR" ] && [ -d "$MODDIR" ]; then
 fi
 
 # --------------------------------------------------------- 3. system skeleton
-# The SYSTEM boot initramfs (goes into jagar-boot.img): verify the installed
-# jagar-root filesystem and switch_root into it. No gadget, no daemon, no
-# secrets -- just busybox, the shared partition resolver, and
-# dc1-reboot-fastboot so a rescue shell can get back to fastboot.
+# The SYSTEM boot initramfs (goes into jagar-boot.img): expose the bounded
+# ACM+ECM recovery gadget, verify the installed jagar-root filesystem, then
+# switch_root into it. It carries no credentials: the raw USB debug transports
+# are the recovery channel before the provisioned rootfs takes over.
 s="$ROOT/system"
 mkdir -p "$s"/dev "$s"/proc "$s"/sys "$s"/tmp "$s"/etc "$s"/bin "$s"/sbin \
          "$s"/mnt/root

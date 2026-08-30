@@ -15,7 +15,9 @@ nothing secret-shaped — the tripwire in `build.sh` enforces it):
 ## End-user flow (on-device, primary)
 
 ```sh
-fastboot flash boot_a installer-boot.img && fastboot reboot   # installation mode
+fastboot flash boot_a installer-boot.img
+fastboot set_active a
+fastboot reboot                                               # installation mode
 ```
 
 Everything else happens on the device's own display and touchscreen
@@ -129,16 +131,12 @@ the evidence.
   is ever written.
 
 **Watchdog decision**: LK arms the SoC watchdog and the kernel does not
-auto-pet it, so PID 1 forks a petter that holds `/dev/watchdog` open and
-pets every 10 s **forever, across the switch_root** (it only needs its
-already-open fd). It is deliberately the *sole* owner: `/dev/watchdog` is
-single-open, and whether this driver honours magic-close (vs `nowayout`)
-has never been measured, so a close-and-reopen handover to an in-rootfs
-watchdog daemon risks either EBUSY or an unstoppable timer. Consequence: a
-kernel hang still resets the board (the petter dies with it); a
-userspace-only hang does not auto-reset. Revisit if the driver's magic-close
-semantics get measured on hardware. The OpenRC `watchdog` service is NOT
-enabled by provision.sh for this reason.
+auto-pet it, so PID 1 initially forks a 10 s petter. The pinned driver is
+`nowayout=0` and advertises magic close; for a systemd root, PID 1 writes `V`,
+closes the fd, waits for the petter to exit, and systemd reopens the watchdog
+under `RuntimeWatchdogSec=30s`. It also starts the reachability deadman before
+`switch_root`. A non-systemd root retains the petter. This handoff is now the
+measured path; the old pet-forever description is obsolete.
 
 ## Building
 

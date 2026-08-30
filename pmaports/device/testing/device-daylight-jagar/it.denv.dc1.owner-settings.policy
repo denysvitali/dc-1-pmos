@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>Daylight DC-1</vendor>
+  <vendor_url>https://github.com/denysvitali/dc-1-pmos</vendor_url>
+  <action id="it.denv.dc1.owner-settings.change">
+    <description>Change DC-1 charging and update settings</description>
+    <message>Authentication is required to change charging and update settings</message>
+    <defaults>
+      <!-- These controls can disable automatic security updates, so unlike
+           the performance-only GPU helper they remain authenticated. -->
+      <allow_any>no</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/dc1-owner-settings</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>

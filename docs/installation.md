@@ -6,8 +6,8 @@ built by this repository's CI. Read the whole page once before starting.
 > **Warning.** CI proves the build compiles, not that it boots. Releases
 > record `hardware_verified=false`. Flashing is at your own risk. The
 > procedure below only ever writes the `boot_a` slot and the `userdata`
-> partition, plus `misc` for the A/B slot metadata once the system is
-> running. It never touches anything else — and neither should you (see
+> partition, plus A/B metadata in `misc` through `fastboot set_active a` and
+> the installed slot manager. It never touches anything else (see
 > [Recovery notes](#recovery-notes)).
 >
 > One partition is deliberately left out of the default flow: `vendor_boot`.
@@ -24,7 +24,7 @@ Two ways to install. The first is the default.
 1. **On-device installer (recommended).** You flash one boot image over
    `fastboot`, then answer everything on the device's touchscreen. The device
    downloads the release over Wi-Fi and installs itself — no computer involved
-   after the first command. Needs Wi-Fi.
+   after the initial fastboot sequence. Needs Wi-Fi.
 2. **USB install from a computer (advanced / fallback).** A script on your
    computer drives the install over the USB cable. Use it when there is no
    Wi-Fi, or when you want the image streamed from a host you control. See
@@ -33,11 +33,15 @@ Two ways to install. The first is the default.
 Both paths write the same filesystem to the same place; they differ only in
 who asks the questions and how the image reaches the device.
 
+Both are implemented and offline-tested. The full published-release path from
+installer flash through provisioning, first login, and first update has not
+yet been exercised end-to-end on hardware.
+
 ## What you need
 
 - A Daylight DC-1.
 - A computer with `fastboot` (from `android-tools`) and a USB cable — for the
-  one command that enters installation mode (both paths).
+  initial flash, slot-selection, and reboot sequence (both paths).
 - **On-device path:** a Wi-Fi network with a WPA passphrase (the device
   downloads the release over it).
 - **USB path:** the host script and a few host tools, listed in that section.
@@ -64,8 +68,8 @@ so a host can always take over.
 
 The recommended path is **Install from network**: the device scans Wi-Fi,
 connects, then downloads `jagar-rootfs.ext4.zst` and `jagar-boot.img` from the
-rolling release over TLS. It checks each file's SHA-256 **in full before a
-single byte becomes mountable** (the first MiB, containing the ext4
+rolling release over TLS. It checks each file's SHA-256 **in full before the
+transferred rootfs becomes mountable** (the first MiB, containing the ext4
 superblock, is written last, only after everything verified), writes the
 rootfs to `userdata`, grows it to fill the partition, applies your answers
 (user, password hash — the cleartext is never stored — hostname, timezone,
@@ -73,8 +77,9 @@ Wi-Fi), writes the boot image to `boot_a`, and reboots.
 
 The installed system is a GNOME Mobile desktop on Wayland/systemd. The boot
 initramfs finds the root filesystem by its ext4 label `jagar-root` on
-`userdata`. If anything fails, nothing half-written is ever left mountable, so
-you can simply run the flow again.
+`userdata`. An interrupted or mismatched image transfer is never left
+mountable. Provisioning starts after that commit and can fail independently;
+rerunning the installer is the supported recovery in either case.
 
 Note: tethered `fastboot boot <img>` (boot without flashing) is unverified on
 this LK — there is no recorded evidence it works. That is why the installer is
@@ -131,7 +136,9 @@ fastboot devices
 ### 3. Flash the installer
 
 ```sh
-fastboot flash boot_a installer-boot.img && fastboot reboot
+fastboot flash boot_a installer-boot.img
+fastboot set_active a
+fastboot reboot
 ```
 
 The device boots into installation mode and shows the installer menu.
@@ -169,7 +176,7 @@ next one.
 
 ### The side buttons
 
-All four side buttons work. The two spare ones use Daylight's official names
+The power and volume paths work. The two spare buttons use Daylight's official names
 ("Quick Action", "Back Button" — stock Android assigns neither), and this
 port maps them to `XF86Launch1`/`XF86Launch2` via a udev hwdb remap so they
 never collide with application function keys:
@@ -214,7 +221,7 @@ The script:
 - asks for a **username**, **password**, **hostname**, **timezone**, and
   optional **Wi-Fi credentials** (the password is hashed on the host;
   cleartext never leaves your machine);
-- flashes the installer to `boot_a` and reboots;
+- flashes the installer to `boot_a`, selects slot A, and reboots;
 - waits for the installer's USB network interface (fixed host-side MAC
   `02:1a:11:00:00:01`), assigns `172.16.42.2/24`, and waits for the device
   at `172.16.42.1`. The device's USB listener runs from boot; nothing has
@@ -223,12 +230,12 @@ The script:
   the device on TCP port 5555, fail-closed: a short or mismatched stream is
   scrubbed rather than left mountable;
 - after the device reports `DC1-INSTALL: OK` and reboots into fastboot,
-  flashes the real image: `fastboot flash boot_a jagar-boot.img` followed
-  by `fastboot reboot`.
+  flashes the real image, selects slot A, and reboots.
 
 If the device is already in installation mode, run the script without
 `--installer-boot` and finish manually with
-`fastboot flash boot_a jagar-boot.img && fastboot reboot`. Other options:
+`fastboot flash boot_a jagar-boot.img && fastboot set_active a && fastboot
+reboot`. Other options:
 `--answers FILE` supplies pre-made answers non-interactively;
 `--skip-provision` installs with **no** answers at all — the image is written
 but not provisioned;
@@ -268,8 +275,8 @@ re-flash is never needed for userland fixes.
   (`journalctl -u dc1-update.service`), including how far the three overlay
   packages (`mutter-mobile`, the kernel, the device package) are from the
   rolling release.
-- Opt out per device with `touch /var/lib/dc1/no-auto-update`, or
-  `systemctl mask dc1-update.timer`.
+- Toggle automatic updates in **Settings → Charging Profile**, or opt out with
+  `touch /var/lib/dc1/no-auto-update` / `systemctl mask dc1-update.timer`.
 
 ### Updating an old (pre-August-2026) installation
 
@@ -295,14 +302,19 @@ normal `dc1-update.timer` path takes over.
 
 ## Charging mode
 
-Plugging USB power into a cleanly-powered-off DC-1 boots it into a minimal
+**Experimental / not yet hardware-verified:** the boot-reason reader works,
+but a real charger-insert boot still owes the calibration that confirms code
+`1` and the complete enter/exit cycle. A dark panel is not proof of charging.
+
+The feature is designed so plugging USB power into a cleanly-powered-off DC-1 boots it into a minimal
 headless **charging mode** instead of the full desktop (device package
 pkgrel >= 79). The panel, frontlight, network, and desktop all stay off;
 the device is dark and silent. Charging itself never depends on any of
 that: the MT6375 charger runs its CC/CV profile to the pack's 4.35 V limit
 in hardware, the kernel raises the input limit to 1.5 A and the charge
 target to 3.15 A as soon as VBUS appears, and USB-PD contracts are negotiated
-in-kernel — zero userspace is required for safe charging.
+in-kernel without desktop userspace. Pack-temperature-informed current
+control remains unavailable while the BQ78Z100 does not answer.
 
 | You do | The device does |
 | --- | --- |
@@ -334,7 +346,7 @@ exist, and the device must have finished its first-boot setup once
 (`/var/lib/dc1/first-boot-apps-done`) — a system that has never completed
 provisioning always boots to the desktop, so a fresh install rebooting
 with the flash cable still attached does not wake as silent dark glass.
-Three consequences worth knowing:
+Four consequences worth knowing:
 
 - Pressing power **while plugged in** after a clean poweroff lands in
   charging mode first — press power again to continue to the desktop.
@@ -352,6 +364,8 @@ Opt out permanently with:
 ```sh
 touch /var/lib/dc1/no-charging-mode
 ```
+
+The same switch is available in **Settings → Charging Profile**.
 
 Diagnose with `journalctl -t dc1-charging`. The boot-cause readout itself
 is verified on hardware, but confirming that real charger boots report
@@ -396,10 +410,10 @@ cycled.
   kernel our device tree instead of LK's merged one. No signed partition is
   ever written.
 - The device has A/B slots; this flow only uses `boot_a`.
-- If a flashed boot image fails to boot, the watchdog resets the device
-  back into LK fastboot, so you can reflash `boot_a` and try again. A
-  failed boot is annoying, not fatal — as long as you only ever wrote
-  `boot_a` and `userdata`.
+- If a flashed slot fails before Linux starts, LK's A/B metadata governs its
+  fallback; once Linux starts, the reachability watchdog can reset an
+  unreachable boot into LK fastboot. You can then reflash `boot_a` and try
+  again, as long as the documented partition boundary was respected.
 - **Reachability watchdog.** A boot that *succeeds* but cannot be reached is
   the worst failure mode on a device with no serial header: the system pets
   the hardware watchdog forever while you cannot get in. The boot image

@@ -29,9 +29,10 @@
 # the pure functions without running any of the steps.
 set -eu
 
-MARK_NO_UPDATE=/var/lib/dc1/no-auto-update
+VAR_DIR=${DC1_VAR_DIR:-/var/lib/dc1}
+MARK_NO_UPDATE="$VAR_DIR/no-auto-update"
 APK_DB=${DC1_APK_DB:-/lib/apk/db/installed}
-STATE_FILE=${DC1_UPDATE_STATE:-/var/lib/dc1/update-state}
+STATE_FILE=${DC1_UPDATE_STATE:-$VAR_DIR/update-state}
 URL_BASE=${DC1_URL_BASE:-https://github.com/denysvitali/dc-1-pmos/releases/download/latest}
 VERSION_CMP=${DC1_VERSION_CMP:-apk version -t}
 
@@ -104,6 +105,7 @@ index_max() {
 # persist the summary. Best-effort: every failure degrades to "unknown",
 # never blocks the upgrade that already happened.
 report_parity() {
+	upgrade_result=$1
 	work=$(mktemp -d)
 	trap 'rm -rf "$work"' EXIT
 	curl -fsSL --retry 3 --retry-delay 3 --retry-all-errors \
@@ -161,7 +163,7 @@ report_parity() {
 
 	{
 		echo "last_run=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-		echo "apk_upgrade=ok"
+		echo "apk_upgrade=$upgrade_result"
 		echo "parity_behind=$behind"
 		printf '%s' "$summary"
 	} >"$STATE_FILE"
@@ -177,7 +179,7 @@ if [ -e "$MARK_NO_UPDATE" ]; then
 	log "disabled by $MARK_NO_UPDATE; skipping"
 	exit 0
 fi
-mkdir -p /var/lib/dc1
+mkdir -p "$VAR_DIR"
 
 update_rc=1
 for attempt in 1 2 3; do
@@ -201,7 +203,7 @@ else
 fi
 
 # The state file records whichever upgrade result preceded it.
-if ! report_parity; then
+if ! report_parity "$upgrade_ok"; then
 	{
 		echo "last_run=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 		echo "apk_upgrade=$upgrade_ok"

@@ -63,9 +63,10 @@ as_root python3 "$script_dir/make-rootfs-archive.py" \
 	--inventory "$output_dir/FILES.tsv" \
 	--epoch "$SOURCE_DATE_EPOCH"
 
-# The bootable payload. LK loads the kernel from a boot image and the DTB from
-# vendor_boot, neither of which this builder produces; export the two inputs
-# so the boot-image tooling in boot/ can assemble those images from them.
+# The bootable payload. LK loads the Android boot image but ignores the DTB in
+# vendor_boot; boot/dtbswap packs this kernel and our DTB into the boot image's
+# kernel slot and replaces LK's signed-tree handoff at runtime. This exporter
+# produces only those two inputs; release assembly builds the images later.
 kernel_release_file="$rootfs_dir/usr/share/kernel/postmarketos-mediatek-mt6789/kernel.release"
 [ -s "$kernel_release_file" ] || fail "kernel package recorded no kernel.release"
 kernel_release=$(cat "$kernel_release_file")

@@ -35,12 +35,12 @@
 # does not boot, the preloader decrements the try, marks the slot unbootable,
 # and falls back to the proven slot; the marker stops a reboot loop.
 #
-# KNOWN LIMITATION: the rolling `latest` release can move between the apk
-# upgrade and this download. If it does, the downloaded image is a valid but
-# NEWER build; the device stays on the old slot until the next `apk upgrade`.
-# No brick, no loop -- the failure mode is "the upgrade did not stick". A
-# versioned release plus an on-device image/release cross-check would close
-# this; not done yet.
+# The rolling `latest` release can move between the apk upgrade and this
+# download. The downloaded image therefore has to pass two independent gates:
+# its file hash must match that release's SHA256SUMS, and the kernel inside the
+# dtbswap payload must match the kernel APK already installed in /boot. A
+# moved release fails before any slot is resolved, written, or armed; the next
+# updater pass can converge the APKs and retry.
 set -eu
 
 FLAVOR=postmarketos-mediatek-mt6789
@@ -174,6 +174,24 @@ is_dtbswap_img() {
 	return "$rc"
 }
 
+# image_matches_installed_kernel IMAGE SHA256 -> 0 iff IMAGE's inner kernel
+# is exactly the installed /boot/vmlinuz kernel. This closes the moving-latest
+# race: SHA256SUMS proves release-asset integrity, not that the release still
+# corresponds to the APK transaction which invoked us.
+image_matches_installed_kernel() {
+	img=$1
+	installed=$2
+	image_sha=$(kernel_sha "$img") || {
+		log "cannot extract the release boot image kernel"
+		return 1
+	}
+	[ "$image_sha" = "$installed" ] || {
+		log "release boot image kernel $image_sha does not match installed $installed"
+		log "  latest moved during the upgrade; refusing to write or arm a slot"
+		return 1
+	}
+}
+
 # deploy INSTALLED_SHA -- download, verify, flash the INACTIVE slot, arm it.
 # Sets the loop-guard marker. Returns 0 on success. Does NOT reboot.
 #
@@ -207,6 +225,7 @@ deploy() {
 		log "  a plain image would boot the stock device tree"
 		return 1
 	fi
+	image_matches_installed_kernel jagar-boot.img "$installed" || return 1
 
 	active=$(active_slot) || { log "cannot determine the active slot"; return 1; }
 	[ -z "$active" ] && { log "cannot determine the active slot"; return 1; }

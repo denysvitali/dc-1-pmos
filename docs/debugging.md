@@ -123,8 +123,9 @@ Collected files may contain identifiers and internal state:
 
 ### Channels in, ranked by usefulness
 
-1. **SSH on port 22** — Wi-Fi or USB (`ssh <user>@172.16.42.1` over the
-   cable), password as set at install.
+1. **SSH on port 22** — verified over Wi-Fi, password as set at install. The
+   USB address is configured at `172.16.42.1`, but the host-side ECM/SSH test
+   is still pending.
 2. **USB serial** — `/dev/ttyGS0` streams the kernel log live (one-way);
    `/dev/ttyGS1` is an interactive root shell. Requires the USB cable.
 3. **Raw root shell on TCP 4444** — `nc 172.16.42.1 4444`, USB cable
@@ -231,4 +232,3 @@ Units worth knowing (all from the device package unless noted):
 | `dc1-rtcsync.timer` | Periodic RTC sync |
 | `dc1-fix-wireplumber-alsa` | Re-applies the WirePlumber 0.5.15 nil-concat guard (post-install/upgrade/trigger) |
 | `dc1-link-apk-keys` | Restores Alpine key links for the signed repository |
-

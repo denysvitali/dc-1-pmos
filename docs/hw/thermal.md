@@ -89,7 +89,9 @@ gap), on the same boot that verified the audio race fix and microSD.
   here, hall switch in [sensors.md](sensors.md).
 - Occasional empty LVTS reads remain uninvestigated (reproduced
   2026-08-22: one empty poll of lvts-ts2-3 that recovered on the next
-  read).
+  read). This is a low-priority known wart rather than a thermal-verdict gate:
+  it has not coincided with a missing zone, trip, cooling device, or sustained
+  read failure. Escalate it only if one of those associations appears.
 - Kernel r50 disables the non-answering `bq78z100-0` DT node, removing its
   self-disabled thermal zone and phantom power_supply. The 2026-08-28 r50
   boot verified exactly 15 real LVTS/NTC zones and no BQ dmesg signature —

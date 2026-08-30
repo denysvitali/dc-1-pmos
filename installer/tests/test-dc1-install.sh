@@ -64,6 +64,32 @@ grep -q 'require_dtbswap "\$INSTALLER_BOOT"' "$HERE/../host/dc1-install.sh" \
 grep -q 'require_dtbswap "\$BOOT_IMAGE"' "$HERE/../host/dc1-install.sh" \
 	&& ok "system boot image is gated" || bad "system boot image is not gated"
 
+# Slot selection is part of each boot_a write. A device previously active on
+# slot B would otherwise reboot the untouched slot after a successful flash.
+SCRIPT="$HERE/../host/dc1-install.sh"
+installer_seq=$(sed -n '/msg "flashing installer to boot_a"/,/fastboot reboot/p' "$SCRIPT")
+printf '%s\n' "$installer_seq" | awk '
+	/fastboot flash boot_a/ { flash = NR }
+	/fastboot set_active a/ { active = NR }
+	/fastboot reboot/ { reboot = NR }
+	END { exit !(flash && flash < active && active < reboot) }
+' && ok "installer flash selects slot A before reboot" \
+	|| bad "installer flash does not select slot A before reboot"
+
+system_seq=$(sed -n '/msg "flashing real boot image to boot_a"/,/fastboot reboot/p' "$SCRIPT")
+printf '%s\n' "$system_seq" | awk '
+	/fastboot flash boot_a/ { flash = NR }
+	/fastboot set_active a/ { active = NR }
+	/fastboot reboot/ { reboot = NR }
+	END { exit !(flash && flash < active && active < reboot) }
+' && ok "system flash selects slot A before reboot" \
+	|| bad "system flash does not select slot A before reboot"
+
+manual_seq=$(sed -n '/done -- now flash the real boot image/,/fastboot reboot/p' "$SCRIPT")
+printf '%s\n' "$manual_seq" | grep -q 'fastboot set_active a' \
+	&& ok "manual completion selects slot A" \
+	|| bad "manual completion omits slot A selection"
+
 echo
 echo "test-dc1-install: $pass ok, $failn failed"
 [ "$failn" -eq 0 ]

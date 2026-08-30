@@ -12,7 +12,9 @@
 #
 # Flow:
 #   1. (--installer-boot) put the device into installation mode:
-#        fastboot flash boot_a installer-boot.img && fastboot reboot
+#        fastboot flash boot_a installer-boot.img
+#        fastboot set_active a
+#        fastboot reboot
 #      NOTE: tethered `fastboot boot <img>` is UNVERIFIED on this LK -- no
 #      recorded evidence it works -- so the installer is flashed to boot_a
 #      and the real boot image is flashed over it at the end. Without
@@ -295,6 +297,7 @@ if [ -n "$INSTALLER_BOOT" ]; then
 	# the installer to boot_a and restore the real image in step 5.
 	msg "flashing installer to boot_a"
 	fastboot flash boot_a "$INSTALLER_BOOT"
+	fastboot set_active a
 	fastboot reboot
 fi
 
@@ -367,11 +370,13 @@ if [ -n "$BOOT_IMAGE" ]; then
 	done
 	msg "flashing real boot image to boot_a"
 	fastboot flash boot_a "$BOOT_IMAGE"
+	fastboot set_active a
 	fastboot reboot
 	msg "done -- the DC-1 is booting the installed system."
 else
 	msg "done -- now flash the real boot image over the installer:"
 	msg "    fastboot flash boot_a jagar-boot.img"
+	msg "    fastboot set_active a"
 	msg "    fastboot reboot"
 	msg ""
 	msg "The boot image carries our device tree via the dtbswap stub in its"

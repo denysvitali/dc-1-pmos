@@ -1,7 +1,8 @@
 #!/bin/sh
-# Offline tests for dc1-boot-sync's fail-closed boot-slot resolution and
-# kernel extraction. The destructive path (download, dd, arm, reboot) is not
-# exercised here; the parts worth proving offline are that resolve_boot refuses
+# Offline tests for dc1-boot-sync's fail-closed boot-slot resolution,
+# kernel extraction, and release-image/installed-kernel match gate. The
+# destructive path (download, dd, arm, reboot) is not exercised here; the
+# parts worth proving offline are that resolve_boot refuses
 # a moved or ambiguous GPT mapping rather than pointing dd at a boot-critical
 # partition, and that kernel_sha reads the gzip'd kernel out of an Android v4
 # boot image (kernel_size at offset 8, kernel at offset 4096).
@@ -89,6 +90,11 @@ open(sys.argv[1], 'wb').write(hdr + b'\0' * (4096 - 1584) + gz)
 PY
 got=$(kernel_sha "$tmp/dtbswap.img") || fail "kernel_sha failed on a dtbswap image"
 [ "$got" = "$want" ] || fail "dtbswap kernel_sha = $got, want $want (inner kernel not unwrapped)"
+image_matches_installed_kernel "$tmp/dtbswap.img" "$want" ||
+	fail "matching release boot image was refused"
+! image_matches_installed_kernel "$tmp/dtbswap.img" \
+	0000000000000000000000000000000000000000000000000000000000000000 \
+	2>/dev/null || fail "moved latest release kernel was accepted"
 
 # A plain kernel whose bytes HAPPEN to be valid at 0x40 must not be misread
 # as a payload: the FDT-magic-at-doff check is the discriminator. Kernel of
@@ -131,4 +137,4 @@ is_dtbswap_img "$tmp/notgz.img" 2>/dev/null && fail "is_dtbswap_img accepted a n
 # uses structurally; the layout facts are asserted once, here and in
 # test-netinstall.sh.
 
-echo "boot-sync resolver + kernel extraction tests passed"
+echo "boot-sync resolver + kernel-match tests passed"

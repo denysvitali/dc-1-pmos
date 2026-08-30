@@ -11,6 +11,7 @@ measurement was made. "Pending" items live in
 | Claim | Verified at | Date | Record |
 | --- | --- | --- | --- |
 | dtbswap boots the mainline DT (model string, DRM, GNOME atomic) | pre-pin bring-up | 2026-08-19 | [dtbswap README](../boot/dtbswap/README.md) |
+| installer-boot dtbswap reaches installation mode on a stock-DT-affected unit | issue #1 affected-unit build (exact release hash not recorded) | 2026-08-24 | [installation architecture](installation.md#how-the-flow-works) |
 | Reachability watchdog incl. fastboot escalation | boot-image deploy | 2026-08-19 | [debugging.md](debugging.md) |
 | Autonomous OTA cycle (apk → slot write → first-try boot) | linux r31 era | 2026-08-23 | [README.md](../README.md#living-with-it) |
 | Display: DPMS off/on relight (`DSI_SW_CTL_EN` fix, TE + DCS ground truth) | linux r37 (`2466a7f6`) | 2026-08-24 | [hw/display.md](hw/display.md) |
@@ -72,8 +73,13 @@ record; each open check and the claim it gates are called out explicitly here.
 
 | Session | What it gates |
 | --- | --- |
+| Published-release installer → provisioning → first login → first update | The repository-wide `hardware_verified=true` claim and fresh-install desktop delivery |
+| Next boot: confirm initramfs binds the observed UDC without failed attempts | Clean system-init USB gadget handoff |
 | Power off, plug USB, confirm the ring shows `BOOT_REASON: 1` (optionally pin CHRIN via debugfs regmap) | Charging mode's authoritative detection — the one calibration owed by the shipped feature |
+| Short/long power-key feel, lock/wake, and menu exercise | Phone-like power-key behavior rather than kernel-event presence alone |
+| USB host reaches `ssh <user>@172.16.42.1` over ECM | Host-side USB Ethernet/SSH claim |
 | Repeated physical reconnect of an ordinary USB 2.0 hub in host mode; gadget return | USB host: downstream enumeration after the r52 `HCD_DMA` fix; the Lenovo 40B0 dock limitation stays separate |
+| Quick Action / Back Button key-event confirmation | Shipped F11/F12-to-Launch1/Launch2 remap |
 | Hands-on pen checks: mid-proximity eraser flips and ink-under-nib alignment across the glass | Pen digitizer's last two open checks (r41+ boots long since available) |
 | Four-pose accelerometer tilt test | Sensors: orientation sign-off |
 | MN29 register protocol identification | Ambient-light/proximity sensor |

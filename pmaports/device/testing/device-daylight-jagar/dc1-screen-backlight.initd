@@ -2,8 +2,9 @@
 # Put the DC-1 frontlights out while the panel is blanked.
 #
 # The two RT4539 frontlights are independent i2c devices, not the panel's DRM
-# backlight: the device boots LK's stock device tree and its nt36523 panel node
-# has no backlight phandle, so drm_panel_{enable,disable} never touches them.
+# backlight: the dtbswap-delivered mainline panel node has no backlight phandle
+# because two independently controlled channels are not one ordinary panel
+# backlight, so drm_panel_{enable,disable} never touches them.
 # A compositor DPMS-off therefore leaves an evenly lit, empty panel behind,
 # which reads as a wedged display rather than an off screen.
 #

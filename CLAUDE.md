@@ -408,7 +408,7 @@ zstd, exact-version copies of all three APKs, the kernel and DTB inputs under
 `boot_image_included=false`, `deployable=rootfs-image-only`, and
 `hardware_verified=false`; the CI release assembly adds the boot images later.
 
-The final release directory contains:
+The final published release directory contains:
 
 - `installer-boot.img` and `jagar-boot.img`;
 - `jagar-rootfs.ext4.zst` and `jagar-rootfs.tar.gz`;
@@ -503,15 +503,17 @@ PD contracts settle in-kernel). Constraints future changes must preserve:
   tests, and `installer/gotools` build/vet/tests plus an arm64 build.
 - `build` on `ubuntu-24.04-arm` runs natively, restores pmbootstrap source,
   package, and ccache caches, builds the pinned rootfs, builds `dtbswap`,
-  creates both boot images, assembles the release, signs its APK index, and
-  verifies the final manifest.
+  creates both boot images, and assembles the artifact. Publishing events sign
+  its APK index and verify the final manifest; pull requests omit the index.
 
 The workflow runs for pushes to `main`, pull requests, and manual dispatch.
-Pull requests upload a workflow artifact. A push to the default branch
+Pull requests upload a workflow artifact without `APKINDEX.tar.gz`: untrusted
+PR code never receives or executes with `DC1_APK_PRIVATE_KEY`. A push to the
+default branch
 publishes/replaces the rolling prerelease `latest`; manual dispatch without a
 tag can do the same on the default branch. A manual `pmos-v*` tag publishes a
-prerelease with that version. Keep the `DC1_APK_PRIVATE_KEY` secret available;
-the build must fail rather than publish an unsigned APK index.
+prerelease with that version. Keep the `DC1_APK_PRIVATE_KEY` secret available
+to publishing events; they must fail rather than publish an unsigned APK index.
 
 No workflow step may quietly turn a docs-only change into a skipped build. The
 cache is part of correctness: unchanged `pkgver-pkgrel` packages must remain

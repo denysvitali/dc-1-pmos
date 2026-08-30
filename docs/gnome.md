@@ -1,19 +1,20 @@
 # The GNOME stack on this image — shims, pins, and why
 
-Deep-dive for the status-table row *On-device UI* in
+Deep-dive for the status-table row *Desktop / fresh install* in
 [README.md](../README.md#hardware-support-at-a-glance). The desktop is GNOME Mobile (Wayland,
 systemd) on the panel, hardware-accelerated via Panfrost. The stack is
 currently held together by an explicit, minimal set of shims and pins;
 this page is their inventory and removal conditions.
 
-## GNOME on fresh installs: the verified-minimal shim set (2026-08-19)
+## GNOME fresh-install convergence history (2026-08-19)
 
 A fresh install of this image could not start GNOME: the pmOS systemd
 repository is mid-way through its GNOME 50 migration, so the image mixes
 Alpine's gdm 48.0-r7 with pmOS's gnome-shell-mobile 999948.0-r4 and the
 pmOS accountsservice fork. An on-device session established the exact
 minimal fix set — GNOME up, clean reboot, zero failed units — and this
-repository now codifies all six pieces so every fresh install gets them.
+repository now codifies all six pieces. Their delivery through a fresh
+published rootfs/install remains unverified.
 (Update 2026-08-29: the migration midpoint described here has moved on —
 a converged install runs the coherent GNOME-50 mobile set, gdm
 999950.2-r0 with gnome-session 999950.1-r0, with all three dc1
@@ -85,9 +86,9 @@ device (tracked in [roadmap.md](roadmap.md) tier 2). Two known risks:
 - screen orientation after removing the static transforms still needs a
   physical tilt test on hardware (runbook in [roadmap.md](roadmap.md)).
 
-## Device-local shims on the development unit (not in the image)
+## Former device-local shims on the development unit (not in the image)
 
-Around the packaged set, the development device carries local shims
+Around the packaged set, the development device previously carried local shims
 (restored 2026-08-19 after a day-long outage), the decisive one being the
 libelogind redirect above: a 48-era gjs/mozjs/ICU shadow stack under
 `/usr/local/lib` (edge's gjs 1.88 segfaults the 948 mobile shell), a
@@ -96,10 +97,9 @@ unit, Wayland-only gdm (no Xorg exists to fall back to), a gdm drop-in
 that waits for a DRM connector (gdm races mediatek-drm at boot; the
 card0/card1 order flips between boots and mutter's builtin-panel
 heuristic copes), and display-manager restart caps (a 1s-restart session
-crash-loop once starved the whole machine). All of it comes off once
-pmOS's systemd repo ships a coherent GNOME-50 mobile set (mid-migration
-as of 2026-08-19: session 999950 + shell 999948 + an uninstallable gdm
-999950).
+crash-loop once starved the whole machine). Those local shims came off when
+the unit converged on the coherent GNOME-50 mobile set recorded above; the
+mid-migration versions remain here only as failure-history context.
 
 ## Version-skew fixes shipped in the device package
 
@@ -119,12 +119,15 @@ as of 2026-08-19: session 999950 + shell 999948 + an uninstallable gdm
   smooth = 812 MHz; 700 MHz remains a Smooth preset. The helper persists
   `/var/lib/dc1/gpu-freq.conf`. Details in
   [hw/display.md](hw/display.md).
-- **Charging profile panel (device r91):** `dc1-charging-settings` is a
-  read-only libadwaita Preferences window in the Settings category. It keeps
+- **Charging profile panel (device r91, owner controls r92):**
+  `dc1-charging-settings` is a libadwaita Preferences window in the Settings
+  category. It keeps
   the negotiated PD ceiling separate from actual pack current, lists the
   source's fixed/PPS offers, shows the MT6375 input/CC/CV limits, and calls
-  out a 5 V fallback with a reconnect instruction. Contract selection stays
-  in kernel TCPM, which already chooses the highest-power compatible PDO.
+  out a 5 V fallback with a reconnect instruction. It also selects the live
+  2.00/3.15 A charge-current target and exposes authenticated switches for
+  charging mode and automatic updates. Contract selection stays in kernel
+  TCPM, which already chooses the highest-power compatible PDO.
   Details in [hw/power.md](hw/power.md).
 - **120 Hz compositing (device r84):** the `1200x1600@120` mode's kernel
   vblank is 118.4 Hz with 0.31 ms of blanking, and KMS cannot rotate 90°,

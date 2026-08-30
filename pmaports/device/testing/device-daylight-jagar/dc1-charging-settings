@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Read-only GNOME panel for the DC-1 USB-PD and battery charge state.
+"""GNOME panel for DC-1 charging telemetry and owner policy controls.
 
 The TCPM power_supply reports the negotiated contract, not instantaneous
 wall draw.  Keep those values visibly separate from the fuel gauge's real
@@ -11,14 +11,17 @@ the pack to its hardware-maximum 3.15 A target.
 
 import glob
 import os
+import shutil
+import subprocess
 import sys
+import threading
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Adw, GLib
+from gi.repository import Adw, GLib, Gtk
 
 
 SYSFS = os.environ.get("DC1_SYSFS_ROOT", "/sys")
@@ -29,6 +32,18 @@ CHARGER = os.path.join(SYSFS, "class/power_supply/mt6375-charger")
 BATTERY = os.path.join(SYSFS, "class/power_supply/mt6358-fg")
 TYPEC_PORT = os.path.join(SYSFS, "class/typec/port0")
 PD_CLASS = os.path.join(SYSFS, "class/usb_power_delivery")
+HELPER = "/usr/libexec/dc1-owner-settings"
+if not os.path.isfile(HELPER):
+    nearby = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "dc1-owner-settings"
+    )
+    if os.path.isfile(nearby):
+        HELPER = nearby
+
+CHARGE_PROFILES = (
+    ("Conservative · 2.00 A", 2_000_000),
+    ("Measured default · 3.15 A", 3_150_000),
+)
 
 
 def read_text(directory, name, default=""):
@@ -107,6 +122,46 @@ def format_source_profiles(fixed, programmable):
     return " · ".join(parts) or "Not reported"
 
 
+def parse_owner_status(text):
+    result = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        result[key] = value
+    try:
+        charge_current = int(result.get("charge_current", ""))
+    except ValueError:
+        charge_current = 0
+    return {
+        "charge_current": charge_current,
+        "charging_mode": result.get("charging_mode") == "on",
+        "auto_update": result.get("auto_update") == "on",
+    }
+
+
+def run_helper(args, privileged=False):
+    command = [HELPER, *args]
+    if privileged:
+        pkexec = shutil.which("pkexec")
+        if not pkexec:
+            return 127, "", "pkexec is unavailable; cannot authorize the change."
+        command = [pkexec, *command]
+    env = os.environ.copy()
+    env.setdefault("PATH", "/usr/bin:/bin")
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    except OSError as exc:
+        return 127, "", str(exc)
+    return completed.returncode, completed.stdout, completed.stderr
+
+
 def read_status():
     pd_online = read_int(PD_SUPPLY, "online") == 1
     charger_online = read_int(CHARGER, "online") == 1
@@ -150,6 +205,9 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
         super().__init__(title="Charging")
         self.set_search_enabled(False)
         self.set_default_size(460, 720)
+        self._building = True
+        self._busy = False
+        self._control_ticks = 0
 
         page = Adw.PreferencesPage(title="Charging", icon_name="battery-symbolic")
         self.add(page)
@@ -181,6 +239,42 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
         for row in (self._selection, self._source, self._target, self._input):
             policy.add(row)
 
+        controls = Adw.PreferencesGroup(
+            title="Owner controls",
+            description="Changes require authorization. Charge rate is live until "
+            "the next boot; the two switches persist.",
+        )
+        page.add(controls)
+        self._profile = Adw.ComboRow(
+            title="Charge rate",
+            subtitle="3.15 A is the measured default; 2.00 A charges more slowly.",
+        )
+        self._profile.set_model(
+            Gtk.StringList.new([label for label, _value in CHARGE_PROFILES])
+        )
+        self._profile.connect("notify::selected", self._on_profile)
+        controls.add(self._profile)
+
+        self._charging_mode = Adw.SwitchRow(
+            title="Charging mode",
+            subtitle="On the next charger-started boot, keep the desktop and panel off.",
+        )
+        self._charging_mode.connect("notify::active", self._on_switch)
+        controls.add(self._charging_mode)
+
+        self._auto_update = Adw.SwitchRow(
+            title="Automatic updates",
+            subtitle="Check after boot and weekly; disabling does not stop a running upgrade.",
+        )
+        self._auto_update.connect("notify::active", self._on_switch)
+        controls.add(self._auto_update)
+
+        errors = Adw.PreferencesGroup()
+        page.add(errors)
+        self._error = Adw.ActionRow(title="")
+        self._error.set_visible(False)
+        errors.add(self._error)
+
         safety = Adw.PreferencesGroup(
             title="Why there is no faster switch",
             description="3.15 A is the MT6375 register maximum and the measured "
@@ -191,7 +285,76 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
         page.add(safety)
 
         self._refresh()
+        self._refresh_controls()
+        self._building = False
         GLib.timeout_add_seconds(1, self._tick)
+
+    def _set_error(self, message):
+        if message:
+            self._error.set_title(message)
+            self._error.set_visible(True)
+        else:
+            self._error.set_visible(False)
+
+    def _set_controls_sensitive(self, sensitive):
+        for row in (self._profile, self._charging_mode, self._auto_update):
+            row.set_sensitive(sensitive)
+
+    def _refresh_controls(self):
+        code, output, error = run_helper(["status"])
+        if code != 0:
+            self._set_controls_sensitive(False)
+            self._set_error(error.strip() or "Owner controls are unavailable.")
+            return
+        status = parse_owner_status(output)
+        was_building = self._building
+        self._building = True
+        selected = Gtk.INVALID_LIST_POSITION
+        for index, (_label, value) in enumerate(CHARGE_PROFILES):
+            if value == status["charge_current"]:
+                selected = index
+                break
+        self._profile.set_selected(selected)
+        self._charging_mode.set_active(status["charging_mode"])
+        self._auto_update.set_active(status["auto_update"])
+        self._building = was_building
+        self._set_controls_sensitive(True)
+        self._set_error("")
+
+    def _on_profile(self, row, _pspec):
+        if self._building or self._busy:
+            return
+        selected = row.get_selected()
+        if selected >= len(CHARGE_PROFILES):
+            return
+        self._write(["charge-current", str(CHARGE_PROFILES[selected][1])])
+
+    def _on_switch(self, row, _pspec):
+        if self._building or self._busy:
+            return
+        command = "charging-mode" if row is self._charging_mode else "auto-update"
+        state = "on" if row.get_active() else "off"
+        self._write([command, state])
+
+    def _write(self, args):
+        self._busy = True
+        self._set_controls_sensitive(False)
+
+        def work():
+            code, _output, error = run_helper(args, privileged=True)
+            GLib.idle_add(self._write_done, code, error)
+
+        threading.Thread(
+            target=work, name="dc1-owner-settings", daemon=True
+        ).start()
+
+    def _write_done(self, code, error):
+        self._busy = False
+        message = error.strip() or "Could not change the setting."
+        self._refresh_controls()
+        if code != 0:
+            self._set_error(message)
+        return False
 
     def _refresh(self):
         status = read_status()
@@ -230,6 +393,10 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
 
     def _tick(self):
         self._refresh()
+        self._control_ticks += 1
+        if not self._busy and self._control_ticks >= 5:
+            self._control_ticks = 0
+            self._refresh_controls()
         return True
 
 

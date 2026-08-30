@@ -195,6 +195,10 @@ very protection needed to justify the higher rate.
 Writable owner levers (confirmed present 2026-08-26):
 `/sys/class/power_supply/mt6375-charger/{constant_charge_current,
 constant_charge_voltage, input_current_limit, input_voltage_limit}`.
+Device r92 exposes the two supported live current choices (2.00/3.15 A) and
+the charging-mode/auto-update opt-out markers through the authenticated
+Charging Profile panel; this packages existing policy and is not new hardware
+evidence.
 
 ## Charging mode (packaged 2026-08-25, device pkgrel>=79 — not yet
 hardware-verified)
@@ -205,12 +209,14 @@ network and desktop stay off while the battery charges autonomously —
 the MT6375 runs CC/CV to the pack's 4350 mV CV point in hardware, the
 kernel's VBUS one-shot raises AICR to 1.5 A and the fast-charge target
 to 3.15 A once VBUS appears, and PD contracts are negotiated in-kernel — so
-zero userspace is required for safe charging. Exit paths: unplug
+desktop userspace is not required for CC/CV regulation or PD. The silent pack
+gauge still means there is no pack-temperature-informed current control. Exit paths: unplug
 (`dc1-charging-monitor.service` runs `/usr/libexec/dc1-charging-monitor`,
 which polls VBUS with ~6 s debounce and then powers off cleanly), a brief
 power-key press (warm reboot into the normal desktop), or a PMIC
-long-press hard reset (which also lands in the normal desktop). Opt out
-with `touch /var/lib/dc1/no-charging-mode`; journal tag `dc1-charging`.
+long-press hard reset (which also lands in the normal desktop). Opt out in
+Charging Profile or with `touch /var/lib/dc1/no-charging-mode`; journal tag
+`dc1-charging`.
 
 **Primary signal — the firmware boot cause.** MediaTek's preloader/LK
 writes a fresh console log every boot into reserved DRAM at physical

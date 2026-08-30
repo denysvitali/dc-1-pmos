@@ -13,27 +13,30 @@ This repository does two things:
    compositor package, root filesystem, and a bootable installer image —
    from pinned sources, on every commit, on public GitHub runners.
 
-The end result is a GNOME Mobile desktop (Wayland/systemd) that installs
-from a touchscreen wizard: flash one image over fastboot, answer a few
-questions on the panel, and the device downloads, verifies, and installs
-the rest itself.
+The project builds a GNOME Mobile desktop (Wayland/systemd) and a touchscreen
+installer: flash one image over fastboot, answer a few questions on the panel,
+and the device is designed to download, verify, and install the rest itself.
+The installer boot/UI and individual subsystems have hardware evidence; the
+complete published-release install through first update does not yet.
 
 > [!CAUTION]
 > A green CI build proves the artifacts *compile*, not that they *boot*.
 > Releases record `hardware_verified=false`: individual subsystems are
 > heavily measured on real hardware (see the support summary below and the
-> [verification ledger](docs/verification.md)),
-> and the install flow has been exercised by a small number of users.
+> [verification ledger](docs/verification.md)). No published release has yet
+> completed the full install → provisioning → first boot → update path
+> end-to-end, and no external-user install is on record.
 > Flashing is at your own risk.
 >
 > The DC-1 has **no general recovery channel without a working kernel** —
 > the authenticated preloader accepts no arbitrary download agent — so the
 > partition rules are absolute:
 >
-> - This guide only ever writes **`boot_a`** and **`userdata`** (plus the
->   A/B boot-control bytes in `misc` once Linux is running). Those writes
->   are redoable: if a flashed image fails to boot, the watchdog returns
->   the device to LK fastboot and you reflash.
+> - This guide only ever writes **`boot_a`** and **`userdata`**, plus the A/B
+>   boot-control bytes in `misc` through `fastboot set_active a` and the
+>   installed slot manager. Those writes are redoable. LK's A/B fallback
+>   covers a pre-kernel slot failure; once Linux starts, the reachability
+>   watchdog can return an unreachable boot to LK fastboot.
 > - **Never** write `preloader`, `lk`, `dtbo`, `vendor_boot`, or the UFS
 >   boot LUNs. `lk` and `dtbo` are signature-checked; one bad write marks
 >   the slot dead before Linux starts, with no way back over USB.
@@ -53,19 +56,20 @@ model and records sourced board specifications.
 
 | Area | State | Notes |
 | --- | --- | --- |
+| Desktop / fresh install | 🟡 | GNOME Mobile runs on the converged development unit; fresh published-rootfs delivery, provisioning, and first login remain unverified |
 | Display & touch | ✅ | 1200×1600 @ 60 Hz over DSI, GPU-accelerated (Panfrost), reliable blank/wake |
 | Pen digitizer | 🟡 | Wacom EMR events, pressure, and barrel button verified; mid-hover eraser flips and edge alignment await a final hands-on pass |
-| Screen auto-rotation | 🟡 | Accelerometer/SensorProxy/Mutter chain is live and honors GNOME's rotation lock; four-pose physical sign-off remains |
-| Wi-Fi | ✅ | MT7902, mainline `mt7921s`, Wi-Fi 6 |
-| Bluetooth | 🟡 | Controller and nearby-device discovery verified; pairing/audio streaming and a fresh-boot firmware-race check remain |
-| Audio | ✅ | Stereo speakers, stereo mic capture; no headphone jack (hardware) |
+| Screen auto-rotation | 🟡 | Accelerometer/SensorProxy plus bridge-driven Mutter transforms are live and honor rotation lock; native Mutter claim/animation and four-pose sign-off remain |
+| Wi-Fi | ✅ | MT7902 on mainline `mt7921s`; cold-boot association works (the hardware is Wi-Fi 6, but negotiated HE mode is not recorded) |
+| Bluetooth | 🟡 | Controller-up via the repair path is verified; fresh-boot no-repair setup, active discovery, pairing, and A2DP remain |
+| Audio | ✅ | Stereo speaker playback and DMIC capture verified; no headphone jack (hardware) |
 | Front light | ✅ | White + amber channels, PWM-free dimming, warmth slider in quick settings |
-| Buttons | ✅ | Phone-like power key; volume; Quick Action / Back Button, remappable in GNOME Settings |
+| Buttons | 🟡 | Power/volume event paths work; Quick Action / Back remaps are shipped but still need on-device confirmation |
 | Storage & microSD | ✅ | UFS internal storage; microSD slot works |
-| Battery & charging | 🟡 | USB-C PD negotiates (12 V PDO verified); charging defaults to ~40 %/h (3.15 A), tunable down to ~22 %/h via sysfs; charge % is real coulomb-counting, restored across clean reboots from the shutdown record (voltage seed only as fail-safe) |
-| USB-C data | 🟡 | USB 2.0 only: serial and Ethernet gadget work, while host mode is partial. No SuperSpeed, DisplayPort Alt Mode, or Thunderbolt; external displays are unsupported, and Thunderbolt docks are limited to any USB 2.0 fallback they expose |
-| Suspend/sleep | 🚧 | A clean s2idle test cycle is on record, but sleep targets remain masked by design; the power key blanks instead — see [Battery life today](docs/power.md#battery-life-today) |
-| Ambient light / proximity sensor | ❌ | Part identified on the bus, no mainline driver yet |
+| Battery & charging | 🟡 | USB-C PD negotiates (12 V PDO verified); Charging Profile selects 3.15 A or 2.00 A; charge % is restored only after a valid clean reboot within ten minutes; pack-temperature control is unavailable |
+| USB-C data | 🟡 | USB 2.0 ACM serial works; ECM is configured device-side but host Ethernet/SSH remains unverified, and host mode is partial. No SuperSpeed, video Alt Mode, or Thunderbolt |
+| Suspend/sleep | 🚧 | One pre-pin s2idle cycle completed; a current-build cycle and wake path remain unverified, so sleep targets stay masked |
+| Ambient light / proximity sensor | ❌ | An unidentified MN29-family part ACKs at `0x49`; protocol and driver remain unknown |
 | Gyro, magnetometer, cellular, GPS, cameras | ❌ | Not fitted/exposed on this hardware |
 
 ✅ works · 🟡 works, with stated caveats · 🚧 being worked on · ❌ unavailable
@@ -80,6 +84,9 @@ Two paths lead to the same system:
 2. **USB install from a computer (fallback)** — a host script streams the
    image and answers over the cable when there is no Wi-Fi. See
    [Install from a computer](docs/installation.md#install-from-a-computer-advanced--fallback).
+
+Both paths are implemented and offline-tested. The complete flow from a
+published release has not yet been hardware-verified end-to-end.
 
 What you need either way: a DC-1, a USB cable, `fastboot` on the computer
 (package `android-tools`), and `installer-boot.img` + `SHA256SUMS` from the
@@ -141,8 +148,9 @@ on-device; the cleartext is never stored), writes the real boot image to
 `boot_a`, and reboots.
 
 > [!TIP]
-> If an install is interrupted, run the flow again. Nothing half-written is
-> ever left mountable.
+> If image transfer is interrupted, run the flow again: the ext4 superblock is
+> committed only after the full image verifies. Provisioning happens after
+> that commit; if it fails later, rerunning the installer is still supported.
 
 **5. First boot.** The installed system downloads the desktop app set
 (Chromium, Ghostty, GNOME Console/Calculator/Text Editor, Nautilus) once
@@ -164,12 +172,15 @@ what each menu option does — is in
 - **Updates are automatic.** `dc1-update.timer` runs `apk upgrade` shortly
   after boot and weekly, converging the device on the rolling release —
   kernel updates included (they arm the inactive A/B slot and apply on the
-  next reboot). No reflashing for userland fixes. Opt out with
-  `touch /var/lib/dc1/no-auto-update`.
-- **Charging while powered off.** Plugging USB power into a cleanly
-  powered-off DC-1 boots a silent headless charging mode instead of the
+  next reboot). No reflashing for userland fixes. Toggle it in **Settings →
+  Charging Profile** (or use `/var/lib/dc1/no-auto-update`).
+- **Charging while powered off is experimental.** The shipped logic is
+  designed so plugging USB power into a cleanly powered-off DC-1 boots a
+  silent headless charging mode instead of the
   desktop — unplug to power it off again, press power briefly to continue
-  to the desktop. Opt out with `touch /var/lib/dc1/no-charging-mode`;
+  to the desktop. The real charger-insert code and exit cycle still need one
+  calibration session; darkness alone is not proof of charging. Toggle the
+  feature in **Settings → Charging Profile**;
   details in
   [docs/installation.md](docs/installation.md#charging-mode). For charge
   rates, the battery percentage's caveats, and the fast-charge lever,
@@ -180,11 +191,11 @@ what each menu option does — is in
   minutes (escalating to fastboot only if consecutive boots stay
   unreachable). If you will use the tablet away from every network, opt
   out once: `sudo touch /etc/dc1/boot-watchdog.disabled`.
-- **Debug channels are always up.** SSH on port 22 (reachable over Wi-Fi
-  or the USB cable), plus a raw root shell on TCP 4444 and two USB serial
-  ports (USB cable only — those bind to the USB interface and are never
-  exposed over Wi-Fi). The full exposure matrix, including how to close
-  each channel, is in [docs/security.md](docs/security.md); the
+- **Normal desktop boots expose the recovery channels.** SSH listens on port
+  22 over configured networks; USB SSH/ECM still awaits a host-side test. Raw
+  TCP 4444 and two USB serial ports are cable-only. Charging mode stops sshd
+  and Wi-Fi but keeps the raw USB channels. The full exposure matrix is in
+  [docs/security.md](docs/security.md); the
   installer additionally offers read-only on-screen debug tools
   ([docs/debugging.md](docs/debugging.md)).
 
@@ -198,8 +209,8 @@ what each menu option does — is in
   [docs/preloader-recovery.md](docs/preloader-recovery.md). It requires
   proprietary vendor files this project does not ship.
 - **An old installation can't upgrade** (`UNTRUSTED signature`) — devices
-  installed before the signed package repository existed repair themselves
-  with the release's `dc1-repair-apk.sh`; see
+  installed before the signed package repository existed can be repaired
+  manually with the release's `dc1-repair-apk.sh`; see
   [docs/installation.md](docs/installation.md#updating-an-old-pre-august-2026-installation).
 - **Stranded somewhere unexpected** — as long as `fastboot devices` shows
   the device, you can always reflash `boot_a`. A failed boot is annoying,
@@ -207,7 +218,7 @@ what each menu option does — is in
 
 ## Release contents
 
-Every push to `main` rebuilds and republishes the rolling prerelease:
+Every successful push build on `main` republishes the rolling prerelease:
 
 - `installer-boot.img` — the installation-mode boot image;
 - `jagar-boot.img` — the installed system's boot image;

@@ -63,8 +63,8 @@ exists. `/var/lib/bluetooth` is empty (zero pairings ever) and
 Pairable/Discoverable default off, so the remaining work is exactly one
 session: enable pairable, pair a peer, stream.
 
-**Fix shipped 2026-08-23 (installer + device r65):** the race now has a
-winning side on new installs — `installer/build.sh` fetches
+**Fix shipped 2026-08-23 (installer + device r65):** the build is intended to
+give the race a winning side on new installs — `installer/build.sh` fetches
 `BT_RAM_CODE_MT7902_1_1_hdr.bin` from upstream linux-firmware at build
 time (exact size + SHA-256 checked, same discipline as the Wi-Fi blobs)
 and stages it into the system initramfs at `/lib/firmware/mediatek/`,
@@ -72,9 +72,10 @@ mirroring the proven Wi-Fi pattern, so the single t=1.75 s load attempt
 finds the blob on the initramfs root instead of failing. `dc1-bluetooth`
 and its initd stay installed as the repair path but now exit 0
 immediately unless dmesg carries the `Failed to setup 79xx firmware`
-signature, so they never rebind a healthy controller; already-installed
+signature, so they should never rebind a healthy controller; already-installed
 devices (which converge by apk, not reflash) keep being recovered by that
-service.
+service. Build-level staging is verified; a fresh boot proving the repair path
+did not rebind remains pending.
 
 **State re-measured 2026-08-26 (running r37 boot, ~15 h uptime):**
 `bluetoothctl show` reports the controller up — `Daylight DC-1`, public

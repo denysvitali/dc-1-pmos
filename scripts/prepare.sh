@@ -18,6 +18,15 @@ work_dir=$(mkdir -p -- "$1" && CDPATH= cd -- "$1" && pwd)
 pmaports_dir="$work_dir/pmaports"
 pmbootstrap_dir="$work_dir/pmbootstrap"
 
+# `prepare.sh .` from the repository root used to make pmaports_dir equal the
+# tracked overlay_dir. The disposable-checkout cleanup below would then remove
+# the repository's own device/kernel recipes before trying to copy them from
+# the same path. Refuse before any fetch, checkout, or removal.
+if [ "$pmaports_dir" = "$overlay_dir" ]; then
+	echo "refusing work directory whose pmaports checkout is the source overlay: $work_dir" >&2
+	exit 2
+fi
+
 prepare_checkout() {
 	directory=$1
 	url=$2
