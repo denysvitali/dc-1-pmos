@@ -108,3 +108,30 @@ and a real driver remain open.
 
 The mainboard carries a connector explicitly labelled Light Sensor
 (Daylight publishes nothing about sensors).
+
+**2026-08-31 source audit and read-only measurement:** the [public MT8781 vendor
+kernel](https://gitlab.com/ubports/porting/reference-device-ports/halium13/volla-tablet/android_kernel_volla_mt8781)
+contains the Linux-side MediaTek sensorhub transport and represents
+light/proximity as single-value sensorhub events, but it contains no
+`mn29xxx` physical driver or register definitions. That driver is compiled
+into the closed SCP firmware, so the vendor kernel cannot establish a direct
+AP-I2C register map. [MEMSIC's public datasheet
+catalogue](https://www.memsic.com/datasheets) likewise has no MN29 part. The
+direct-I2C path therefore remains unidentified.
+
+Device package r94 extends `dc1-mn29-probe` with bounded read-only sampling:
+
+```sh
+sudo dc1-mn29-probe --samples 100 --interval-ms 100
+```
+
+The helper still performs only current-address reads: it sends no register
+address and writes no data byte. On the live device, 1,024 back-to-back reads
+were exactly periodic every 256 bytes (zero mismatches across three complete
+comparisons). A second 256-byte pass sampled at 100 ms intervals matched the
+first byte-for-byte, so the sequence remained fixed for 25.5 seconds. The
+current-address operation is therefore walking a static 256-byte register or
+configuration window; it is not returning a live light sample. This rules out
+a truthful read-only IIO prototype from the present evidence. The exact part
+and SCP register protocol remain mandatory before binding a child node or
+issuing a register-address write.
