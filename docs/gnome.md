@@ -137,3 +137,7 @@ mid-migration versions remain here only as failure-history context.
   (mutter, not the CRTC; tiny-fast ~94 Hz, large-fast ~78 Hz). Schema
   default enables mutter `kms-modifiers` for tiled Panfrost intermediates.
   60 Hz stays preferred. Details in [hw/display.md](hw/display.md).
+- **PDF scrolling (device r95):** Chromium's built-in PDF renderer can consume
+  a full CPU core while scrolling on the DC-1. Chromium therefore downloads
+  PDFs for the default native Papers viewer instead of rendering them in a web
+  tab. This does not change the browser used for ordinary web pages.

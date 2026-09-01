@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=94
+pkgrel=95
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -28,6 +28,7 @@ depends="
 	linux-postmarketos-mediatek-mt6789
 	openssh-server
 	pipewire-pulse
+	papers
 	polkit
 	postmarketos-base
 	py3-dbus
@@ -115,6 +116,8 @@ source="
 	61-daylight-jagar-keyboard.hwdb
 	daylight-dc1.tablet
 	10-dc1-power.conf
+	10-dc1-pdf.json
+	dc1-mimeapps.list
 	49-device-daylight-jagar-sensors.rules
 	dc1-orientation
 	dc1-orientation.service
@@ -318,6 +321,15 @@ package() {
 		"$pkgdir"/etc/systemd/logind.conf.d/10-dc1-power.conf
 	install -Dm644 "$srcdir"/10-dc1-gnome.gschema.override \
 		"$pkgdir"/usr/share/glib-2.0/schemas/10-dc1-gnome.gschema.override
+
+	# Chromium's built-in PDF renderer is CPU-bound on this SoC during scroll.
+	# Download PDFs instead and hand them to Papers, while leaving ordinary web
+	# content in Chromium. Keep this a recommended policy so the user can opt
+	# back into the internal viewer if desired.
+	install -Dm644 "$srcdir"/10-dc1-pdf.json \
+		"$pkgdir"/etc/chromium/policies/recommended/10-dc1-pdf.json
+	install -Dm644 "$srcdir"/dc1-mimeapps.list \
+		"$pkgdir"/etc/xdg/mimeapps.list
 
 	# Side buttons: remap Quick Action / Back Button (F12/F11 in the keypad's
 	# DT keymap) to XF86Launch1/XF86Launch2 so they are free for the user to
@@ -555,6 +567,8 @@ d1f9d8131b2454dea337083f8353335c3ba738739b59d454c273944de1e2561e8d07d5563af1b5f8
 35ed4afb186d649ece52f36dc2d1b9df640f07aaf796f3ea4a63805b7aa24674fba9b945694d0e6863f15908de91931e8766010a2e34b19bbea52e2f2006dbfd  61-daylight-jagar-keyboard.hwdb
 d6aec155af0def9a5b480a60e713aeee0738271bfe85c397ec1f23fda73359e9280b6f3332f02e4801d940005610b4c71a82820afb3e7865ca4345cb32ff6105  daylight-dc1.tablet
 50dfd0ea25c80a97c1625dbf6dc42a8c114148cadafa20e21d210a9ea8c224e0069a75251ce11e427b51b50896929c833166988855a2c96deef03e6d3b94eb58  10-dc1-power.conf
+98ccb4d352f0c1ded1a33e159b0b2d3229835e124cb645eec062dabd55cccdf46d4ec3073be8a431d0d74ce71a7c20c9b17be1225a06c51290676429675ed3cf  10-dc1-pdf.json
+c52919a5cedd59e1be8037fd306b98b15a7176a8f6d287ef52f96f44fd5d6c76462b49d486981b069d06b0db41b7920461b1b2b59d2dbe302c2718a565218681  dc1-mimeapps.list
 27d1223ba673ee4639d12a7eb2bf7b24e8baf549c3eca7dc943d2e26d30aa094fcb3d22db7d15ac150329100e4af68443ef8324e4af919612bc43b262734abec  49-device-daylight-jagar-sensors.rules
 edecd87342c605c7d70f794ac7a98992d0e85fcc1bbb83a91718488f28eee5b535b919c7e6c14a79b93aedb0b8518e026683fe2c1befb50d73a78b3be3ff78fa  dc1-orientation
 8049055e585a55f5c9ea488eb7e082e062d973d38c3aba0c50f7e1f6f1e649429b7b98c8532d5097712e0b6dbfa4b73a1456415de7189e1bf9ec34bd99b85d7e  dc1-orientation.service
