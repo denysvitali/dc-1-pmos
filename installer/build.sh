@@ -104,7 +104,7 @@ REGDB_SIG_SIZE=1085
 REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e919179
 
 # Alpine edge/main aarch64 packages, pinned by exact version AND content hash
-# (resolved 2026-08-30). A filename is not a content pin: mirrors may replace
+# (resolved 2026-09-01). A filename is not a content pin: mirrors may replace
 # bytes under one version, and dl/ is a persistent cache. Every cached or newly
 # downloaded APK is therefore verified before extraction.
 ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64"
@@ -116,8 +116,8 @@ libcurl-8.21.0-r0
 ca-certificates-bundle-20260611-r0
 brotli-libs-1.2.0-r1
 c-ares-1.34.8-r0
-libcrypto3-3.5.7-r0
-libssl3-3.5.7-r0
+libcrypto3-3.5.8-r0
+libssl3-3.5.8-r0
 libidn2-2.3.8-r0
 libunistring-1.4.2-r0
 nghttp2-libs-1.70.0-r0
@@ -150,8 +150,8 @@ e1f53173f2ee16013e8b88cea2f57e6c6c9e35b9ae02dd5cc36802f9ce7998dc curl-8.21.0-r0
 b6263f8453b37537725a17bdfdcecdf7f6cd016b3421d3238e36f1005776e332 ca-certificates-bundle-20260611-r0
 1d355054e19b7dd843d225c878a8e92b205270f4f7c89fb218151d21c9ae87e0 brotli-libs-1.2.0-r1
 b16ca578a8718851e2d3068120c0e60753a66f2df1fe44c530198b3ef5882b67 c-ares-1.34.8-r0
-0b101a0db4509872143cc46f9bf7d27f1a484c7f935f31e957630d20026958cd libcrypto3-3.5.7-r0
-1269473ad8e7c09f00c164efb761840eaef348b4b3f39f242f6cd4155b049086 libssl3-3.5.7-r0
+d75cc169c5b7a4bfd94a99d3f22ef9892465f19a2db4017a832c4f6f5a756c33 libcrypto3-3.5.8-r0
+d9555001cc3fc6dcdb8a9ce62154fc888a39fea59cf98eab767a6c6682e6d769 libssl3-3.5.8-r0
 3c6f9af20e672e880e2d719445750ad5ba41dceb53158fef9f256f17dc828f09 libidn2-2.3.8-r0
 2c2a871d7cf19eae35e3a6a57d74fd194bd3d68742d78d7b54b698f62fcdde0e libunistring-1.4.2-r0
 a552fb542888b300e353c960be884d448e789e8fb96be5e12873f0102540c363 nghttp2-libs-1.70.0-r0
