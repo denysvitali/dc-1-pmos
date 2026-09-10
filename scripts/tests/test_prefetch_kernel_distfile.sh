@@ -23,9 +23,11 @@ _repository="dc-1-linux-kernel"
 _commit="0123456789abcdef0123456789abcdef01234567"
 source="
 	\$pkgname-\$_commit.tar.gz::file://$payload
+	sdcard.config
 "
 sha512sums="
 $hash  $name
+unused-by-prefetch  sdcard.config
 "
 EOF
 

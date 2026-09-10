@@ -22,6 +22,22 @@ GPIO, and no mmc host appeared. Fix enabled and pinned (kernel
 `sdcard-io` registers, msdc0 comes up as `mmc0`, and an inserted 119 GiB
 SDXC card enumerates as `mmcblk0` with its partition table. Closed.
 
+The kernel package's `sdcard.config` keeps the MMC block/MediaTek host,
+pin controller, PMIC and GPIO regulators, partition parsers, and ext4,
+VFAT and exFAT filesystems built in. FAT also needs codepage 437 and
+ISO-8859-1; exFAT defaults to UTF-8. These character tables were missing
+from the pinned base config, which also disabled exFAT. Kernel pkgrel 56
+adds them and checks every requirement after `olddefconfig`. No separate
+SD-card `.ko` bundle is needed in either initramfs. The package installs
+the resolved config under
+`/usr/share/kernel/postmarketos-mediatek-mt6789/config` for inspection.
+
+This packaging change has passed Kconfig resolution, not a hardware mount
+test. After building and safely booting the matching image, check for
+`/sys/class/mmc_host/mmc0` and `/dev/mmcblk*`, identify the partition's
+filesystem with `blkid`, then test a read-only mount of that partition.
+Card enumeration alone does not verify filesystem support.
+
 Related MSDC fix kept for the pattern: the Wi-Fi half of the board
 (MSDC1/MT7902) needed its pad rails VCN18/VMC declared because mainline
 mtk-sd never enables the vendor `vioa/viob` supplies — kernel `0c26bee`;

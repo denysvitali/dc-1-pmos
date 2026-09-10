@@ -389,6 +389,21 @@ Display/DSI invariants (measured 2026-08-24):
 
 ## Build flow and artifact contract
 
+For native kernel-only development, `scripts/kernel-local.sh build` retains
+the pmbootstrap toolchain chroot and compiler cache. `install` installs the
+verified local APK and deploys it through the existing A/B helper;
+`build-install --reboot` combines the steps. See `docs/kernel-development.md`.
+The local updater preserves the running slot's stub, DTB and ramdisk, so
+device-tree/initramfs changes still require the full image workflow. Root-only
+rollback images and transaction records live in `/var/lib/dc1/local-kernel`
+and must never enter Git. A boot-time confirmation service checks the new
+build or restores the old matching package after fallback.
+
+The kernel overlay applies `sdcard.config` to its pinned base defconfig and
+requires its MMC/regulator/partition/filesystem settings to resolve built-in.
+The resolved configuration is included in the kernel APK. The source archive
+prefetcher handles the archive separately from this local config input.
+
 `scripts/prepare.sh WORK` fetches only the pinned pmaports and pmbootstrap
 commits, validates the overlay scope, copies the three recipes, and writes
 `WORK/SOURCES`. `scripts/build-rootfs.sh [--validate-only]

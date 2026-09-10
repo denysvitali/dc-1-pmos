@@ -41,9 +41,13 @@ srcdir="$startdir/src"
 # shellcheck disable=SC1091
 . "$apkbuild"
 
-set -- $source
+remote_sources=""
+for candidate in $source; do
+	case "$candidate" in *::*://*|*://*) remote_sources="$remote_sources $candidate" ;; esac
+done
+set -- $remote_sources
 [ "$#" -eq 1 ] || {
-	echo "expected exactly one kernel distfile, got $#" >&2
+	echo "expected exactly one remote kernel distfile, got $#" >&2
 	exit 1
 }
 src=$1
@@ -59,14 +63,13 @@ esac
 }
 
 set -- $sha512sums
-[ "$#" -eq 2 ] || {
-	echo "expected one kernel checksum pair, got $#" >&2
-	exit 1
-}
-hash=$1
-file=$2
-[ "$file" = "$name" ] || {
-	echo "checksum filename '$file' != '$name'" >&2
+hash=""
+while [ "$#" -ge 2 ]; do
+	if [ "$2" = "$name" ]; then hash=$1; fi
+	shift 2
+done
+[ "$#" -eq 0 ] && [ -n "$hash" ] || {
+	echo "missing or malformed kernel checksum for '$name'" >&2
 	exit 1
 }
 

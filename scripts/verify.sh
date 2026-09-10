@@ -49,6 +49,8 @@ python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __
 	"$script_dir/apk_version_compare.py"
 python3 "$script_dir/tests/test_apk_version_compare.py"
 python3 "$script_dir/tests/test_verify_kernel_artifacts.py"
+sh -n "$script_dir/kernel-local.sh"
+python3 "$script_dir/tests/test_kernel_local_install.py"
 
 (
 	cd "$device_dir"
