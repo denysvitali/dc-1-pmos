@@ -28,7 +28,8 @@ dtbswap stub, device tree, ramdisk and signature. Use the full image build
 workflow for device-tree or initramfs changes. It refuses ambiguous running
 kernel identities, an unproven fallback, a mismatched installed kernel,
 missing SD-card configuration, or an unavailable matching rollback APK in
-`/var/cache/apk`. The new build banner must differ from the running one.
+`/var/cache/apk` or a retained local transaction. The new build banner must
+differ from the running one.
 It also refuses a ramdisk containing kernel modules, which would need to be
 rebuilt against the new kernel instead of copied into the new boot image.
 

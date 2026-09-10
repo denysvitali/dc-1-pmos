@@ -303,7 +303,9 @@ def install(repo, apk, keydir):
     # package-signing public key is generally not installed on the device.
     previous = None
     installed_checksum = installed_package_checksum()
-    for candidate in Path('/var/cache/apk').glob(PACKAGE+'-*.apk'):
+    candidates = list(Path('/var/cache/apk').glob(PACKAGE+'-*.apk'))
+    candidates.extend(BASE.glob('*/'+PACKAGE+'-*.apk'))
+    for candidate in candidates:
         if control_checksum(candidate) == installed_checksum and \
                 member(candidate, 'boot/vmlinuz') == Path('/boot/vmlinuz').read_bytes():
             previous = candidate
