@@ -44,8 +44,13 @@ experimental-features=['kms-modifiers']
 #
 # dc1-session-compat restores Power Off / Restart while the shell is a
 # 48-based fork running against gnome-session >= 50 (CanShutdown reply
-# changed from boolean to a uint32 availability enum). Drop it together
-# with the extension when gnome-shell-mobile rebases onto GNOME >= 50.
+# changed from boolean to a uint32 availability enum), and re-issues
+# gdm 50's RegisterSession() from inside the shell, which takes no
+# argument where the shell still sends an empty dict. Left unfixed, gdm
+# rejects the call with INVALID_ARGS, never marks the display
+# session-registered, and therefore skips finishing it on logout. Drop it
+# together with the extension when gnome-shell-mobile rebases onto
+# GNOME >= 50.
 #
 # dc1-safe-area pads the top bar and on-screen keyboard away from the
 # bezel, which overlaps the outer ~10 device px of the panel on every edge
