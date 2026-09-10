@@ -77,6 +77,13 @@ def member(apk, name):
         return stream.read()
 
 
+def check_ramdisk_modules(ramdisk):
+    cpio = subprocess.run(['lz4', '-dc'], input=ramdisk, capture_output=True, check=True).stdout
+    listing = subprocess.run(['cpio', '-t'], input=cpio, capture_output=True, check=True).stdout.decode()
+    require(not any(p.endswith(('.ko', '.ko.gz', '.ko.xz', '.ko.zst')) for p in listing.splitlines()),
+            'boot ramdisk contains kernel modules; rebuild it with the new kernel instead of preserving it')
+
+
 def check_config(config, requirements):
     enabled = set(config.decode().splitlines())
     wanted = {s for s in requirements.splitlines() if s.startswith('CONFIG_')}
@@ -246,6 +253,7 @@ def install(repo, apk, keydir):
     require(selected == active and slots[active][0] > 0 and slots[active][2] == 1,
             'running slot must be selected and proven')
     old_payload, offset, ramdisk, signature, _ = unpack(boots[active])
+    check_ramdisk_modules(ramdisk)
     require(gzip.decompress(Path('/boot/vmlinuz').read_bytes()) == old_payload[offset:],
             'installed kernel does not match running slot; reconcile before updating')
     require(signature == (repo/'boot/boot-signature.bin').read_bytes(), 'boot signature provenance mismatch')

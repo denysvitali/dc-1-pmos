@@ -13,7 +13,7 @@ The script prepares the pinned pmbootstrap/pmaports sources under `work/`,
 checks the source archive checksum, retains the compiler chroot with `--lax`,
 and reuses ccache. `DC1_KERNEL_WORK` selects another workspace. Installation
 uses sudo; build-only never installs a package on the host or flashes a slot.
-The installed system must provide Python 3, Go, systemd, apk-tools 3,
+The installed system must provide Python 3, Go, systemd, apk-tools 3, lz4, cpio,
 `dc1-slotctl`, and the repository's current `dc1-boot-sync` implementation.
 
 Increment the kernel APKBUILD's `pkgrel` whenever its effective inputs change.
@@ -29,6 +29,8 @@ workflow for device-tree or initramfs changes. It refuses ambiguous running
 kernel identities, an unproven fallback, a mismatched installed kernel,
 missing SD-card configuration, or an unavailable matching rollback APK in
 `/var/cache/apk`. The new build banner must differ from the running one.
+It also refuses a ramdisk containing kernel modules, which would need to be
+rebuilt against the new kernel instead of copied into the new boot image.
 
 Before writing, it stages and verifies the package, backs up both boot images
 and the previous matching package under `/var/lib/dc1/local-kernel/`, and

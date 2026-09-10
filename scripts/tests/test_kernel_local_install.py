@@ -78,6 +78,12 @@ class LocalKernelTests(unittest.TestCase):
             local.check_config(b'CONFIG_MMC_MTK=m\n', 'CONFIG_MMC_MTK=y\n')
         local.check_config(b'CONFIG_MMC_MTK=y\n', 'CONFIG_MMC_MTK=y\n')
 
+    def test_embedded_ramdisk_modules_refused(self):
+        responses = [SimpleNamespace(stdout=b'cpio data'), SimpleNamespace(stdout=b'lib/modules/driver.ko.zst\n')]
+        with patch.object(local.subprocess, 'run', side_effect=responses):
+            with self.assertRaises(RuntimeError):
+                local.check_ramdisk_modules(b'ramdisk')
+
 
 class ConfirmationTests(unittest.TestCase):
     def setUp(self):
