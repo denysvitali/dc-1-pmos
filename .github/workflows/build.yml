@@ -209,6 +209,17 @@ jobs:
       # (measured on hardware 2026-08-19: "it did not stick"). With the repo
       # cached, an unchanged pkgver-pkgrel keeps byte-identical artifacts
       # across runs, which is the property the whole sync design assumes.
+      #
+      # That property only holds while the cache survives: GitHub evicts an
+      # untouched cache after 7 days, and Alpine edge moves on, so the first
+      # run after a longer gap rebuilds from a drifted chroot and every
+      # unchanged pkgver-pkgrel comes back with different bytes. The
+      # "Reject cross-release same-version APK drift" step then fails on the
+      # first APK whose filename the published release already used (measured
+      # 2026-09-10 on mutter-mobile-999948.0-r5, nine days after the 2026-09-01
+      # publish). The fix is the one the gate prints: bump that recipe's
+      # pkgrel, which gives the new bytes a new filename.
+      #
       # config_abuild (abuild.conf + the signing keypair; the name comes from
       # pmb/build/init.py, whose keygen triggers on config_abuild/abuild.conf
       # -- the first attempt cached a nonexistent config_abuild_keys and tar
