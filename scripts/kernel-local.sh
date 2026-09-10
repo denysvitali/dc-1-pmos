@@ -31,9 +31,11 @@ if [ "$action" != install ]; then
 	sh "$repo/scripts/restore-local-apk-key.sh" "$work/pmbootstrap-work"
 	# Copied caches may belong to the host user; compiles run as pmbootstrap's
 	# fixed pmos uid/gid 12345 inside the chroot.
-	if [ -d "$work/pmbootstrap-work/cache_ccache_aarch64" ]; then
-		sudo chown -R 12345:12345 "$work/pmbootstrap-work/cache_ccache_aarch64"
-	fi
+	for directory in cache_ccache_aarch64 config_abuild; do
+		if [ -d "$work/pmbootstrap-work/$directory" ]; then
+			sudo chown -R 12345:12345 "$work/pmbootstrap-work/$directory"
+		fi
+	done
 	mkdir -p "$work/pmbootstrap-work/cache_distfiles"
 	if [ -w "$work/pmbootstrap-work/cache_distfiles" ]; then
 		sh "$repo/scripts/prefetch-kernel-distfile.sh" "$work/pmbootstrap-work/cache_distfiles"
