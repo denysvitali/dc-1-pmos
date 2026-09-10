@@ -153,7 +153,7 @@ def install_apk(apk, keys, rollback=False):
         # This cached package was authenticated against the installed APK
         # database before staging; CI's ephemeral package key is not retained.
         args.append('--allow-untrusted')
-    run(*args, 'add', '--allow-downgrades', str(apk))
+    run(*args, 'add', str(apk))
     release = member(apk, 'usr/share/kernel/'+FLAVOR+'/kernel.release').decode().strip()
     require(re.fullmatch(r'[A-Za-z0-9._+-]+', release), 'invalid kernel release')
     run('depmod', '-a', release)
@@ -272,6 +272,7 @@ def install(repo, apk, keydir):
         require(not dest.exists() or dest.read_bytes() == key.read_bytes(), 'APK key name collision')
         shutil.copyfile(key, dest)
     run('apk', '--keys-dir', str(keys), 'verify', str(apk_copy))
+    run('apk', '--keys-dir', str(keys), '--scripts=no', '--simulate', 'add', str(apk_copy))
     info = member(apk_copy, '.PKGINFO').decode()
     require('pkgname = '+PACKAGE+'\n' in info and 'arch = aarch64\n' in info, 'wrong package identity')
     kernel_gz = member(apk_copy, 'boot/vmlinuz')
