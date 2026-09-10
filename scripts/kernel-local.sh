@@ -48,6 +48,8 @@ fi
 [ -f "$apk" ] || { echo "missing package: $apk" >&2; exit 1; }
 echo "Kernel package: $apk"
 if [ "$action" != build ]; then
+	python3 "$work/pmbootstrap/pmbootstrap.py" --config "$work/pmbootstrap.cfg" \
+		--aports "$work/pmaports" shutdown
 	(cd "$repo/boot/mkboot" && go build -o mkboot .)
 	# Inhibit shutdown only during the transaction; reboot happens afterwards.
 	sudo systemd-inhibit --what=shutdown:sleep --mode=block \
