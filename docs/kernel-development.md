@@ -47,9 +47,11 @@ masks disappear on reboot.
 
 On the next boot, `dc1-local-kernel-confirm.service` verifies the candidate's
 full build banner, installed/boot kernel hashes, MMC host and available
-filesystems before marking its slot successful. If the old kernel boots,
-it restores the backed-up package, including its matching modules. It does
-not claim that filesystem availability proves an actual card mount.
+filesystems before marking its slot successful. When the same SD card is
+still inserted, it also verifies an existing kernel filesystem mount or
+performs a temporary read-only mount (ext4 uses `noload` to avoid journal
+replay). Card removal is recorded as a skipped mount check. If the old kernel
+boots, it restores the backed-up package, including its matching modules.
 Fallback also creates `/var/lib/dc1/no-auto-update`, preventing the scheduled
 updater from immediately reinstalling a failed candidate. Remove that marker
 only after reviewing the failure and preparing a corrected kernel.

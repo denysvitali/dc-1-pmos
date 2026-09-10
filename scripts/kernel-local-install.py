@@ -15,6 +15,7 @@ import struct
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 import zlib
 
@@ -158,6 +159,37 @@ def save_state(state):
     os.sync()
 
 
+def card_identity():
+    for device in sorted(Path('/dev').glob('mmcblk*')):
+        if not re.fullmatch(r'mmcblk\d+(p\d+)?', device.name):
+            continue
+        result = subprocess.run(['blkid', '-o', 'export', str(device)], capture_output=True, text=True)
+        fields = dict(s.split('=', 1) for s in result.stdout.splitlines() if '=' in s)
+        if result.returncode == 0 and fields.get('TYPE') in ('vfat', 'exfat', 'ext4') and fields.get('UUID'):
+            return dict(uuid=fields['UUID'], filesystem=fields['TYPE'])
+    return None
+
+
+def check_card(card):
+    if not card:
+        return 'no card filesystem recorded at installation'
+    resolved = subprocess.run(['blkid', '-U', card['uuid']], capture_output=True, text=True)
+    device = resolved.stdout.strip()
+    if resolved.returncode or not re.fullmatch(r'/dev/mmcblk\d+(p\d+)?', device):
+        return 'recorded card absent; mount check skipped'
+    mounted = subprocess.run(['findmnt', '-rn', '-S', device, '-o', 'FSTYPE'], capture_output=True, text=True)
+    if card['filesystem'] in mounted.stdout.split():
+        return 'SD card already mounted with '+card['filesystem']
+    directory = tempfile.mkdtemp(prefix='dc1-sd-check-', dir='/run')
+    options = 'ro,noload' if card['filesystem'] == 'ext4' else 'ro'
+    try:
+        run('mount', '-t', card['filesystem'], '-o', options, device, directory)
+        run('umount', directory)
+    finally:
+        os.rmdir(directory)
+    return 'SD-card read-only '+card['filesystem']+' mount passed'
+
+
 def confirm():
     if not STATE.exists():
         return
@@ -190,8 +222,9 @@ def confirm():
                 break
             time.sleep(1)
         require(Path('/sys/class/mmc_host/mmc0').exists(), 'SD-card host did not probe')
+        card_result = check_card(state.get('card'))
         run('dc1-slotctl', 'mark-successful', selected)
-        result = 'CONFIRMED: candidate kernel, installed package, boot slot and SD filesystems match'
+        result = 'CONFIRMED: candidate kernel, installed package, boot slot and SD filesystems match; '+card_result
     (directory/'RESULT').write_text(result+'\n')
     (BASE/'last-result').write_text(result+'\n'+str(directory)+'\n')
     STATE.unlink()
@@ -279,6 +312,7 @@ def install(repo, apk, keydir):
     state = dict(directory=str(directory), target=target, old_banner=current,
                  new_banner=new_banner, kernel_sha256=sha(kernel),
                  previous_sha256=sha((directory/'previous.apk').read_bytes()),
+                 card=card_identity(),
                  boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
     # Install a boot-time verifier before the package or any slot is changed.
     helper = BASE/'confirm.py'

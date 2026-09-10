@@ -8,6 +8,7 @@ import json
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 spec = importlib.util.spec_from_file_location('local_install', Path(__file__).parents[1]/'kernel-local-install.py')
 local = importlib.util.module_from_spec(spec)
@@ -130,12 +131,20 @@ class ConfirmationTests(unittest.TestCase):
         self.run.assert_not_called()
         self.assertTrue(self.pending.exists())
 
+    def test_failed_card_mount_never_marks_successful(self):
+        with patch.object(local, 'check_card', side_effect=RuntimeError('mount failed')):
+            with self.assertRaises(RuntimeError):
+                local.confirm()
+        self.run.assert_not_called()
+        self.assertTrue(self.pending.exists())
+
     def test_confirmation_refuses_same_boot(self):
         (self.root/'boot_id').write_text('previous-boot')
         with self.assertRaises(RuntimeError):
             local.confirm()
         self.run.assert_not_called()
         self.install.assert_not_called()
+
 
     def test_fallback_restores_only_verified_backup(self):
         (self.root/'version').write_text(self.state['old_banner'])
@@ -151,6 +160,29 @@ class ConfirmationTests(unittest.TestCase):
             local.confirm()
         self.install.assert_not_called()
 
+
+class CardMountTests(unittest.TestCase):
+    def test_readonly_mount_options(self):
+        for filesystem, options in [('vfat', 'ro'), ('ext4', 'ro,noload')]:
+            with self.subTest(filesystem=filesystem):
+                directory = tempfile.mkdtemp()
+                responses = [SimpleNamespace(returncode=0, stdout='/dev/mmcblk0p1\n'),
+                             SimpleNamespace(returncode=1, stdout='')]
+                with patch.object(local.subprocess, 'run', side_effect=responses), \
+                        patch.object(local.tempfile, 'mkdtemp', return_value=directory), \
+                        patch.object(local, 'run') as run:
+                    result = local.check_card(dict(uuid='test', filesystem=filesystem))
+                    self.assertIn('mount passed', result)
+                    self.assertEqual(run.call_args_list[0].args,
+                                     ('mount', '-t', filesystem, '-o', options, '/dev/mmcblk0p1', directory))
+                    self.assertEqual(run.call_args_list[1].args, ('umount', directory))
+                self.assertFalse(Path(directory).exists())
+
+    def test_absent_card_skips_without_mount(self):
+        with patch.object(local.subprocess, 'run', return_value=SimpleNamespace(returncode=2, stdout='')), \
+                patch.object(local, 'run') as run:
+            self.assertIn('skipped', local.check_card(dict(uuid='test', filesystem='vfat')))
+            run.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()
