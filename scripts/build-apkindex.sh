@@ -70,11 +70,30 @@ fi
 # Pinned static apk-tools (aarch64: this job runs on ubuntu-24.04-arm). A
 # version bump by Alpine edge 404s here and fails the build closed; update
 # the pin deliberately, exactly like the ALPINE_APKS list in installer/build.sh.
-apk_pkg="apk-tools-static-3.0.7-r0.apk"
+# Edge deletes superseded builds, so the common failure is a stale pin rather
+# than a network fault -- curl's bare exit 22 says none of that, so retry and
+# then name the likely cause (re-resolved 2026-09-10: 3.0.7-r0 was gone).
+apk_pkg="apk-tools-static-3.0.8-r0.apk"
 apk_url="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/$apk_pkg"
-apk_sha256="07476bd1231f7596b186a112ecd6e68a595e27814cf8ba2b0fb994608e3e6d41"
-curl -fsSL --retry 3 -o "$work/$apk_pkg" "$apk_url"
-printf '%s  %s\n' "$apk_sha256" "$work/$apk_pkg" | sha256sum -c - >/dev/null
+apk_sha256="8b5da539b70bb9dfca6567d336821bb316193544fd420213784584f285e99bb1"
+apk_try=1
+apk_max=${DC1_FETCH_RETRIES:-3}
+while :; do
+	if curl -fsSL --retry 3 --retry-all-errors \
+		-o "$work/$apk_pkg" "$apk_url"; then
+		break
+	fi
+	rm -f "$work/$apk_pkg"
+	if [ "$apk_try" -ge "$apk_max" ]; then
+		echo "build-apkindex: cannot download $apk_url" >&2
+		echo "build-apkindex: a curl 22 here usually means edge dropped $apk_pkg; update the pin" >&2
+		exit 1
+	fi
+	apk_try=$((apk_try + 1))
+	sleep $((apk_try * 2))
+done
+printf '%s  %s\n' "$apk_sha256" "$work/$apk_pkg" | sha256sum -c - >/dev/null ||
+	{ echo "build-apkindex: $apk_pkg does not match the pinned SHA-256" >&2; exit 1; }
 tar -xzf "$work/$apk_pkg" -C "$work" 2>/dev/null || {
 	echo "build-apkindex: cannot extract verified $apk_pkg" >&2
 	exit 1
