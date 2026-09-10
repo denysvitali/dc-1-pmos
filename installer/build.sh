@@ -104,15 +104,19 @@ REGDB_SIG_SIZE=1085
 REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e919179
 
 # Alpine edge/main aarch64 packages, pinned by exact version AND content hash
-# (resolved 2026-09-01). A filename is not a content pin: mirrors may replace
+# (resolved 2026-09-01; re-resolved 2026-09-10 for musl, curl, libcurl,
+# dbus-libs and libuuid, which edge had dropped, turning this build red while
+# the non-downloading verify job stayed green -- edge deletes superseded
+# builds, so expect to repeat this and re-check every pin whenever this fails).
+# A filename is not a content pin: mirrors may replace
 # bytes under one version, and dl/ is a persistent cache. Every cached or newly
 # downloaded APK is therefore verified before extraction.
 ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64"
 ALPINE_APKS="
 busybox-static-1.38.0-r4
-musl-1.2.6-r2
-curl-8.21.0-r0
-libcurl-8.21.0-r0
+musl-1.2.6-r3
+curl-8.22.0-r0
+libcurl-8.22.0-r0
 ca-certificates-bundle-20260611-r0
 brotli-libs-1.2.0-r1
 c-ares-1.34.8-r0
@@ -128,7 +132,7 @@ zstd-libs-1.5.7-r2
 libgcc-15.2.0-r9
 libstdc++-15.2.0-r9
 wpa_supplicant-2.11-r4
-dbus-libs-1.16.2-r2
+dbus-libs-1.16.2-r3
 libnl3-3.11.0-r0
 pcsc-lite-libs-2.5.1-r0
 dropbear-2026.94-r0
@@ -139,14 +143,14 @@ e2fsprogs-extra-1.47.4-r0
 e2fsprogs-libs-1.47.4-r0
 libcom_err-1.47.4-r0
 libblkid-2.42.2-r1
-libuuid-2.42.2-r1
+libuuid-2.42.3-r1
 libeconf-0.8.4-r0
 "
 ALPINE_APK_SHA256S="
 652bfd6acbc073a6a6ae9defe6e490fc80bcd107a820ee40db75aefb98439cb6 busybox-static-1.38.0-r4
-c6e74d765f7029fdc4389340181616eb834a6e692b16144c0ca8f8d0662578b3 musl-1.2.6-r2
-e1f53173f2ee16013e8b88cea2f57e6c6c9e35b9ae02dd5cc36802f9ce7998dc curl-8.21.0-r0
-44c388db3ab087d81b093dcab9dff6444d8aade5f9210bc7c0bc3270f6bd037a libcurl-8.21.0-r0
+00fc1ac4ccc9fb5084222cd2d79a8eb3fe1a9420ca7064ec3dae752cac53d114 musl-1.2.6-r3
+e5b5f41ce308324fe0b7102a67e176dc4a841fc0400ee1139a454d99bf09749f curl-8.22.0-r0
+a0bcde87175e2e73d087e8626b8c606d83c61851b06f36e108abff4f1d8a20e9 libcurl-8.22.0-r0
 b6263f8453b37537725a17bdfdcecdf7f6cd016b3421d3238e36f1005776e332 ca-certificates-bundle-20260611-r0
 1d355054e19b7dd843d225c878a8e92b205270f4f7c89fb218151d21c9ae87e0 brotli-libs-1.2.0-r1
 b16ca578a8718851e2d3068120c0e60753a66f2df1fe44c530198b3ef5882b67 c-ares-1.34.8-r0
@@ -162,7 +166,7 @@ a552fb542888b300e353c960be884d448e789e8fb96be5e12873f0102540c363 nghttp2-libs-1.
 23653103b2adf85dab73e4e35047f64b8671cd654e2d0291f44bec549084afd1 libgcc-15.2.0-r9
 36e8a2cee1ee14df5180c1f5737f0ffb59004ef92dd4f0bedff425968c4855ae libstdc++-15.2.0-r9
 7060615b397fd9ddca3b430fe98b6dd50494e09a6d7275a8fd0b255c0cd04a3e wpa_supplicant-2.11-r4
-97b0eb3ddbae79c151320f0c48762ffc5ef675379bf61363a34a373c354ad774 dbus-libs-1.16.2-r2
+9f0fe922c7226c1a4929ca98f9b0cb31d4a45d90259351b97af768dcd3fc142a dbus-libs-1.16.2-r3
 49d92bf6e6c55da94fdd0dde05a66af761258458e6db3c7b87d773c4517a50e1 libnl3-3.11.0-r0
 a5cd0931a100efd4eeedb1ab54443f67fdb7341060463e64017d0de6986b54fd pcsc-lite-libs-2.5.1-r0
 445c25a5cbd99ce1881df61fd1a191705e937e0c6e9963cbb8b04f2acf3541ac dropbear-2026.94-r0
@@ -173,7 +177,7 @@ f14960b7a1d40c20d6c045874682f73c0aa4e8f36bae11583d3b860fb10b6764 skalibs-libs-2.
 476555b7a8178a8acf7cd94e0b3d10deb12ac236b9e78e04fc1648f0a29e3ea5 e2fsprogs-libs-1.47.4-r0
 b8d23585a851bfc732cfb39638b5d92c88a309ba1eb52243796c69c18a978b10 libcom_err-1.47.4-r0
 33f45bb795525b207a6786c85cc8a9d6211f3b854b285d7e3fb7a0b7b8cde7dc libblkid-2.42.2-r1
-fe30d437021b58332454aa0a066fef98c90388717d17851aaaa3c9c9fdab7e67 libuuid-2.42.2-r1
+1fc6e03656452a390cffacef3423d463e25eef7c816fa9cce70cd22fd7a047ae libuuid-2.42.3-r1
 dd863710179743e49a6f2d446576aec31dbc5ab61f88da254e054f530b99cdb1 libeconf-0.8.4-r0
 "
 
