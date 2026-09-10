@@ -102,6 +102,7 @@ class ConfirmationTests(unittest.TestCase):
                    '/proc/sys/kernel/random/boot_id': self.root/'boot_id',
                    '/proc/filesystems': self.root/'filesystems',
                    '/sys/class/mmc_host/mmc0': self.root/'mmc0',
+                   '/var/lib/dc1/no-auto-update': self.root/'no-auto-update',
                    '/boot/vmlinuz': self.root/'vmlinuz'}
         for name, value in [('BASE', self.root), ('STATE', self.pending),
                             ('Path', lambda p: mapping.get(str(p), Path(p)))]:
@@ -109,6 +110,7 @@ class ConfirmationTests(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         self.run = patch.object(local, 'run').start()
+        patch.object(local, 'print', create=True).start()
         self.install = patch.object(local, 'install_apk').start()
         patch.object(local.os, 'sync').start()
         patch.object(local, 'devices', return_value={'boot_b': self.root/'boot_b'}).start()
@@ -140,6 +142,7 @@ class ConfirmationTests(unittest.TestCase):
         local.confirm()
         self.install.assert_called_once_with(self.directory/'previous.apk', self.directory/'keys', rollback=True)
         self.run.assert_not_called()
+        self.assertTrue((self.root/'no-auto-update').exists())
 
     def test_modified_rollback_refused(self):
         (self.root/'version').write_text(self.state['old_banner'])

@@ -170,7 +170,10 @@ def confirm():
         require(sha((directory/'previous.apk').read_bytes()) == state['previous_sha256'],
                 'rollback package changed')
         install_apk(directory/'previous.apk', directory/'keys', rollback=True)
-        result = 'FALLBACK: restored previous kernel package; new kernel was not confirmed'
+        no_update = Path('/var/lib/dc1/no-auto-update')
+        if not no_update.exists():
+            no_update.write_text('Local kernel fallback: review '+str(directory)+' before re-enabling updates.\n')
+        result = 'FALLBACK: restored previous kernel package; automatic updates paused'
     else:
         require(current == state['new_banner'], 'running build is neither candidate nor fallback')
         selected, slots, _ = slot_status()

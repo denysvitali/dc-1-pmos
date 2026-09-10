@@ -50,6 +50,9 @@ full build banner, installed/boot kernel hashes, MMC host and available
 filesystems before marking its slot successful. If the old kernel boots,
 it restores the backed-up package, including its matching modules. It does
 not claim that filesystem availability proves an actual card mount.
+Fallback also creates `/var/lib/dc1/no-auto-update`, preventing the scheduled
+updater from immediately reinstalling a failed candidate. Remove that marker
+only after reviewing the failure and preparing a corrected kernel.
 
 Check the result after reboot:
 
