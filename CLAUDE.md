@@ -274,7 +274,9 @@ Keep `CONFIG_HIGH_RES_TIMERS=y` from kernel r57's `latency.config`. The
 to 4 ms because high-resolution timers were disabled (HZ=250), accumulating
 ~100 ms stalls at all tested floors, including 1.1 GHz. Live timer resolution
 was 4,000,000 ns. The fix preserves frequencies, HZ, electrical delays and
-autosuspend; its post-boot latency improvement still needs measurement.
+autosuspend. Post-boot r57 tests at a 700 MHz floor measured 100 ms idle-gap
+p95 of 8.11–8.20 ms and maxima of 8.37–9.89 ms, with 1 ns reported timer
+resolution. These are offscreen GPU measurements, not compositor FPS proof.
 Compare idle-gap and continuous p95/maximum timing with `tools/performance/`,
 not just throughput, before claiming a smoothness fix; see `docs/hw/display.md`.
 

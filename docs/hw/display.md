@@ -171,7 +171,7 @@ similar at both floors (3.857 / 3.977 ms median), consistent with both
 allowing the governor to boost. The unit now persists **812–1100 MHz**.
 No package default changed. This does not establish a desktop FPS gain.
 
-**Wake latency is a separate unresolved problem.** With 100 ms idle gaps,
+**The r56 baseline exposed a separate wake-latency problem.** With 100 ms idle gaps,
 three passes at each of 545, 812, and 1100 MHz produced unstable medians
 and long tails: p95 reached 179.779 ms, maximum 199.818 ms. Pinning the
 highest clock did not eliminate the stalls. In a further 812 MHz run,
@@ -221,12 +221,38 @@ delays, autosuspend, and display timing alone. No driver polling loop is
 replaced with a busy wait. High-resolution timers also permit more precise
 compositor and userspace wakeups, but do not guarantee frame deadlines.
 
-**Post-boot performance validation remains required:** confirm high-resolution
-mode is actually active with `tools/performance/timer-wake.py` and
-`/proc/timer_list`, then repeat the GPU probe at the same frequency limits
-with 0/20/100 ms idle gaps. Recheck real presentation cadence and thermals.
-The pre-change trace identifies the coarse waits; it is not a measured
-post-change speedup or a hardware-verified release claim.
+**Post-boot measurements (2026-09-12):** r57 booted as build #58, with
+slot A marked successful and the previous slot retained as a proven fallback.
+`timer-wake.py` reports 1 ns monotonic resolution; requested 20/200/1000 µs
+sleeps measured 73.538/260.385/1080.038 µs median in the first post-boot run.
+The reported resolution is not a claim of nanosecond scheduling accuracy.
+
+The live persisted GPU floor was **700 MHz**, with the ceiling still
+1100 MHz. Tests preserved that setting; this is not a matched-floor A/B
+against the earlier 812 MHz run. CPU schedutil limits remained 500–2000 MHz
+and 725–2200 MHz. The eight-layer 1200×1600 offscreen probe used 120 samples
+per condition, and every pixel check passed:
+
+| Idle gap | First boot p95 / max | Later boot p95 / max |
+| --- | --- | --- |
+| 0 ms | 4.074 / 5.865 ms | 4.074 / 4.099 ms |
+| 20 ms | 6.368 / 7.085 ms | 6.437 / 6.685 ms |
+| 100 ms | 8.113 / 9.892 ms | 8.200 / 8.368 ms |
+
+The roughly 100–200 ms idle-gap stalls from r56 were absent in these runs,
+even with the lower floor. This verifies a substantial reduction in the
+measured offscreen wake workload; compositor presentation cadence and
+long-duration thermal behavior still need separate measurement. On the later
+boot, GPIO83 produced 120 rising TE edges in 1.016 seconds, confirming that
+the panel TCON was running.
+
+Several intervening boots rebooted after the reachability watchdog's 600 s
+deadline, with the third consecutive fire entering fastboot. Their journals
+showed userspace running and no panic, oops, lockup, or GPU-fault messages.
+This is evidence of the recovery policy firing on an unavailable remote
+access path, not proof of a kernel boot failure. The later reachable boot
+completed systemd startup in 15.31 s. The exact failed reachability condition
+on the earlier boots was not recorded by the watchdog and remains unresolved.
 
 ## Frontlight
 
