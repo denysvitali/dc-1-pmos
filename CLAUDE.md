@@ -269,6 +269,14 @@ Balanced 545 MHz, and Power saver 390 MHz remain selectable. Thermal
 devfreq cooling still caps from the top, and panfrost autosuspend keeps
 the floor from costing idle power.
 
+GPU wake latency is still an open performance issue: on 2026-09-12 the
+offscreen probe in `tools/performance/` repeatedly waited for completion
+while runtime PM reported `resuming`, with ~100 ms stalls after 100 ms idle
+gaps at all tested floors, including 1.1 GHz. Continuous rendering stayed
+near 4 ms. Compare idle-gap and continuous p95/maximum timing, not just
+throughput, before claiming a smoothness fix; see `docs/hw/display.md`.
+Trace the wake path before changing power-domain sequencing or autosuspend.
+
 The `1200x1600@120` mode is not free smoothness. Live CRTC vblank is
 118.4 Hz with 62 lines / 0.31 ms of blanking (measured 2026-08-27);
 KMS OVL planes cannot rotate 90°, so landscape is a GPU offscreen blit

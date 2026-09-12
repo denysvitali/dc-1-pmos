@@ -64,6 +64,19 @@ gap), on the same boot that verified the audio race fix and microSD.
 
 ## Kept history
 
+- CPU performance re-check 2026-09-12, kernel `7cc767cd0cff`: both clusters
+  use schedutil with a 1 µs rate limit and retain their 2000/2200 MHz
+  ceilings. Separate two-second SHA-256 loads confined to CPU0 and CPU6
+  reached the respective ceilings in every sampled read (226 / 389
+  observations). Only the test process's affinity changed. The compositor
+  allows CPUs 0–7; its cgroup ancestry exposed no `cpu.max` restriction.
+  `powerprofilesctl list` reported balanced/power-saver with a **placeholder**
+  platform driver and no performance profile. This verifies clock ramping,
+  not optimal compositor scheduling or sustained thermal performance.
+  GPU/CPU cooling-state snapshots were zero. CPU policy remains unchanged;
+  [GPU wake latency](display.md#intermittent-rendering-and-gpu-wake-latency-2026-09-12)
+  is the newly observed responsiveness issue.
+
 - **Pre-r28 baseline recorded 2026-08-22** for side-by-side comparison:
   16 zones (13 LVTS + `ap_ntc`/`ltepa_ntc` + self-disabled `bq78z100-0`,
   which failed reads at boot and was disabled by the core); nine LVTS

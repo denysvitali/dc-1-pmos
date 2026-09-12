@@ -146,6 +146,51 @@ reapplies the last experiment before gdm starts. A session user in
 not writable). Thermal devfreq cooling still caps from the top;
 panfrost's 50 ms autosuspend keeps the floor from costing idle power.
 
+### Intermittent rendering and GPU wake latency (2026-09-12)
+
+The development unit retained a persisted **545 MHz** floor despite the
+812 MHz shipped default. Its live desktop advertised 120 Hz, scale 1.25,
+transform 2 (portrait 180°), with `kms-modifiers` enabled. These are
+configuration observations, not fresh scanout or panel-liveness measurements.
+
+The new [offscreen completion probe](../../tools/performance/README.md)
+ran on Mali-G57 MC2 / Panfrost, Mesa 26.2.2, kernel `7cc767cd0cff`, with
+the same 1.1 GHz ceiling at both floors. Each sample draws eight blended
+1200×1600 quads and waits for completion; a pixel readback validates the
+render. With 120 samples per run, no concurrent CPU benchmark/build, and
+20 ms idle gaps (below the configured 50 ms autosuspend delay):
+
+| GPU floor | Median | p95 | Maximum |
+| --- | ---: | ---: | ---: |
+| 545 MHz | 7.925 ms | 8.239 ms | 11.522 ms |
+| 812 MHz | 5.373 ms | 5.961 ms | 12.969 ms |
+
+The higher floor reduced median completion time by 32% and p95 by 28% in
+this workload, though the maximum was higher. Continuous rendering was
+similar at both floors (3.857 / 3.977 ms median), consistent with both
+allowing the governor to boost. The unit now persists **812–1100 MHz**.
+No package default changed. This does not establish a desktop FPS gain.
+
+**Wake latency is a separate unresolved problem.** With 100 ms idle gaps,
+three passes at each of 545, 812, and 1100 MHz produced unstable medians
+and long tails: p95 reached 179.779 ms, maximum 199.818 ms. Pinning the
+highest clock did not eliminate the stalls. In a further 812 MHz run,
+5 ms sampling repeatedly found the probe in
+`drm_syncobj_array_wait_timeout` while GPU `runtime_status` was `resuming`
+(489 observations, versus 62 completion-wait observations while `active`).
+That run had p50 89.191 / p95 108.113 / max 201.155 ms; a following
+continuous run had p50 4.080 / p95 4.625 / max 7.140 ms. Observed SoC
+temperatures stayed around 37–41 °C and cooling-device state snapshots
+were zero. These samples point to the runtime-resume path, but do not
+identify the responsible power-domain, regulator, clock, or driver operation.
+
+The next performance investigation should trace GPU runtime resume and
+repeat idle-gap versus continuous measurements alongside actual compositor
+presentation. Do not hide the wake stalls by reporting only continuous
+throughput, raise voltage, or remove autosuspend without measuring the
+power/thermal tradeoff. CPU governors, display timing, and power-domain
+sequencing were unchanged in this session.
+
 ## Frontlight
 
 Dual RT4539 backlight drivers: `lcd-backlight` (white, i2c-5) and
