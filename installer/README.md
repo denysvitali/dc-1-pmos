@@ -12,6 +12,11 @@ nothing secret-shaped — the tripwire in `build.sh` enforces it):
   LK boot chain (v4 image shape, label-based root, LK watchdog), which is
   why this one exists.
 
+For installation prerequisites and unlocking, start with the
+[installation guide](../docs/installation.md). This page describes the
+implementation; the [build guide](../docs/building.md) connects it to the
+rootfs and release pipeline.
+
 ## End-user flow (on-device, primary)
 
 ```sh
@@ -28,9 +33,10 @@ hostname / timezone on the touch keyboard, and `src/netinstall.sh` downloads
 release over verified TLS, feeds the shared write core, provisions, writes
 the verified boot image to `boot_a` and reboots into the installed system.
 The password is hashed on-device (busybox `cryptpw`, sha512crypt);
-credentials only ever exist in shell variables and mode-0600 tmpfs files,
-and supplicant/DHCP logs stay in 0600 files under `/tmp/wifi` — never on
-kmsg (which is streamed over USB).
+installer answers are held in shell variables and mode-0600 tmpfs files.
+Provisioning writes the password hash and optional Wi-Fi configuration into
+the installed rootfs. Supplicant/DHCP logs stay in 0600 files under `/tmp/wifi`,
+never on kmsg (which is streamed over USB).
 
 ### USB flow (fallback)
 
@@ -78,8 +84,8 @@ shell parser remains only for offline regression tests:
 - `src/provision.sh` applies the answers as pure file edits (user rename or
   creation with uid/group preservation, shadow hash, hostname, timezone,
   Wi-Fi as NetworkManager keyfile / wpa_supplicant.conf / parked file,
-  depending on what the rootfs carries — the shipped rootfs is built with
-  `ui=console`, so the NetworkManager keyfile branch is the live path);
+  depending on what the rootfs carries — the shipped rootfs uses
+  `ui=gnome-mobile` with NetworkManager, so the keyfile branch is the live path);
 - the network install additionally writes the release's `jagar-boot.img`
   (SHA-256 verified, then read back and compared) to the GPT partition
   named `boot_a` — the same slot the user already flashed — and reboots
@@ -95,31 +101,21 @@ Progress is painted on the panel by PID 1 (the Go `installerinit`, from
 dialog while one is on screen) and streamed to the host on `/dev/ttyACM0`; a
 debug shell listens on TCP 4444 and on the second ACM port.
 
-## Why the touch UI is hand-rolled (`gotools/internal/ask`)
+## Touch UI architecture (`gotools/internal/ask`)
 
-The obvious candidates cannot run against this device's pinned kernel:
-postmarketOS **buffyboard** injects keys through `/dev/uinput` — excluded
-when the jagar kernel still lacked `CONFIG_INPUT_UINPUT` (the kernel has
-enabled it since r52, 2026-08-28, so buffyboard is viable on current
-builds); **unl0kr** is no
-longer packaged in Alpine, shows only a hardcoded password prompt, and
-needs libinput + libxkbcommon + a running udevd. `dc1-ask` is instead one
-static binary (<1 MiB) with zero runtime dependencies: it forwards each
-prompt to PID 1's in-process dialog server over `/tmp/dc1-ask.sock`, and PID
-1 draws the screen into the DRM surface it already owns (a second DRM modeset
-blackens this panel) using raw evdev from the built-in touchscreen driver
-(`CONFIG_TOUCHSCREEN_ILITEK=y`, `CONFIG_INPUT_EVDEV=y`). One screen per
-question: menu, text (QWERTY + symbols on-screen keyboard), secret (masked),
-info. If it cannot reach PID 1 — no panel or no touchscreen — it exits and
-the USB flow remains: the touch UI is an addition, never a dependency.
+`dc1-ask` forwards prompts to PID 1's in-process dialog server over
+`/tmp/dc1-ask.sock`. PID 1 draws into the DRM surface it already owns; a
+second DRM modeset can blacken this panel. Touch input comes from raw evdev
+through the built-in touchscreen driver. Menu, text, masked secret, and
+information dialogs share that surface with the progress painter.
 
-**Enabled by default, but the end-to-end flow is not yet hardware-verified.**
-The dialogs' paint path and touch mapping are the hardware-measured ones, and
-the client/server plumbing is covered by offline tests, but a freshly flashed
-installer image running the full flow has not been confirmed on a panel. Until
-it is, the USB flow is the path with hardware behind it. See the headers of
-`gotools/internal/ask/dialog.go`, `screen.go` and `touch.go` for the model and
-the evidence.
+If the panel, touchscreen, or dialog server is unavailable, the USB installer
+remains available. The implementation and offline tests live under
+`gotools/internal/ask` and `gotools/internal/installerinit`.
+
+Installer boot/UI has hardware evidence; the complete published-release
+install through first update remains unverified for both transports. See the
+[verification ledger](../docs/verification.md).
 
 ## System boot image (`jagar-boot.img`)
 
@@ -139,9 +135,9 @@ the evidence.
 auto-pet it, so PID 1 initially forks a 10 s petter. The pinned driver is
 `nowayout=0` and advertises magic close; for a systemd root, PID 1 writes `V`,
 closes the fd, waits for the petter to exit, and systemd reopens the watchdog
-under `RuntimeWatchdogSec=30s`. It also starts the reachability deadman before
-`switch_root`. A non-systemd root retains the petter. This handoff is now the
-measured path; the old pet-forever description is obsolete.
+under `RuntimeWatchdogSec=30s`. A non-systemd root retains the petter.
+Network loss does not trigger a reboot; the rescue-path lease remains active.
+See [boot diagnostics](../docs/debugging.md) for the handoff and rescue path.
 
 ## Building
 

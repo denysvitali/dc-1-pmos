@@ -1,14 +1,20 @@
 # boot/ — Android boot-image v4 tooling for the DC-1
 
-Two tools own the LK boot-image invariants (header v4, gzip kernel,
-legacy-frame LZ4 ramdisk, non-zero 4096-byte AVB0 signature page):
+Production boot images require header v4, a gzip kernel payload, a legacy-frame
+LZ4 ramdisk, and a nonzero 4096-byte AVB0 signature page. Two tools handle packing:
 
 - `mkboot/` — Go tool: `info`, `verify` (byte-identical round-trip against
-  real vendor images), `pack`, `lkwrap`. See `mkboot/README.md`.
+  real vendor images), `pack`, `lkwrap`. See [mkboot](mkboot/README.md).
 - `repack-boot.sh` — minimal POSIX-sh + python3 packer used by the build
-  pipeline. Same invariants, fewer knobs.
+  pipeline. It validates the production header, compression, signature shape,
+  and size limit.
 
 Both produce the same image shape; `mkboot verify` is the cross-check.
+Production inputs also require [`dtbswap/`](dtbswap/README.md), which combines
+the stub, mainline DTB, and raw kernel into the gzip payload. The packers do
+not add that payload themselves. [`installer/build.sh`](../installer/README.md#building)
+assembles both images and requires the DTB; the [build guide](../docs/building.md)
+explains the full pipeline.
 
 ## boot-signature.bin — provenance
 

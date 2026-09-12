@@ -10,3 +10,7 @@ installer/dl/
 installer/root/
 flash/
 .verify/
+
+# Local scratch files and Go's default build output (never release inputs).
+/local/
+/installer/gotools/dc1tools

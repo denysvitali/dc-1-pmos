@@ -10,12 +10,10 @@ built by this repository's CI. Read the whole page once before starting.
 > the installed slot manager. It never touches anything else (see
 > [Recovery notes](#recovery-notes)).
 >
-> One partition is deliberately left out of the default flow: `vendor_boot`.
-> Earlier revisions of this page believed LK reads the device tree from it;
-> that was measured false (see Recovery notes). The mainline device tree ships
-> *inside* `jagar-boot.img` itself since 2026-08-19 — a small stub in the
-> kernel slot swaps it in at boot — so the normal flow below already installs
-> it, and `vendor_boot` stays untouched.
+> Both boot images carry the mainline device tree through the
+> [dtbswap stub](../boot/dtbswap/README.md). Leave `vendor_boot` untouched:
+> LK does not use its device tree. There is no supported complete factory
+> restore or dual-boot procedure.
 
 ## Choose an install path
 
@@ -98,6 +96,10 @@ sha256sum --ignore-missing -c SHA256SUMS
 
 ### 2. Put the device in fastboot mode
 
+For a first installation, back up the data you need from Android. Enable
+Developer Options by tapping **Settings → About tablet → Build number** seven
+times, then enable **OEM unlocking** under **System → Developer options**.
+
 Boot the DC-1 into LK fastboot mode: power the device off, then hold
 **Power + Volume Up** until the bootloader menu appears and select fastboot.
 
@@ -132,6 +134,21 @@ Confirm the host sees it:
 ```sh
 fastboot devices
 ```
+
+Check the bootloader lock state:
+
+```sh
+fastboot getvar unlocked
+```
+
+If it reports `no`, unlocking is required:
+
+```sh
+fastboot flashing unlock
+```
+
+**Unlocking erases all user data.** Confirm on the tablet only after backing
+up, then return to fastboot. Continue only with an unlocked bootloader.
 
 ### 3. Flash the installer
 
@@ -234,10 +251,10 @@ The script:
 - after the device reports `DC1-INSTALL: OK` and reboots into fastboot,
   flashes the real image, selects slot A, and reboots.
 
-If the device is already in installation mode, run the script without
-`--installer-boot` and finish manually with
-`fastboot flash boot_a jagar-boot.img && fastboot set_active a && fastboot
-reboot`. Other options:
+If the device is already in installation mode, omit `--installer-boot` and
+keep `--boot-image jagar-boot.img`; the script still performs the final flash.
+If you also omit `--boot-image`, it stops in fastboot and you must flash
+`jagar-boot.img`, select slot A, and reboot manually. Other options:
 `--answers FILE` supplies pre-made answers non-interactively;
 `--skip-provision` installs with **no** answers at all — the image is written
 but not provisioned. This is a recovery/development option, not onboarding:
@@ -259,10 +276,10 @@ of `installer/host/dc1-install.sh` for the full usage.
   [docs/debugging.md](debugging.md) for what each tool shows and how to
   pull the files off the device.
 
-If a download or transfer aborts partway, nothing is lost: the target
-filesystem is only made mountable after the full image hash verified, so
-you can simply run the installer again. Wi-Fi diagnostics stay on the
-device under `/tmp/wifi` (they are never written to the kernel log, which
+If a download or transfer aborts partway, rerun the installer. The target
+filesystem becomes mountable only after verification, but installation may
+already have overwritten the previous data; this is not a rollback mechanism.
+Wi-Fi diagnostics stay on the device under `/tmp/wifi` (they are never written to the kernel log, which
 is streamed over USB).
 
 ## Staying current
@@ -330,9 +347,9 @@ control remains unavailable while the BQ78Z100 does not answer.
 While charging, systemd, the journal, udev, logind, and the USB gadget stay
 up, so the recovery channels keep working: the debug shell on TCP 4444 at
 `172.16.42.1` over the cable, and both USB serial ports. Everything else —
-GNOME, Wi-Fi, Bluetooth, sshd — is stopped. The boot watchdog is stood down
-for the duration, so leaving the device on a dumb charger cannot
-reboot-loop it.
+GNOME, Wi-Fi, Bluetooth, sshd — is stopped. Network loss does not trigger
+a reboot, and the device package inhibits legacy reachability watchdogs
+left by older boot images. See [reboot watchdogs](debugging.md#reboot-watchdogs).
 
 Detection reads why the device powered on. Every boot, the bootloader
 leaves a fresh console log in reserved memory (kept mapped by the device
@@ -395,25 +412,21 @@ cycled.
 - **Writing `vendor_boot` does not change the device tree.** LK takes the
   kernel's DT from `lk_main_dtb` (a signed image inside the `lk` partition)
   merged with the signed `dtbo`; the DTB inside `vendor_boot` never reaches
-  the kernel. This was measured from LK's own log on 2026-08-18 and corrects
-  what earlier revisions of this page said. The tooling that could still
-  write it (`dc1-boot-sync`'s old `DC1_DEPLOY_VENDOR_BOOT=1`,
-  `dc1-install.sh --vendor-boot-image`, the release's `jagar-vendor-boot.img`)
-  has been removed: it could not ship a device tree, so keeping it only
-  invited a flash that buys nothing.
+  the kernel (measured 2026-08-18). Both boot images carry the mainline
+  tree through dtbswap. No vendor_boot image is produced or deployed.
 - **Never write `dtbo`.** LK authenticates it (`img_auth_required = 1`,
   `sbc_en = 1`, `dtbo cert chain vfy pass`). An unsigned overlay fails that
   check and LK marks the slot dead before the kernel runs — no log, no
-  display, no USB. Both slots on the development device were lost this way.
-  Shipping a mainline tree through `lk`/`dtbo` would require signing them,
-  which this project cannot do. The supported route (since 2026-08-19,
+  display, no USB. Shipping a mainline tree through `lk`/`dtbo` would require
+  signing them, which this project cannot do. The supported route (since 2026-08-19,
   hardware-verified) is the `boot/dtbswap` stub inside the boot images —
   both `jagar-boot.img` and, since issue #1 (some units black-screen
   installation mode on the stock tree), `installer-boot.img`: LK
   boots the unauthenticated boot image as usual, and the stub hands the
   kernel our device tree instead of LK's merged one. No signed partition is
   ever written.
-- The device has A/B slots; this flow only uses `boot_a`.
+- Initial installation uses `boot_a`; subsequent kernel updates write the
+  inactive boot slot and retain the proven slot as fallback.
 - If a flashed slot fails before Linux starts, LK's A/B metadata governs its
   fallback. Respect the documented partition boundary when reflashing.
 - **Offline operation.** The installed system does not reboot because a

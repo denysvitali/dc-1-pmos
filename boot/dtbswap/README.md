@@ -38,19 +38,23 @@ placeholders) so the board DTS stays clean and upstreamable.
 
 ## Fail safe
 
-Every failure path returns **LK's original fdt**, so a bad build boots exactly
-like a stock one. That matters here: a slot that fails to boot costs a boot
-cycle and leaves no log, because ramoops does not capture this kernel's output
-and there is no UART header.
+The stub's validation failures return **LK's original FDT**. This preserves
+the bootloader handoff when the replacement tree cannot be used; it does not
+guarantee a working display or USB with the stock tree. Some units fail to
+reach installation mode on that tree, which is why both published boot images
+require the dtbswap payload. See the
+[installation architecture](../../docs/installation.md#how-the-flow-works).
 
 ## Seeing what happens
 
 `arch/arm64/kernel/jagar_fbcon.c` renders printk straight into the scanout LK
 leaves running, and comes up at ~0.002 s. So a mainline-DT boot that fails is
 **visible on the panel** — provided the framebuffer reservation stays out of
-`no-map` (the board DTS says so explicitly). That is the only diagnostic channel
-this device has; kexec could not use it because the first kernel had already
-reprogrammed the display.
+`no-map` (the board DTS says so explicitly). Panel output is conditional on
+the display handoff, so silence alone cannot identify a boot failure. LK's
+current-boot ring and the failed-slot log in `expdb` provide additional
+[boot diagnostics](../../docs/debugging.md); keep raw captures private.
+Pstore is not a reliable diagnostic channel for this port.
 
 ## Status
 
@@ -62,7 +66,7 @@ kernel relocation target (`KERNEL_RELOC_PA`, 0x44000000) is therefore
 boot-proven. Not everything the stock tree described is in the mainline DTS
 yet. Wi-Fi initially did not come up on a dtbswap boot; since 2026-08-19
 the mt7921s driver works from the mainline DT (firmware staged by the
-system initramfs) — see docs/hw/wireless.md.
+system initramfs) — see [wireless](../../docs/hw/wireless.md).
 
 ## Build
 

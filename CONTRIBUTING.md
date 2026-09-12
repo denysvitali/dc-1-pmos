@@ -4,13 +4,14 @@ This repository builds and documents a postmarketOS/Alpine port for the
 Daylight DC-1. Before contributing code or hardware measurements, read
 [CLAUDE.md](CLAUDE.md) (the operational instruction file — it applies to
 every contributor, not only to tooling) and the
-[README](README.md). The short version:
+[README](README.md). Use the [documentation index](docs/README.md) to find
+the relevant guide, and the [build guide](docs/building.md) to reproduce CI.
 
 ## Where truth lives
 
 - [CLAUDE.md](CLAUDE.md) — build/packaging contract, boot and hardware
   invariants, CI contract, safety rules.
-- [docs/hw/](docs/) — per-subsystem measurement records. A hardware fact
+- [docs/hw/](docs/hw/) — per-subsystem measurement records. A hardware fact
   without a date and a "verified at" version is a rumor; add both.
 - [docs/verification.md](docs/verification.md) — the ledger of what was
   verified where.
@@ -51,7 +52,20 @@ checking its result.
 - Keep device-specific installation policy in `installer/` or build
   scripts, not in APKBUILDs.
 
+## Documentation changes
+
+Keep procedures in the installation/build guides and link to them from the
+README. Keep dated measurements in the subsystem records; old evidence remains
+useful when its version and limitations are explicit. Put remaining acceptance
+work in the roadmap. Remove superseded instructions rather than appending a
+second, conflicting procedure. Check relative links and heading anchors after
+moving a section, and compare command examples against the implementation.
+
 ## Public-repository rules
+
+Changes here are scoped to the public `denysvitali/dc-1-pmos` repository and
+its public kernel source, `denysvitali/dc-1-linux-kernel`. Private repositories
+and lab notes are not contribution inputs.
 
 Everything committed here is world-readable. Never commit or publish
 Wi-Fi credentials, `authorized_keys`, private keys, password hashes,
@@ -79,4 +93,8 @@ Work on `main` with focused diffs; commit when a coherent change is
 complete; push when the requested work is done. Do not use destructive
 Git commands (`reset --hard`, `checkout --`) without explicit approval.
 Keep generated caches, downloaded firmware, APKs, and temporary images
-out of Git — check `git status` after every build.
+out of Git — check `git status` after every build. Preserve pre-existing
+worktree changes and stage only reviewed paths. Before committing, inspect
+`git diff --cached --stat`, `git diff --cached --check`, and the complete
+`git diff --cached`. Keep credentials and raw device captures outside the
+checkout; ignored files are not a security boundary and can still be force-added.

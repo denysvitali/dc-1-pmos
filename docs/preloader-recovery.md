@@ -33,8 +33,9 @@ Symptoms of the failure it repairs:
   `0e8d:2001` (preloader), or `0e8d:0003` (BROM).
 
 If you can reach `fastboot`, **you do not need this page.** Reflash `boot_a`
-with a known-good image and reboot; a boot image that fails to boot is not
-fatal, the watchdog puts you back in LK.
+with a known-good image using the [installation procedure](installation.md).
+A/B fallback and watchdog behavior depend on the boot stage and slot state;
+do not assume every failed boot will return to fastboot.
 
 ## Why `misc`
 
@@ -107,8 +108,9 @@ MediaTek serial port before mtkclient can:
 sudo systemctl stop ModemManager
 ```
 
-Every command below is run from the mtkclient checkout with that virtualenv
-active. To keep the lines short, export the two file paths once:
+Run mtkclient commands from its checkout with that virtualenv active.
+Build this repository's validator from a separate public dc-1-pmos checkout
+as described in step 4. Export absolute paths to the vendor files:
 
 ```sh
 DA=/path/to/DA_BR_jagar.bin
@@ -127,8 +129,9 @@ python mtk.py printgpt --loader "$DA" --auth "$AUTH"
 
 The expected result is a partition table: `misc`, `boot_a`, `boot_b`,
 `vendor_boot_a`, `userdata`, and the rest. If that prints, the agent is running
-and everything below will work. If the tool sits in "Waiting for device",
-unplug, re-run it, and plug in again — the catch is timing-sensitive and often
+and the signed agent can read the partition table. This does not yet verify
+that a write will succeed or that `misc` is the cause. If the tool sits in
+"Waiting for device", unplug, re-run it, and plug in again — the catch is timing-sensitive and often
 takes a few attempts.
 
 (`--auth` is consumed in BROM mode, where download-agent authentication is
@@ -154,12 +157,16 @@ xxd -s 2048 -l 32 misc.bin   # the A/B control block
 The first hexdump is the field discussed above: `boot-recovery` or
 `boot-fastboot` in there is the fault, and anything non-zero is at least
 suspicious. The second is the slot block; decode it with the device's own
-validator, built straight from this repository on your host:
+validator. From the **dc-1-pmos repository root**, build it on your host:
 
 ```sh
 D=pmaports/device/testing/device-daylight-jagar
 gcc -O2 -I"$D" -o /tmp/dc1-slotctl "$D/dc1-slotctl.c" "$D/dc1-misc.c"
+```
 
+Return to the mtkclient checkout containing `misc.bin`, then run:
+
+```sh
 /tmp/dc1-slotctl validate-hex "$(xxd -s 2048 -l 32 -p misc.bin)"
 ```
 
@@ -287,8 +294,7 @@ What is safe, and worth doing before asking for help:
 - `python mtk.py r boot_a boot_a.img …` — read back what is actually in the
   slot you flashed, and check it is the image you think it is.
 
-Note that a bad *boot image* does not produce this failure: if LK gets far
-enough to load `boot_a`, a kernel that dies leaves you in LK's `fastboot` after
-the watchdog reset. A loop that never reaches `fastboot` is a bootloader-stage
-problem, and `misc` is the only part of that stage this repository will tell
-you to write.
+A missing fastboot response alone does not identify the failed boot stage.
+Use the partition-state checks above to establish whether this particular
+repair applies. `misc` is the only partition this procedure repairs; it
+cannot restore damaged authenticated bootloader images.

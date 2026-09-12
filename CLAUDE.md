@@ -55,10 +55,10 @@ byte AVB0 boot-signature page with recorded provenance; it is not permission to
 add other vendor partitions or blobs. Preserve its hash and provenance if the
 boot-image code changes.
 
-The private sibling repository `../dc-1-linux` is read-only source material.
-Take reusable code or configuration only. Do not copy its documentation,
-hardware evidence, recovery logs, `HANDOFF.md`, `TODO.md`, `history.md`, or
-anything that exposes its internal state.
+Public development is scoped to `denysvitali/dc-1-pmos` and
+`denysvitali/dc-1-linux-kernel`. Private repositories and local lab material
+are out of scope. Do not import private documentation, hardware evidence,
+recovery logs, handoff notes, or internal state into either public repository.
 
 The CI-only `DC1_APK_PRIVATE_KEY` signs the published `APKINDEX.tar.gz`. It
 must exist only in the GitHub secret/environment and temporary files created by
@@ -160,10 +160,8 @@ ignores vendor_boot's DTB (see the invariant above), so a vendor_boot image
 cannot deliver a device tree, and every flash path structurally refuses a
 plain (non-dtbswap) `jagar-boot.img`.
 
-There are stale vendor_boot-as-DT comments in older prose and workflow/tooling
-comments. When touching those files, align them with `boot/dtbswap/README.md`,
-`docs/installation.md`, and this section; do not revive the old vendor_boot
-path merely to make the comments agree.
+Keep boot-image documentation aligned with `boot/dtbswap/README.md` and
+`docs/installation.md`. Do not introduce a vendor_boot deployment path.
 
 ### USB-C data role
 
@@ -377,9 +375,11 @@ Display/DSI invariants (measured 2026-08-24):
 - `installer/tests/` — offline shell tests and syntax gate for installer,
   host, and initramfs scripts.
 - `boot/dtbswap/` — freestanding arm64 DT handoff stub and packer.
-- `boot/mkboot/` — Go Android boot/vendor_boot v4 tooling with a
+- `boot/mkboot/` — Go Android boot v3/v4 tooling with a
   byte-identical round-trip verifier.
 - `boot/repack-boot.sh` — minimal production boot-image packer.
+- `docs/README.md` — documentation index and source map; `docs/building.md`
+  explains build requirements, pinned inputs, and the export/release boundary.
 - `docs/` — installation, debugging (`docs/debugging.md`), and the narrowly
   scoped preloader-recovery procedure. `README.md` contains the compact verdict
   table; `docs/hardware.md` records the boot/update architecture and sourced

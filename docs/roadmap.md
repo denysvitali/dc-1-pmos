@@ -3,29 +3,10 @@
 The status table in [README.md](../README.md#hardware-support-at-a-glance) says what works *today*. This
 page says what is left, organized as three tiers: each tier is a
 definition of done for a progressively stronger claim. Every item names
-what it needs — a first boot carrying newer packages than the device
-runs, actual hands, or an external user. Nothing here writes a partition
+what it needs: a boot with the relevant changes, hands-on testing, or a
+published-release installation. Versioned observations describe the recorded
+session, not necessarily the device or release running today. Nothing here writes a partition
 or touches slots; run as the normal user unless a step says otherwise.
-
-## Current dmesg triage (r50 baseline, closures rechecked on r54)
-
-The warning-level ring was normalized by signature and checked against
-live subsystem state. Counts below are from a roughly nine-minute boot;
-rate-limited messages understate the underlying event rate. This is a
-remediation queue, not a claim that every line is a user-visible failure.
-
-| Priority / category | Signatures | Assessment and exit criterion |
-| --- | --- | --- |
-| **Closed P0 interrupt storm — hardware-verified in r48** | `rtc-s35390a ... alarm IRQ with INT2 flag clear` (750 printed, 74 suppression notices on r46); GPIO14 rose by 984 interrupts in 2 s | About 492 IRQ/s was a CPU/idle-power and diagnostics defect. Kernel `8f0bfe8f8a4c` stops registering the unusable board alarm IRQ while retaining RTC timekeeping. On the 2026-08-28 r48 boot, at 10m15s uptime: no `8-0030` IRQ existed in `/proc/interrupts`, no S35390A alarm/error line had appeared, the driver had set the system clock from the RTC, and its sysfs clock was advancing. Closed; keep this row as the baseline for later dmesg audits. |
-| **Closed P1 log-noise fixes — boot-verified on r54 (2026-08-29)** | SCP `invalid resource` (10); PMIC auxadc/key child probe failures; `fhctl` clocks, `socinfo`, display `mboxes`; missing optional audio pinctrl states | Kernel `ffd5800b0ba3` removes the false optional-resource errors, redundant PMIC child, disabled-FHCTL lookup, unsupported socinfo probe, absent optional DRM mailbox request and optional audio-state warnings. It also removes stale PMIC-wrapper bring-up errors. Acceptance met on the live r54 boot (2026-08-29): zero `invalid resource` lines, no `fhctl`/`socinfo` signatures, PMIC keys registered (`mt6358-keys` input), display and audio live. The r46 MUSB `VBUS_ERROR` remains closed: packaged r50 enumerated the same dock with no VBUS or over-current error. |
-| **Closed P2 known absent hardware — hardware-verified in r50** | `bq78z100-0` `-ENXIO` property/uevent spam (30 printed plus suppression); its thermal zone disables itself | The pack gauge does not ACK at `0x55`; this is known hardware/bus reality, not a transient probe. Kernel `15fd2e78b746` disables the production DT node while preserving the measured MT6358 voltage-based fallback. On the r50 boot, only the three intended power supplies and 15 real thermal zones registered, with no BQ signature in dmesg. Re-enable only with a live ACK/protocol measurement. |
-| **P2 desktop fixes closed on r54; external-hub reconnect still pending** | hub `activate --> -11`; missing FUSE, Landlock/BPF-LSM, uinput/uhid and Bluetooth BNEP/RFCOMM; absent core/sysrq/SYN-cookie sysctls; orientation's early Mutter traceback; invalid WWAN key and unused ModemManager plugin ABI warnings | A live r52/r87 boot on 2026-08-28 confirmed FUSE/uinput/uhid, sysctls, orientation, Bluetooth state, the ModemManager condition, and a successful A/B boot. The live r54/device r90 audit on 2026-08-29 then closed its securityfs+BTF and LocalSearch loader follow-ups: systemd's BPF-LSM policy and the Landlock-confined extractors ran without the earlier failures. Only the physical USB-hub reconnect check remains open for this row; the Lenovo 40B0 downstream-connect limitation remains a separate hardware compatibility item. |
-| **P3 expected probe/takeover noise** | SD/MMC discovery commands, one UFS DME attribute failure, simplefb region conflict, CPU dummy supplies, unused clock/domain/regulator notices; one `Playback_12` open of an intentionally unrouted FE | Storage, DRM, working UCM routes and regulator-free CPU DVFS are live. Keep as baselines; investigate only if the associated function fails or a message repeats after steady state. The initramfs now tries the hardware-observed `musb-hdrc.4.auto` UDC first; verify the four failed binds and final `UDC bind failed` line disappear on the next boot. |
-| **Closed P4 desktop-log fixes — boot-verified on r54 (2026-08-29)** | missing `autofs4`; journald BPF-firewall and ACL warnings; unsupported `bootconfig` command-line token | Kernel `ffd5800b0ba3` enables autofs, cgroup BPF/BPF syscalls, ext4 POSIX ACLs and bootconfig. Acceptance met on the live r54 boot (2026-08-29): `bootconfig` parsed cleanly (`Load bootconfig: 588 bytes 41 nodes`), no missing-`autofs4` line, no journald BPF-firewall or ACL warnings, with journald persistence, sandboxing and the boot path intact. |
-
-The historical capture also contains successful initramfs handoff and legacy
-watchdog messages at warning priority; they are state reports, not errors.
-The network-reachability watchdog has since been removed.
 
 ## Tier 1 — close the open hardware-verification items
 
@@ -44,7 +25,7 @@ says `UCM not available for card`, apply the fallback relabel rule
 (matched on `alsa.card_name="mt6789-mt6366"`, never the numeric index)
 and bump the device pkgrel. Details: [hw/audio.md](hw/audio.md).
 
-### Pen digitizer (r54 is running; hands still owed)
+### Pen digitizer (fixes present; hands-on acceptance pending)
 
 The edge-misalignment root cause (stale `prop.max_*` inversion pivot in
 `wacom_i2c`) is fixed in r38, and the eraser-as-pen root cause (tool
@@ -260,3 +241,23 @@ Ordered by user value per effort:
 5. **Kernel patch series for the lists** — the tier-3 kernel items,
    split per driver, are also standalone upstream contributions and can
    start any time.
+
+## Historical dmesg baseline (r50, rechecked on r54 on 2026-08-29)
+
+The warning-level ring was normalized by signature and checked against
+live subsystem state. Counts below are from a roughly nine-minute boot;
+rate-limited messages understate the underlying event rate. This is a
+remediation queue, not a claim that every line is a user-visible failure.
+
+| Priority / category | Signatures | Assessment and exit criterion |
+| --- | --- | --- |
+| **Closed P0 interrupt storm — hardware-verified in r48** | `rtc-s35390a ... alarm IRQ with INT2 flag clear` (750 printed, 74 suppression notices on r46); GPIO14 rose by 984 interrupts in 2 s | About 492 IRQ/s was a CPU/idle-power and diagnostics defect. Kernel `8f0bfe8f8a4c` stops registering the unusable board alarm IRQ while retaining RTC timekeeping. On the 2026-08-28 r48 boot, at 10m15s uptime: no `8-0030` IRQ existed in `/proc/interrupts`, no S35390A alarm/error line had appeared, the driver had set the system clock from the RTC, and its sysfs clock was advancing. Closed; keep this row as the baseline for later dmesg audits. |
+| **Closed P1 log-noise fixes — boot-verified on r54 (2026-08-29)** | SCP `invalid resource` (10); PMIC auxadc/key child probe failures; `fhctl` clocks, `socinfo`, display `mboxes`; missing optional audio pinctrl states | Kernel `ffd5800b0ba3` removes the false optional-resource errors, redundant PMIC child, disabled-FHCTL lookup, unsupported socinfo probe, absent optional DRM mailbox request and optional audio-state warnings. It also removes stale PMIC-wrapper bring-up errors. Acceptance met on the live r54 boot (2026-08-29): zero `invalid resource` lines, no `fhctl`/`socinfo` signatures, PMIC keys registered (`mt6358-keys` input), display and audio live. The r46 MUSB `VBUS_ERROR` remains closed: packaged r50 enumerated the same dock with no VBUS or over-current error. |
+| **Closed P2 known absent hardware — hardware-verified in r50** | `bq78z100-0` `-ENXIO` property/uevent spam (30 printed plus suppression); its thermal zone disables itself | The pack gauge does not ACK at `0x55`; this is known hardware/bus reality, not a transient probe. Kernel `15fd2e78b746` disables the production DT node while preserving the measured MT6358 voltage-based fallback. On the r50 boot, only the three intended power supplies and 15 real thermal zones registered, with no BQ signature in dmesg. Re-enable only with a live ACK/protocol measurement. |
+| **P2 desktop fixes closed on r54; external-hub reconnect still pending** | hub `activate --> -11`; missing FUSE, Landlock/BPF-LSM, uinput/uhid and Bluetooth BNEP/RFCOMM; absent core/sysrq/SYN-cookie sysctls; orientation's early Mutter traceback; invalid WWAN key and unused ModemManager plugin ABI warnings | A live r52/r87 boot on 2026-08-28 confirmed FUSE/uinput/uhid, sysctls, orientation, Bluetooth state, the ModemManager condition, and a successful A/B boot. The live r54/device r90 audit on 2026-08-29 then closed its securityfs+BTF and LocalSearch loader follow-ups: systemd's BPF-LSM policy and the Landlock-confined extractors ran without the earlier failures. Only the physical USB-hub reconnect check remains open for this row; the Lenovo 40B0 downstream-connect limitation remains a separate hardware compatibility item. |
+| **P3 expected probe/takeover noise** | SD/MMC discovery commands, one UFS DME attribute failure, simplefb region conflict, CPU dummy supplies, unused clock/domain/regulator notices; one `Playback_12` open of an intentionally unrouted FE | Storage, DRM, working UCM routes and regulator-free CPU DVFS are live. Keep as baselines; investigate only if the associated function fails or a message repeats after steady state. The initramfs now tries the hardware-observed `musb-hdrc.4.auto` UDC first; verify the four failed binds and final `UDC bind failed` line disappear on the next boot. |
+| **Closed P4 desktop-log fixes — boot-verified on r54 (2026-08-29)** | missing `autofs4`; journald BPF-firewall and ACL warnings; unsupported `bootconfig` command-line token | Kernel `ffd5800b0ba3` enables autofs, cgroup BPF/BPF syscalls, ext4 POSIX ACLs and bootconfig. Acceptance met on the live r54 boot (2026-08-29): `bootconfig` parsed cleanly (`Load bootconfig: 588 bytes 41 nodes`), no missing-`autofs4` line, no journald BPF-firewall or ACL warnings, with journald persistence, sandboxing and the boot path intact. |
+
+The historical capture also contains successful initramfs handoff and legacy
+watchdog messages at warning priority; they are state reports, not errors.
+The network-reachability watchdog has since been removed.

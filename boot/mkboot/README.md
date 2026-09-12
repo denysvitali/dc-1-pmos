@@ -1,114 +1,79 @@
 # mkboot
 
-Boot-image tooling for the Daylight DC-1 (`jagar`, MT8781 / MT6789).
+Go tooling to inspect, round-trip, and pack Android boot v3/v4 images for the
+Daylight DC-1. Release images are built through
+[`installer/build.sh`](../../installer/README.md#building), which supplies the
+required [DT swap payload](../dtbswap/README.md). `mkboot pack` alone does not
+enforce that payload or validate a ramdisk's compression format.
 
-Replaces hand-crafting images with `dd`/`mkbootimg` plus remembered quirks. The
-device-specific facts are encoded here so they get checked instead of recalled.
+## Build and inspect
 
-```
-go build -o mkboot .
-```
-
-## Subcommands
-
-| | |
-|---|---|
-| `mkboot info <img>` | print an Android boot image header |
-| `mkboot verify <img>` | reparse + repack and prove byte-identical |
-| `mkboot pack -kernel K -o OUT` | build a boot image (header v3/v4) |
-| `mkboot lkwrap -in F -out G` | wrap a payload in an MTK `lk` partition header |
-
-## Why `verify` matters
-
-The only reason to trust the packer is that it reproduces real vendor images
-exactly. Both known-good samples round-trip byte-for-byte:
-
-```
-$ mkboot verify boot_a-stock.img
-round-trip OK: boot image is 20946944 bytes, byte-for-byte identical
-trailing         46161920 bytes, 1167 non-zero
-                 starts with AVB0 vbmeta (not reproduced; AVB is not enforced here)
-                 AVB footer present in final page
-```
-
-Run it after changing anything in the packer.
-
-## Device facts encoded here
-
-**Boot header is v4**, `header_size` 1584, page size 4096. Stock `boot_a`:
-kernel 19,558,146, ramdisk 1,380,092, `signature_size` 4096, cmdline **empty**
-(LK builds the complete command line itself and overwrites the DTB's
-`/chosen/bootargs` at handoff — the boot-image header field is ignored).
-
-The 4096-byte v4 boot-signature page must be present and non-zero; this repo
-ships it as `boot/boot-signature.bin` (see `boot/README.md` for provenance).
-`-os-version 0x1800017b` sets the matching header field. The signature flag
-requires exactly 4096 bytes and is emitted only for header v4.
-
-**The kernel must be gzip'd.** Stock ships a gzip'd kernel (`1f 8b 08`); a
-freshly built arm64 `Image` is raw and carries the arm64 header ending in
-`ARMd`. EFI-stub builds additionally begin with `MZ`/PE metadata. Use
-`-gzip-kernel`. For scale, our mainline `Image` compresses to a few MB.
-
-**64 MiB is a hard ceiling with no headroom.** `boot_a`/`boot_b` are `0x4000000`
-and fastboot's `max-download-size` is *also* exactly `0x4000000`, so an oversized
-image can be neither stored nor sent. `pack` errors above the limit and warns
-past 90%.
-
-**AVB is not reproduced, deliberately.** A raw partition dump is: boot image,
-then an `AVB0` vbmeta blob, then zeros, then a 64-byte footer in the last page.
-It is not needed — the bootloader reports unlocked / `secure: no`, and a
-Magisk-patched image whose hashes no longer matched booted fine.
-
-**MTK `lk` header** (`lkwrap`) reproduces stock byte-for-byte across `0x00–0x4F`,
-including the extended header at `0x30` (magic `0x58891689`) that U-Boot's
-`mkimage` does **not** emit — almost certainly the "header v4" upstream pmOS
-calls *"too annoying to work with"*. Stock uses name `"lk"` and loadaddr
-`0xFFFFFFFF`.
-
-> ⚠ `lkwrap` exists for completeness, but **do not flash an untested image to the
-> `lk` slot the preloader loads.** This device's BROM is auth-locked (DAA, mem
-> read/write auth, `Cmd 0xC8 blocked`) with no exploit available for MT6789, and
-> there is no `lk1` fallback partition — a bad `lk` is an unrecoverable brick.
-> Chainload from a boot slot instead.
-
-## The unverified cmdline quirk
-
-An early bring-up note asserted that this LK reads the boot-header cmdline at
-**offset 64** (the v0–v2 location) rather than **44** (v3/v4), silently eating
-the first 20 bytes, and recommended 20 bytes of padding.
-
-That claim is **unverified** — the experiment set up to test it recorded no
-conclusion, and stock v4 images boot fine. So it is *not* applied by default;
-`-legacy-cmdline-offset` writes the cmdline at both offsets if it turns out to
-be real.
-
-`info` reports whatever sits at `0x40` so you can see the effect directly. With
-`-cmdline "console=tty0 loglevel=7"`:
-
-```
-bytes@0x40      "l=7"  (legacy v0-v2 cmdline offset)
-```
-
-i.e. a legacy reader would receive only `l=7`. Note stock's cmdline is empty,
-which is why the vendor would never have hit this.
-
-## Example
+From this directory:
 
 ```sh
-mkboot pack \
-  -kernel Image \
-  -gzip-kernel \
-  -ramdisk initramfs.cpio.lz4 \
-  -signature ../boot-signature.bin \
-  -os-version 0x1800017b \
-  -o boot.img
-mkboot info boot.img
+go build -o mkboot .
+go vet ./...
+go test ./...
+./mkboot info /path/to/installer-boot.img
+./mkboot verify /path/to/installer-boot.img
 ```
 
-For LK handoff experiments only, `-arm64-image-size SIZE` overrides the Linux
-arm64 `Image` header's `image_size` field (offset `0x10`) before optional gzip
-compression. It requires an `ARMd` header at offset `0x38`; omitted means
-unchanged.
+`verify` reparses and repacks the image, checking byte identity of the boot
+image sections. It reports trailing partition data separately; a successful
+round-trip is not cryptographic signature validation or proof of booting.
+Run it on both generated boot images after changing the packer.
 
-A kernel with no ramdisk will not reach userspace — pass `-ramdisk`.
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `mkboot info IMAGE` | Print the Android boot header and section details |
+| `mkboot verify IMAGE` | Reparse and repack the boot image sections byte-for-byte |
+| `mkboot pack -kernel PAYLOAD -o IMAGE` | Pack a v3/v4 image; use the full DC-1 contract below |
+| `mkboot lkwrap -in FILE -out FILE` | Low-level MTK header utility; not part of installation or release assembly |
+
+## DC-1 image contract
+
+- Android **header v4**, header size 1584, page size 4096.
+- A gzip-compressed **`[stub | DTB | kernel Image]`** payload for both boot images.
+- A **legacy-frame LZ4** initramfs; a kernel without the ramdisk cannot reach
+  the installed root filesystem through this boot path.
+- A nonzero **4096-byte AVB0** boot-signature page. Its exact hash and
+  [provenance](../README.md#boot-signaturebin--provenance) are recorded in the
+  repository. The page is retained unchanged; it does not sign new payloads.
+- OS-version field `0x1800017b`, matching the proven image shape.
+- Maximum image size **64 MiB**, imposed by both boot partitions and fastboot's
+  download limit. The packer rejects oversized images and warns above 90%.
+
+LK builds the effective kernel command line itself. Do not use the boot-header
+`-cmdline` field as a diagnostic marker or rely on it to set kernel behavior.
+The historical `-legacy-cmdline-offset` option remains in the tool for old
+experiments; it is not used by the production build.
+
+The `lkwrap` utility does not make a replacement LK image acceptable to the
+boot chain. **Never flash `lk`, `preloader`, `dtbo`, `vendor_boot`, or UFS boot
+LUNs** as part of this port's installation. See the
+[recovery limits](../../docs/installation.md#recovery-notes).
+
+## Low-level packing example
+
+Run from the repository root with the matching raw kernel `Image`, board DTB,
+and prebuilt legacy-LZ4 initramfs. This illustrates the components; prefer the
+installer builder to assemble release images.
+
+```sh
+mkdir -p out
+make -C boot/dtbswap
+boot/dtbswap/pack.sh boot/dtbswap/dtbswap.bin jagar.dtb Image out/payload.gz
+go build -o boot/mkboot/mkboot ./boot/mkboot/main.go
+boot/mkboot/mkboot pack \
+  -kernel out/payload.gz \
+  -ramdisk initramfs.cpio.lz4 \
+  -signature boot/boot-signature.bin \
+  -os-version 0x1800017b \
+  -o out/boot.img
+boot/mkboot/mkboot verify out/boot.img
+```
+
+The optional `-arm64-image-size SIZE` override is for handoff experiments on
+raw arm64 Images with the `ARMd` header. It is not a release-build setting.
