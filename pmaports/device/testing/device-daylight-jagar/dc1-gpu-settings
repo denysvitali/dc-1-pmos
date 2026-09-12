@@ -21,6 +21,8 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk
 
 HELPER = "/usr/libexec/dc1-gpu-freq"
+CURRENT_FREQ = os.path.join(
+    os.environ.get("DC1_GPUFREQ_SYSFS", "/sys/class/devfreq/13000000.gpu"), "cur_freq")
 # Unpackaged checkout: run the helper next to this file so the panel can
 # be exercised without installing the apk.
 if not os.path.isfile(HELPER):
@@ -106,6 +108,9 @@ class GpuSettingsWindow(Adw.PreferencesWindow):
         self._write_id = 0
         self._pending = None
         self._building = True
+        self._reading = False
+        self._generation = 0
+        self._closed = False
 
         page = Adw.PreferencesPage(title="GPU", icon_name="video-display-symbolic")
         self.add(page)
@@ -176,7 +181,8 @@ class GpuSettingsWindow(Adw.PreferencesWindow):
 
         self._reload()
         self._building = False
-        GLib.timeout_add(500, self._tick)
+        self._poll_id = GLib.timeout_add(500, self._tick)
+        self.connect("close-request", self._on_close)
 
     def _set_error(self, message):
         if message:
@@ -263,6 +269,7 @@ class GpuSettingsWindow(Adw.PreferencesWindow):
         self._queue_write(lo, hi)
 
     def _queue_write(self, min_hz, max_hz):
+        self._generation += 1
         self._pending = (min_hz, max_hz)
         if self._write_id:
             GLib.source_remove(self._write_id)
@@ -293,6 +300,8 @@ class GpuSettingsWindow(Adw.PreferencesWindow):
 
     def _write_done(self, code, err):
         self._busy = False
+        if self._closed:
+            return False
         if code != 0:
             self._set_error((err or "Could not set GPU frequency.").strip())
         else:
@@ -301,13 +310,41 @@ class GpuSettingsWindow(Adw.PreferencesWindow):
         return False
 
     def _tick(self):
-        if self._busy or self._pending is not None:
+        if self._closed:
+            return False
+        if self._busy or self._pending is not None or self._reading:
             return True
-        code, out, _err = run_helper(["status"])
-        if code == 0:
-            status = parse_status(out)
-            self._current_row.set_subtitle(mhz(status["cur_freq"]))
+        self._reading = True
+        generation = self._generation
+
+        def work():
+            # Only this label changes each tick. The full helper starts many
+            # subprocesses and took ~40 ms on-device; never run it in the UI
+            # loop. Even the single sysfs read runs off-thread in case the
+            # driver is waiting for a concurrent power/frequency operation.
+            try:
+                with open(CURRENT_FREQ, encoding="ascii") as stream:
+                    value = int(stream.read().strip())
+            except (OSError, ValueError):
+                value = None
+            GLib.idle_add(self._tick_done, generation, value)
+
+        threading.Thread(target=work, name="dc1-gpu-freq-read", daemon=True).start()
         return True
+
+    def _tick_done(self, generation, value):
+        self._reading = False
+        if (not self._closed and generation == self._generation and
+                not self._busy and self._pending is None):
+            self._current_row.set_subtitle(mhz(value) if value is not None else "unavailable")
+        return False
+
+    def _on_close(self, _window):
+        self._closed = True
+        if self._poll_id:
+            GLib.source_remove(self._poll_id)
+            self._poll_id = 0
+        return False
 
 
 def _index_of(opps, value):

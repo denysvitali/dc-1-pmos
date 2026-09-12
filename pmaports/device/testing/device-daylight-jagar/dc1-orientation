@@ -1,12 +1,13 @@
 #!/usr/bin/python3
 """Apply MC3416 orientation changes to Mutter's built-in display."""
 
+import os
 import signal
 import sys
-import time
 
 import dbus
-from gi.repository import Gio
+from dbus.mainloop.glib import DBusGMainLoop
+from gi.repository import Gio, GLib, GLibUnix
 
 
 SENSOR_PATH = "/net/hadess/SensorProxy"
@@ -33,141 +34,156 @@ TRANSFORMS = {
 DEFAULT_TRANSFORM = TRANSFORMS["bottom-up"]
 
 
+class OrientationBridge:
+    def __init__(self, system, session, settings, loop):
+        self.system = system
+        self.session = session
+        self.settings = settings
+        self.loop = loop
+        self.sensor = None
+        self.display = None
+        self.source = 0
+        self.retry = False
+        self.stopping = False
+        self.failing = False
+        self.matches = []
+
+    def start(self):
+        # Subscribe before the initial read, so a startup change cannot be
+        # lost between reading the state and installing the signal matches.
+        self.matches.append(self.system.add_signal_receiver(
+            self.sensor_changed, signal_name="PropertiesChanged",
+            dbus_interface=PROPERTIES_IFACE, bus_name=SENSOR_IFACE,
+            path=SENSOR_PATH, arg0=SENSOR_IFACE))
+        self.matches.append(self.session.add_signal_receiver(
+            self.queue, signal_name="MonitorsChanged",
+            dbus_interface=DISPLAY_IFACE, bus_name=DISPLAY_IFACE,
+            path=DISPLAY_PATH))
+        for bus, name in ((self.system, SENSOR_IFACE),
+                          (self.session, DISPLAY_IFACE)):
+            self.matches.append(bus.add_signal_receiver(
+                self.owner_changed, signal_name="NameOwnerChanged",
+                dbus_interface="org.freedesktop.DBus",
+                bus_name="org.freedesktop.DBus", path="/org/freedesktop/DBus",
+                arg0=name))
+        self.settings_id = self.settings.connect(
+            "changed::orientation-lock", lambda *_args: self.queue())
+        self.queue()
+
+    def sensor_changed(self, interface, changed, invalidated):
+        if interface == SENSOR_IFACE and any(
+                key in changed or key in invalidated
+                for key in ("AccelerometerOrientation", "HasAccelerometer")):
+            self.queue()
+
+    def owner_changed(self, name, _old, _new):
+        # A ProxyObject refers to the old unique owner. Drop it on restart,
+        # and reclaim the accelerometer when SensorProxy returns.
+        if name == SENSOR_IFACE:
+            self.sensor = None
+        elif name == DISPLAY_IFACE:
+            self.display = None
+        self.queue()
+
+    def queue(self, delay=0):
+        if self.stopping:
+            return
+        if self.source:
+            if delay or not self.retry:
+                return
+            GLib.source_remove(self.source)
+        self.retry = bool(delay)
+        if delay:
+            self.source = GLib.timeout_add(delay, self.refresh)
+        else:
+            self.source = GLib.idle_add(self.refresh)
+
+    def refresh(self):
+        self.source = 0
+        self.retry = False
+        try:
+            if self.sensor is None:
+                sensor = self.system.get_object(SENSOR_IFACE, SENSOR_PATH)
+                sensor.ClaimAccelerometer(dbus_interface=SENSOR_IFACE)
+                self.sensor = sensor
+            # Stay subscribed while locked, but do not touch the transform.
+            # Unlock schedules an immediate read of the latest sensor state.
+            if self.settings.get_boolean("orientation-lock"):
+                return GLib.SOURCE_REMOVE
+            if self.display is None:
+                self.display = dbus.Interface(self.session.get_object(
+                    DISPLAY_IFACE, DISPLAY_PATH), DISPLAY_IFACE)
+            props = dbus.Interface(self.sensor, PROPERTIES_IFACE)
+            orientation = str(props.Get(SENSOR_IFACE, "AccelerometerOrientation"))
+            transform = TRANSFORMS.get(orientation, DEFAULT_TRANSFORM)
+            serial, monitors, logical, _props = self.display.GetCurrentState()
+            # Always compare with live state on an event: a restarted Mutter
+            # or a manual monitor change can invalidate the previous apply.
+            if any(int(entry[3]) != transform for entry in logical):
+                mode_by_connector = {}
+                for monitor_spec, modes, _monitor_props in monitors:
+                    current_mode = str(modes[0][0])
+                    for mode in modes:
+                        if bool(mode[6].get("is-current", False)):
+                            current_mode = str(mode[0])
+                            break
+                    mode_by_connector[str(monitor_spec[0])] = current_mode
+                configured = []
+                for x, y, scale, _old_transform, primary, outputs, _props in logical:
+                    configured_outputs = [(str(output[0]),
+                                           mode_by_connector[str(output[0])], {})
+                                          for output in outputs]
+                    configured.append((dbus.Int32(x), dbus.Int32(y),
+                                       dbus.Double(scale), dbus.UInt32(transform),
+                                       dbus.Boolean(primary), configured_outputs))
+                self.display.ApplyMonitorsConfig(
+                    dbus.UInt32(serial), dbus.UInt32(1), configured, {})
+                print("dc1-orientation: %s -> transform %d" %
+                      (orientation, transform), flush=True)
+            self.failing = False
+        except dbus.DBusException as error:
+            if not self.failing:
+                print("dc1-orientation: waiting for session peers: %s" % error,
+                      file=sys.stderr, flush=True)
+            self.failing = True
+            # Only failures retry on a timer. Successful steady state has no
+            # periodic work and makes no SensorProxy or Mutter method calls.
+            self.display = None
+            self.queue(1000)
+        return GLib.SOURCE_REMOVE
+
+    def stop(self):
+        self.stopping = True
+        if self.source:
+            GLib.source_remove(self.source)
+            self.source = 0
+        for match in self.matches:
+            match.remove()
+        self.matches.clear()
+        self.settings.disconnect(self.settings_id)
+        if self.sensor is not None:
+            try:
+                self.sensor.ReleaseAccelerometer(dbus_interface=SENSOR_IFACE)
+            except dbus.DBusException:
+                pass
+        self.loop.quit()
+        return GLib.SOURCE_REMOVE
+
+
 def main():
-    session_address = None
-    for entry in ("DBUS_SESSION_BUS_ADDRESS",):
-        session_address = __import__("os").environ.get(entry)
+    session_address = os.environ.get("DBUS_SESSION_BUS_ADDRESS")
     if not session_address:
         print("dc1-orientation: no graphical session bus", file=sys.stderr)
         return 1
-
-    running = True
-
-    def stop(*_args):
-        nonlocal running
-        running = False
-
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
-
-    system = dbus.SystemBus()
-    session = dbus.bus.BusConnection(session_address)
-
-    def wait_for_object(bus, name, path, description):
-        """Wait without failing the unit while a session peer starts."""
-        reported = False
-        while running:
-            try:
-                return bus.get_object(name, path)
-            except dbus.DBusException:
-                if not reported:
-                    print("dc1-orientation: waiting for %s" % description,
-                          flush=True)
-                    reported = True
-                time.sleep(0.25)
-        return None
-
-    # default.target can run before Mutter owns DisplayConfig, particularly
-    # in the greeter. Waiting here keeps the service in a healthy activating
-    # state instead of recording a failed start and relying on Restart=.
-    sensor = wait_for_object(system, "net.hadess.SensorProxy", SENSOR_PATH,
-                             "iio-sensor-proxy")
-    display = wait_for_object(session, "org.gnome.Mutter.DisplayConfig",
-                              DISPLAY_PATH, "Mutter")
-    if sensor is None or display is None:
-        return 0
-    sensor_props = dbus.Interface(sensor, PROPERTIES_IFACE)
-    display_api = dbus.Interface(display, DISPLAY_IFACE)
-    orientation_settings = Gio.Settings.new(ORIENTATION_SCHEMA)
-
-    while running:
-        try:
-            sensor.ClaimAccelerometer(dbus_interface=SENSOR_IFACE)
-            break
-        except dbus.DBusException as error:
-            print("dc1-orientation: cannot claim accelerometer yet: %s" %
-                  error, file=sys.stderr, flush=True)
-            time.sleep(1)
-    if not running:
-        return 0
-
-    # Compare against Mutter's live state instead of a cached last-applied
-    # value: the compositor this bridge drives can be replaced under it (gdm
-    # respawns the greeter shell), and the replacement comes up on the raw
-    # scanout. A cache would then never reapply until the orientation changed.
-    failing = False
-    try:
-        while running:
-            # GNOME's quick-settings toggle writes orientation-lock.  This
-            # bridge exists because Mutter's orientation manager does not
-            # reliably claim the sensor on this device, so it must also honor
-            # the setting that Mutter would normally enforce.  Leave the live
-            # transform untouched while locked; on unlock the next tick
-            # immediately applies the current sensor orientation.
-            if orientation_settings.get_boolean("orientation-lock"):
-                time.sleep(0.25)
-                continue
-            orientation = str(sensor_props.Get(SENSOR_IFACE,
-                                                "AccelerometerOrientation"))
-            transform = TRANSFORMS.get(orientation, DEFAULT_TRANSFORM)
-            try:
-                serial, monitors, logical, _props = \
-                    display_api.GetCurrentState()
-                if any(int(entry[3]) != transform for entry in logical):
-                    mode_by_connector = {}
-                    for monitor_spec, modes, _monitor_props in monitors:
-                        connector = str(monitor_spec[0])
-                        current_mode = str(modes[0][0])
-                        for mode in modes:
-                            if bool(mode[6].get("is-current", False)):
-                                current_mode = str(mode[0])
-                                break
-                        mode_by_connector[connector] = current_mode
-                    configured = []
-                    for x, y, scale, _old_transform, primary, outputs, props \
-                            in logical:
-                        configured_outputs = []
-                        for output in outputs:
-                            # GetCurrentState returns monitor specs here;
-                            # ApplyMonitorsConfig expects connector, current
-                            # mode ID, and an a{sv} property dictionary.
-                            connector = str(output[0])
-                            configured_outputs.append((connector,
-                                                       mode_by_connector[connector],
-                                                       {}))
-                        configured.append((dbus.Int32(x), dbus.Int32(y),
-                                           dbus.Double(scale),
-                                           dbus.UInt32(transform),
-                                           dbus.Boolean(primary),
-                                           configured_outputs))
-                    display_api.ApplyMonitorsConfig(
-                        dbus.UInt32(serial), dbus.UInt32(1), configured,
-                        {})
-                    print("dc1-orientation: %s -> transform %d" %
-                          (orientation, transform), flush=True)
-                failing = False
-            except dbus.DBusException as error:
-                # Print once per failure streak; the compositor being down
-                # (session start, greeter respawn) fails every 0.25 s tick.
-                if not failing:
-                    print("dc1-orientation: Mutter update failed: %s" %
-                          error, file=sys.stderr, flush=True)
-                failing = True
-                # A ProxyObject binds to the name owner that existed when it
-                # was created. Reacquire it so a respawned greeter/session
-                # shell receives orientation without restarting this unit.
-                display = wait_for_object(
-                    session, "org.gnome.Mutter.DisplayConfig", DISPLAY_PATH,
-                    "Mutter")
-                if display is None:
-                    break
-                display_api = dbus.Interface(display, DISPLAY_IFACE)
-            time.sleep(0.25)
-    finally:
-        try:
-            sensor.ReleaseAccelerometer(dbus_interface=SENSOR_IFACE)
-        except dbus.DBusException:
-            pass
+    DBusGMainLoop(set_as_default=True)
+    loop = GLib.MainLoop()
+    bridge = OrientationBridge(
+        dbus.SystemBus(), dbus.bus.BusConnection(session_address),
+        Gio.Settings.new(ORIENTATION_SCHEMA), loop)
+    bridge.start()
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signum, bridge.stop)
+    loop.run()
     return 0
 
 

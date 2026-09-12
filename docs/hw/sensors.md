@@ -22,6 +22,18 @@ the same pins. There is still no gyro or magnetometer.
 
 ## Accelerometer and orientation
 
+Device r97 changes `dc1-orientation` to an event-driven GLib main loop:
+SensorProxy property changes, Mutter monitor changes/name replacement, and
+GNOME's rotation-lock setting trigger updates. No steady-state poll remains;
+only failed peer operations retry after one second. It reclaims the sensor
+on SensorProxy restart and compares live display state on Mutter restart,
+including when the sensor orientation itself has not changed. Nine offline
+tests cover these paths, burst coalescing, lock/unlock, mode preservation,
+and cleanup. On 2026-09-12 the live session's full-monitor queries dropped
+from 20 per five seconds to zero while stationary; lock/unlock triggered
+one query. This verifies event delivery and idle work removal, not the
+still-owed physical tilt and logout/login tests below.
+
 **Accelerometer works on the mainline tree** (verified 2026-08-19,
 re-measured 2026-08-22): `iio:device0 name=mc3416` reads a clean 1 g
 vector and `iio-sensor-proxy` reports `HasAccelerometer: true` with a

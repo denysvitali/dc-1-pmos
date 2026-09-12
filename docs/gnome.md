@@ -55,6 +55,14 @@ still the open check.)
    and on unlock immediately applies the current physical orientation. It
    requests the compositor-owned rotation transition from the patched
    Mutter-Mobile package, avoiding a visible hard snap during rotation.
+   Device r97 replaces the 250 ms polling loop with SensorProxy property,
+   Mutter monitor/owner, and orientation-lock notifications. Bursts coalesce
+   into one pending update, and only failures schedule a timed retry. Live
+   verification on 2026-09-12 reduced stationary-session `GetCurrentState`
+   traffic from 20 calls in five seconds to zero; lock/unlock caused exactly
+   one fresh query. Both session and greeter helpers were restarted
+   successfully. This removes recurring compositor work and the polling
+   delay; it is not a measured FPS or physical-rotation result.
    See [hw/sensors.md](hw/sensors.md) for the sensor side.
 5. **accountsservice pin** (rootfs build, `scripts/build-rootfs.sh`). The
    pmOS fork `accountsservice-999923.13.9` ships a typelib referencing
@@ -121,6 +129,14 @@ mid-migration versions remain here only as failure-history context.
   smooth = 812 MHz; 700 MHz remains a Smooth preset. The helper persists
   `/var/lib/dc1/gpu-freq.conf`. Details in
   [hw/display.md](hw/display.md).
+  Device r97 reads only the current-frequency sysfs value in a background
+  worker for the half-second label refresh. The previous full-helper call
+  blocked the UI thread for about 40 ms median in the measured session.
+  Reads cannot overlap, stale results are discarded after a new selection,
+  and closing the window removes the poll. Full helper reads still populate
+  the controls at startup and after writes; frequency changes keep the
+  existing helper/polkit path. Five offline tests and a live GTK smoke test
+  verified that periodic label updates no longer launch the helper.
 - **Charging profile panel (device r91, owner controls r92):**
   `dc1-charging-settings` is a libadwaita Preferences window in the Settings
   category. It keeps
