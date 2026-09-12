@@ -66,6 +66,16 @@ for a separately controlled hardware session.
 
 ## CPU and display context
 
+Run `python3 tools/performance/timer-wake.py` before and after a kernel
+timer change. It measures 100 actual sleeps each at requested 20, 200, and
+1000 µs and reports median/p95/maximum latency, clock resolution, and the
+process's timer slack. It does not change scheduling or timer slack. Expect
+some slack and scheduler overhead; compare runs without concurrent builds.
+The pre-r57 kernel lacked `CONFIG_HIGH_RES_TIMERS`, so all three requests
+took approximately 4 ms. A nanosecond timestamp API alone does not establish
+nanosecond wake precision. Kernel r57 enables high-resolution timers without
+changing HZ=250, preemption, CPU/GPU clocks, or GPU autosuspend.
+
 Read each `/sys/devices/system/cpu/cpufreq/policy*/` directory's
 `scaling_governor`, `scaling_min_freq`, `scaling_max_freq`, and
 `scaling_cur_freq`. Idle clocks alone do not show a performance limit;

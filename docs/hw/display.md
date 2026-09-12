@@ -191,6 +191,43 @@ throughput, raise voltage, or remove autosuspend without measuring the
 power/thermal tradeoff. CPU governors, display timing, and power-domain
 sequencing were unchanged in this session.
 
+### Timer granularity behind the wake stalls (kernel r57)
+
+A privileged follow-up trace on 2026-09-12 narrowed the cause. The r56
+kernel has `CONFIG_HIGH_RES_TIMERS` disabled and `CONFIG_HZ=250`.
+`/proc/timer_list` reports **4,000,000 ns** resolution, and userspace
+`clock_getres(CLOCK_MONOTONIC)` agrees. Requested sleeps of 20 µs,
+200 µs, and 1 ms each took approximately **3.99 ms median / 4.03 ms p95**.
+The live clock event/source are `arch_sys_timer` / `arch_sys_counter`.
+
+An isolated runtime-PM/regulator/clock event trace captured a GPU resume
+lasting **87.36 ms**: the first GPU power-domain resume consumed 75.36 ms,
+the second 7.95 ms, then the GPU's own resume work another 4.00 ms.
+Within the first domain, regulator operations repeatedly ended on 4 ms
+boundaries (including a 12 ms voltage operation, 8 ms enable sequence,
+and a 20 ms coupled voltage operation). The pinned drivers use
+microsecond sleep/poll intervals; without high-resolution timers those
+waits are rounded to ticks. This is a timer precision problem, not evidence
+that voltage, clock ceilings, or electrical settling requirements are too low.
+See the kernel documentation on
+[delay and sleep mechanisms](https://docs.kernel.org/timers/delay_sleep_functions.html).
+Raw traces remain local because they can include unrelated device state.
+
+Kernel **r57** adds `latency.config` with `CONFIG_HIGH_RES_TIMERS=y`, applied
+and checked after `olddefconfig` alongside the storage fragment. This also
+selects `TICK_ONESHOT` and enables `SCHED_HRTICK` through its existing default.
+The change leaves HZ=250, preemption policy, GPU/CPU frequencies, regulator
+delays, autosuspend, and display timing alone. No driver polling loop is
+replaced with a busy wait. High-resolution timers also permit more precise
+compositor and userspace wakeups, but do not guarantee frame deadlines.
+
+**Post-boot performance validation remains required:** confirm high-resolution
+mode is actually active with `tools/performance/timer-wake.py` and
+`/proc/timer_list`, then repeat the GPU probe at the same frequency limits
+with 0/20/100 ms idle gaps. Recheck real presentation cadence and thermals.
+The pre-change trace identifies the coarse waits; it is not a measured
+post-change speedup or a hardware-verified release claim.
+
 ## Frontlight
 
 Dual RT4539 backlight drivers: `lcd-backlight` (white, i2c-5) and

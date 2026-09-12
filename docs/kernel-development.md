@@ -21,7 +21,9 @@ An unchanged package version is deliberately reused. Source changes still
 require updating the pinned kernel commit/archive checksum and
 `scripts/versions.env`; editing the sibling kernel checkout alone does not
 change this package. `sdcard.config` adds built-in storage requirements to
-the pinned defconfig and the recipe verifies their resolved values.
+the pinned defconfig; `latency.config` requires high-resolution timers for
+GPU wake and desktop scheduling precision. The recipe verifies the resolved
+values from both fragments, and packages the resulting configuration.
 
 The installer is for **kernel-only updates**: it preserves the running slot's
 dtbswap stub, device tree, ramdisk and signature. Use the full image build

@@ -93,6 +93,8 @@ for dir in "$device_dir" "$kernel_dir" "$mutter_dir"; do
 done
 
 . "$script_dir/versions.env"
+grep -qx 'CONFIG_HIGH_RES_TIMERS=y' "$kernel_dir/latency.config" ||
+	fail "high-resolution timers are required for GPU wake and desktop latency"
 [ ${#PMAPORTS_COMMIT} -eq 40 ] || fail "invalid pmaports commit"
 [ ${#PMBOOTSTRAP_COMMIT} -eq 40 ] || fail "invalid pmbootstrap commit"
 [ ${#KERNEL_COMMIT} -eq 40 ] || fail "invalid kernel commit"

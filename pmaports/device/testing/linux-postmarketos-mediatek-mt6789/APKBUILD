@@ -1,7 +1,7 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=linux-postmarketos-mediatek-mt6789
 pkgver=7.2_rc5_git20260819
-pkgrel=56
+pkgrel=57
 pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
 arch="aarch64"
 _carch="arm64"
@@ -41,6 +41,7 @@ _commit="7cc767cd0cff39b77e252f26c9450d035c17b038"
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/denysvitali/$_repository/archive/$_commit.tar.gz
 	sdcard.config
+	latency.config
 "
 builddir="$srcdir/$_repository-$_commit"
 
@@ -56,23 +57,27 @@ prepare() {
 	cp "$builddir/arch/arm64/configs/jagar_defconfig" .config
 	# Built-in storage and filesystems also work in the minimal initramfs,
 	# which does not provide a dependency-aware module loader.
-	while IFS= read -r setting; do
-		case "$setting" in
-			CONFIG_*=y) scripts/config --enable "${setting%=y}" ;;
-		esac
-	done < "$srcdir/sdcard.config"
+	for fragment in sdcard.config latency.config; do
+		while IFS= read -r setting; do
+			case "$setting" in
+				CONFIG_*=y) scripts/config --enable "${setting%=y}" ;;
+			esac
+		done < "$srcdir/$fragment"
+	done
 	make ARCH="$_carch" LLVM=/usr/lib/llvm20/bin/ \
 		LD=/usr/bin/ld.lld HOSTLD=/usr/bin/ld.lld olddefconfig
-	while IFS= read -r setting; do
-		case "$setting" in
-			CONFIG_*=y)
-				grep -qx "$setting" .config || {
-					error "required built-in SD-card support missing: $setting"
-					return 1
-				}
-				;;
-		esac
-	done < "$srcdir/sdcard.config"
+	for fragment in sdcard.config latency.config; do
+		while IFS= read -r setting; do
+			case "$setting" in
+				CONFIG_*=y)
+					grep -qx "$setting" .config || {
+						error "required kernel support missing ($fragment): $setting"
+						return 1
+					}
+					;;
+			esac
+		done < "$srcdir/$fragment"
+	done
 }
 
 build() {
@@ -207,4 +212,5 @@ package() {
 sha512sums="
 5ad14998e98d251839dc6e28dc27480a0b1d658792c6d151dfff4dd209be7c3121f2b148c26214aed88dff3517a396c06e520814944c711dd48c86223d471724  linux-postmarketos-mediatek-mt6789-7cc767cd0cff39b77e252f26c9450d035c17b038.tar.gz
 35e0cbe0891e1c696a927c3f0e83207ecff9a9a05302336b2fb76a07fcc099f41748d716c99c6fed9d6e4aa3368dbe088178985ad5fd70ce4b4b87b3dc197f57  sdcard.config
+91cdf92c1f37efb6b8e3ebc691c1ce97d4a93acc737aa5ecd4f2943943734ab2d5fa73899e6f5d254dc57ec9fe15f75813cd7008b128982a3fc1cfa19dc5fc6f  latency.config
 "

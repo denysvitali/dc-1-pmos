@@ -269,13 +269,14 @@ Balanced 545 MHz, and Power saver 390 MHz remain selectable. Thermal
 devfreq cooling still caps from the top, and panfrost autosuspend keeps
 the floor from costing idle power.
 
-GPU wake latency is still an open performance issue: on 2026-09-12 the
-offscreen probe in `tools/performance/` repeatedly waited for completion
-while runtime PM reported `resuming`, with ~100 ms stalls after 100 ms idle
-gaps at all tested floors, including 1.1 GHz. Continuous rendering stayed
-near 4 ms. Compare idle-gap and continuous p95/maximum timing, not just
-throughput, before claiming a smoothness fix; see `docs/hw/display.md`.
-Trace the wake path before changing power-domain sequencing or autosuspend.
+Keep `CONFIG_HIGH_RES_TIMERS=y` from kernel r57's `latency.config`. The
+2026-09-12 trace found r56's GPU regulator/power-domain wake steps quantized
+to 4 ms because high-resolution timers were disabled (HZ=250), accumulating
+~100 ms stalls at all tested floors, including 1.1 GHz. Live timer resolution
+was 4,000,000 ns. The fix preserves frequencies, HZ, electrical delays and
+autosuspend; its post-boot latency improvement still needs measurement.
+Compare idle-gap and continuous p95/maximum timing with `tools/performance/`,
+not just throughput, before claiming a smoothness fix; see `docs/hw/display.md`.
 
 The `1200x1600@120` mode is not free smoothness. Live CRTC vblank is
 118.4 Hz with 62 lines / 0.31 ms of blanking (measured 2026-08-27);
@@ -407,8 +408,9 @@ rollback images and transaction records live in `/var/lib/dc1/local-kernel`
 and must never enter Git. A boot-time confirmation service checks the new
 build or restores the old matching package after fallback.
 
-The kernel overlay applies `sdcard.config` to its pinned base defconfig and
-requires its MMC/regulator/partition/filesystem settings to resolve built-in.
+The kernel overlay applies `sdcard.config` and `latency.config` to its pinned
+base defconfig and requires their storage and high-resolution timer settings
+to resolve built-in.
 The resolved configuration is included in the kernel APK. The source archive
 prefetcher handles the archive separately from this local config input.
 
