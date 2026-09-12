@@ -403,6 +403,13 @@ install -m 0755 "$SRC/rc.sh" "$d/etc/rc.sh"
 install -m 0755 "$SRC/finalize.sh" "$d/etc/installer/finalize.sh"
 install -m 0755 "$SRC/provision.sh" "$d/etc/installer/provision.sh"
 install -m 0755 "$SRC/netinstall.sh" "$d/etc/installer/netinstall.sh"
+# A downloaded numbered installer must fetch its own payloads, even after
+# latest advances. Local/PR builds retain the traditional latest default.
+release_tag=${DC1_RELEASE_TAG:-latest}
+case "$release_tag" in
+	''|*[!A-Za-z0-9._-]*) fatal "invalid DC1_RELEASE_TAG" ;;
+esac
+printf '%s\n' "$release_tag" > "$d/etc/dc1-release-tag"
 install -m 0755 "$SRC/tui.sh" "$d/etc/installer/tui.sh"
 install -m 0644 "$SRC/partlib.sh" "$d/etc/installer/partlib.sh"
 install -m 0644 "$SRC/writelib.sh" "$d/etc/installer/writelib.sh"

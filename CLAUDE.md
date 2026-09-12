@@ -543,11 +543,16 @@ PD contracts settle in-kernel). Constraints future changes must preserve:
 
 The workflow runs for pushes to `main`, pull requests, and manual dispatch.
 Pull requests upload a workflow artifact without `APKINDEX.tar.gz`: untrusted
-PR code never receives or executes with `DC1_APK_PRIVATE_KEY`. A push to the
-default branch
-publishes/replaces the rolling prerelease `latest`; manual dispatch without a
-tag can do the same on the default branch. A manual `pmos-v*` tag publishes a
-prerelease with that version. Keep the `DC1_APK_PRIVATE_KEY` secret available
+PR code never receives or executes with `DC1_APK_PRIVATE_KEY`. A successful push to the
+default branch publishes a retained `build-<github.run_number>` prerelease,
+then refreshes `latest`. Runs queue with `queue: max` and are not canceled by
+newer pushes. Published numbered assets are never replaced; reruns keep their
+number and must match the existing manifest. Older runs cannot roll `latest`
+backwards. Manual dispatch without a tag also uses a build number; a manual
+`pmos-v*` tag publishes a retained prerelease without updating `latest`.
+Installer images embed their release tag so their payload downloads remain
+consistent when `latest` moves. See `docs/releases.md`.
+Keep the `DC1_APK_PRIVATE_KEY` secret available
 to publishing events; they must fail rather than publish an unsigned APK index.
 
 No workflow step may quietly turn a docs-only change into a skipped build. The

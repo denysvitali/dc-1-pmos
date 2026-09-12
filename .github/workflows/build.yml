@@ -4,8 +4,8 @@
 #   on every push and pull request.
 # build (ubuntu-24.04-arm, native aarch64, no qemu): full pinned-source
 #   rootfs + kernel build, installer/system boot images, release assembly.
-#   Publishes the rolling `latest` prerelease only on pushes to the default
-#   branch; PR runs upload a workflow artifact instead.
+#   Publishes retained build-N releases and refreshes latest on main.
+#   PR runs upload a workflow artifact instead.
 #
 # Every commit builds — no path filters, by design: pmbootstrap skips
 # unchanged pkgver-pkgrel, so a "docs-only" filter would be the second layer
@@ -20,8 +20,8 @@ on:
     inputs:
       release_tag:
         description: >-
-          Versioned release tag (must match pmos-v*). Leave empty to update
-          the rolling `latest` prerelease instead.
+          Optional versioned tag (pmos-v*). Empty uses build-<run number>
+          and refreshes latest when run on the default branch.
         required: false
         default: ""
         type: string
@@ -31,7 +31,8 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
+  queue: max
 
 defaults:
   run:
@@ -48,10 +49,12 @@ jobs:
         env:
           TAG: ${{ inputs.release_tag }}
         run: |
-          case "$TAG" in
-            pmos-v*) echo "requested release tag: $TAG" ;;
-            *) echo "release_tag must match pmos-v*, got: $TAG" >&2; exit 1 ;;
-          esac
+          if [[ ! "$TAG" =~ ^pmos-v[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
+             ! git check-ref-format "refs/tags/$TAG"; then
+            echo "release_tag must be a valid pmos-v* tag" >&2
+            exit 1
+          fi
+
 
       - uses: actions/checkout@v4
 
@@ -164,6 +167,8 @@ jobs:
     runs-on: ubuntu-24.04-arm
     needs: verify
     timeout-minutes: 360
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'pull_request' && 'latest' || inputs.release_tag || format('build-{0}', github.run_number) }}
     permissions:
       contents: write
     steps:
@@ -404,14 +409,14 @@ jobs:
           set -o pipefail
           if [ -n "$moddir" ]; then
             echo "staging kernel modules from $moddir"
-            sudo env DC1_SOURCE_VERSION="${GITHUB_SHA:0:7}" \
+            sudo env DC1_SOURCE_VERSION="${GITHUB_SHA:0:7}" DC1_RELEASE_TAG="$RELEASE_TAG" \
               KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
               KERNEL_DTB="$GITHUB_WORKSPACE/out/boot/mt8781-daylight-jagar.dtb" \
               DTBSWAP_LLVM=/usr/lib/llvm-19/bin/ DTBSWAP_LLD=/usr/bin/ld.lld-19 \
               MODDIR="$moddir" sh installer/build.sh 2>&1 | tee boot-images.log
           else
             echo "no kernel modules directory found; building without MODDIR"
-            sudo env DC1_SOURCE_VERSION="${GITHUB_SHA:0:7}" \
+            sudo env DC1_SOURCE_VERSION="${GITHUB_SHA:0:7}" DC1_RELEASE_TAG="$RELEASE_TAG" \
               KERNEL_IMAGE="$GITHUB_WORKSPACE/out/boot/Image.gz" \
               KERNEL_DTB="$GITHUB_WORKSPACE/out/boot/mt8781-daylight-jagar.dtb" \
               DTBSWAP_LLVM=/usr/lib/llvm-19/bin/ DTBSWAP_LLD=/usr/bin/ld.lld-19 \
@@ -473,7 +478,8 @@ jobs:
             -e 's/^boot_image_included=false$/boot_image_included=true/' \
             -e 's/^deployable=rootfs-image-only$/deployable=complete-installer-release/' \
             release/PROVENANCE
-          printf 'release_commit=%s\n' "$GITHUB_SHA" >> release/PROVENANCE
+          printf 'release_commit=%s\nrelease_tag=%s\nbuild_number=%s\n' \
+            "$GITHUB_SHA" "$RELEASE_TAG" "$GITHUB_RUN_NUMBER" >> release/PROVENANCE
           grep -qx 'flash_method=dc1-installer' release/PROVENANCE
           grep -qx 'boot_image_included=true' release/PROVENANCE
           grep -qx 'deployable=complete-installer-release' release/PROVENANCE
@@ -553,7 +559,7 @@ jobs:
 
       # PR runs: upload a workflow artifact so reviewers can download the
       # outputs. Main-branch push and workflow_dispatch runs publish a GitHub
-      # release below (rolling `latest` or a tagged version), which is the
+      # releases below (retained build number plus rolling `latest`), which are the
       # canonical copy of the same files; skip the redundant upload there
       # (~24 s) and avoid a second 500 MB+ upload of the same bytes.
       - name: Upload workflow artifact
@@ -567,69 +573,28 @@ jobs:
       - name: Write release notes
         run: |
           {
-            echo "Automated build of \`${GITHUB_SHA}\`."
+            echo "Automated ${RELEASE_TAG} of \`${GITHUB_SHA}\`."
             echo
             echo "**hardware_verified=false** — a green build proves the"
             echo "artifacts compile, not that they boot. Read the README"
             echo "warning before flashing anything."
+            echo
+            echo "Retained release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+            echo "The installer downloads this release's payloads. Installed devices still follow the configured update policy."
             echo
             echo '```'
             cat release/PROVENANCE
             echo '```'
           } > notes.md
 
-      # Rolling prerelease: preserve the existing release until replacement
-      # assets are ready. Upload SHA256SUMS last, so a partial upload can only
-      # fail verification; it can never bless a mixed old/new asset set.
-      - name: Publish rolling prerelease
-        if: >-
-          (github.event_name == 'push' ||
-           (github.event_name == 'workflow_dispatch' && inputs.release_tag == ''))
-          && github.ref_name == github.event.repository.default_branch
+      # Main builds are queued, so asset updates never overlap. A rerun cannot
+      # overwrite its published numbered release or roll latest backwards.
+      - name: Publish retained release and refresh latest
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          REFRESH_LATEST: ${{ github.ref_name == github.event.repository.default_branch && inputs.release_tag == '' }}
         run: |
-          if gh release view latest >/dev/null 2>&1; then
-            gh release edit latest \
-              --prerelease \
-              --target "$GITHUB_SHA" \
-              --title "Rolling build (${GITHUB_SHA:0:12})" \
-              --notes-file notes.md
-          else
-            gh release create latest \
-              --prerelease \
-              --target "$GITHUB_SHA" \
-              --title "Rolling build (${GITHUB_SHA:0:12})" \
-              --notes-file notes.md
-          fi
-          for asset in release/*; do
-            [ "${asset##*/}" = SHA256SUMS ] && continue
-            gh release upload latest "$asset" --clobber
-          done
-          # Version bumps change APK filenames. Remove assets absent from the
-          # new contract only after all replacements exist; the old manifest
-          # remains published until the final upload below, so any interrupted
-          # transition is detectably incomplete rather than falsely valid.
-          gh release view latest --json assets --jq '.assets[].name' |
-            while IFS= read -r old_asset; do
-              [ -e "release/$old_asset" ] && continue
-              gh release delete-asset latest "$old_asset" --yes
-            done
-          gh release upload latest release/SHA256SUMS --clobber
-
-      - name: Publish versioned release
-        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.release_tag }}
-        run: |
-          case "$TAG" in
-            pmos-v*) ;;
-            *) echo "release_tag must match pmos-v*, got: $TAG" >&2; exit 1 ;;
-          esac
-          gh release create "$TAG" \
-            --prerelease \
-            --target "$GITHUB_SHA" \
-            --title "$TAG" \
-            --notes-file notes.md \
-            release/*
+          args=()
+          if [ "$REFRESH_LATEST" = true ]; then args+=(--latest); fi
+          python3 scripts/publish-release.py release notes.md "${args[@]}"

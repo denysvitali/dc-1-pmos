@@ -1,5 +1,5 @@
 #!/bin/sh
-# netinstall.sh -- on-device network install: download the rolling release
+# netinstall.sh -- on-device network install: download the selected release
 # on the DC-1 itself (over Wi-Fi brought up by tui.sh) and feed the same
 # fail-closed write/verify core the USB transport uses.
 #
@@ -31,7 +31,15 @@
 # Offline-testable: DC1_LIB=1 sources only the pure functions.
 
 STATUS_FILE=${DC1_STATUS_FILE:-/tmp/installer-status}
-URL_BASE=${DC1_URL_BASE:-https://github.com/denysvitali/dc-1-pmos/releases/download/latest}
+release_tag=latest
+release_tag_file=${DC1_RELEASE_TAG_FILE:-/etc/dc1-release-tag}
+if [ -f "$release_tag_file" ]; then
+	release_tag=$(cat "$release_tag_file")
+	case "$release_tag" in
+		''|*[!A-Za-z0-9._-]*) echo "invalid embedded release tag" >&2; exit 1 ;;
+	esac
+fi
+URL_BASE=${DC1_URL_BASE:-https://github.com/denysvitali/dc-1-pmos/releases/download/$release_tag}
 NET_DIR=${DC1_NET_DIR:-/tmp/net}
 ROOTFS_NAME=jagar-rootfs.ext4.zst
 BOOTIMG_NAME=jagar-boot.img

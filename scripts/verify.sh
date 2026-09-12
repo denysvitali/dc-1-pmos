@@ -247,6 +247,7 @@ sh "$script_dir/tests/test_export_artifacts.sh"
 sh "$script_dir/tests/test_prefetch_kernel_distfile.sh"
 sh "$script_dir/tests/test_prepare_safety.sh"
 sh "$script_dir/tests/test_release_version_identity.sh"
+python3 "$script_dir/tests/test_publish_release.py"
 sh "$script_dir/tests/test_restore_local_apk_key.sh"
 sh "$script_dir/tests/test_sign_apkindex.sh"
 

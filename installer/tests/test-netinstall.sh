@@ -20,6 +20,24 @@ fail() { echo "fail: $*" >&2; exit 99; }
 DC1_LIB=1
 . "$HERE/../src/netinstall.sh"
 
+echo "== release selection =="
+# Re-source in subshells: no downloads or device writes in library mode.
+selected_url() (
+ DC1_RELEASE_TAG_FILE="$TMP/release-tag"
+ . "$HERE/../src/netinstall.sh"
+ printf '%s\n' "$URL_BASE"
+)
+[ "$(selected_url)" = 'https://github.com/denysvitali/dc-1-pmos/releases/download/latest' ] \
+ && ok "unstamped installer uses latest" || bad "default release changed"
+printf '%s\n' build-123 > "$TMP/release-tag"
+[ "$(selected_url)" = 'https://github.com/denysvitali/dc-1-pmos/releases/download/build-123' ] \
+ && ok "numbered installer selects its own release" || bad "numbered release ignored"
+[ "$(DC1_URL_BASE=https://example.invalid/override selected_url)" = 'https://example.invalid/override' ] \
+ && ok "explicit URL override preserved" || bad "override lost"
+printf '%s\n' '../wrong' > "$TMP/release-tag"
+if selected_url >/dev/null 2>&1; then bad "invalid tag accepted"; else ok "invalid tag rejected"; fi
+rm "$TMP/release-tag"
+
 echo "== sums_digest =="
 
 SHA_A=1111111111111111111111111111111111111111111111111111111111111111

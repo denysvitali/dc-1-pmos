@@ -148,3 +148,5 @@ source directories and hardware records. Open acceptance work lives in the
 See [LICENSE](LICENSE) for the repository's MIT license. Files with their own
 SPDX or license notices retain those terms; the kernel is maintained in the
 separate [kernel repository](https://github.com/denysvitali/dc-1-linux-kernel).
+
+Numbered installer builds are retained alongside `latest`; see [release versions](docs/releases.md).
