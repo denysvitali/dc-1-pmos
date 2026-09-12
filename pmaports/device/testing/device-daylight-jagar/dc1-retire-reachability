@@ -1,0 +1,11 @@
+#!/bin/sh
+# Retire the old service immediately on upgrade, including its initramfs timer.
+set -eu
+ROOT=${DC1_RETIRE_ROOT:-}
+mkdir -p "$ROOT/etc/dc1" "$ROOT/var/lib/dc1"
+touch "$ROOT/etc/dc1/boot-watchdog.disabled" "$ROOT/var/lib/dc1/boot-ok"
+# Build chroots have no running systemd; the persistent files still apply.
+if [ -d "$ROOT/run/systemd/system" ]; then
+	systemctl daemon-reload
+	systemctl disable --now dc1-boot-watchdog.service 2>/dev/null || true
+fi

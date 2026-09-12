@@ -565,17 +565,6 @@ install -m 0644 "$DL/firmware/$BT_RAM_NAME" "$s/lib/firmware/mediatek/$BT_RAM_NA
 install -m 0644 "$DL/firmware/regulatory.db" "$s/lib/firmware/regulatory.db"
 install -m 0644 "$DL/firmware/regulatory.db.p7s" "$s/lib/firmware/regulatory.db.p7s"
 
-# The reachability watchdog for the INSTALLED system. boot.sh copies these
-# into the verified rootfs on every boot (self-heal): the boot image is the
-# only artifact fastboot can update without a running system, so the
-# initramfs is the carrier -- deliberately not the device package, since
-# "reboot to fastboot when nobody can reach you" is bench policy, not
-# something upstream ships to end users.
-mkdir -p "$s/etc/deploy"
-install -m 0755 "$SRC/system/boot-watchdog.sh" "$s/etc/deploy/dc1-boot-watchdog"
-install -m 0644 "$SRC/system/dc1-boot-watchdog.service" \
-	"$s/etc/deploy/dc1-boot-watchdog.service"
-
 # Offline rootfs grow (boot.sh) + optional fsck: resize2fs and e2fsck plus
 # their musl libs, the same pinned set the installer stages. The apk ships each
 # lib as a real file (libX.so.1.2.3) plus a symlink (libX.so.1); copy both.

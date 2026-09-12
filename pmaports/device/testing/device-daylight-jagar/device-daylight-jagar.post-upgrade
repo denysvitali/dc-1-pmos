@@ -65,4 +65,6 @@ udevadm trigger /dev/input/event* 2>/dev/null || true
 # script (build chroot, or a future wireplumber layout) is a no-op.
 [ -x /usr/libexec/dc1-fix-wireplumber-alsa ] &&
 	/usr/libexec/dc1-fix-wireplumber-alsa || true
+# Retire network-triggered reboots, including on systems with an older ramdisk.
+[ -x /usr/libexec/dc1-retire-reachability ] && /usr/libexec/dc1-retire-reachability
 exit 0

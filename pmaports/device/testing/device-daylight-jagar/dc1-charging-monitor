@@ -3,19 +3,12 @@
 #
 # Started by dc1-charging.target (the headless charge boot). Jobs:
 #
-#   1. Stand the boot-watchdog down for the whole boot by touching its pat
-#      file (/run/dc1-boot-watchdog.pat; its check is pure existence). A
-#      charge session has NO network by design, so an unpatted
-#      boot-watchdog would call the boot unreachable, reboot it, and --
-#      after three strikes -- strand the device in LK fastboot while it
-#      sat innocently charging on a dumb wall wart.
-#
-#   2. Best-effort insurance: write FB_BLANK_POWERDOWN (4) to every
+#   1. Best-effort insurance: write FB_BLANK_POWERDOWN (4) to every
 #      writable /sys/class/backlight/*/bl_power -- the same knob
 #      dc1-screen-backlight uses -- so nothing leaves a light burning
 #      behind the dark panel.
 #
-#   3. Watch charger and power key:
+#   2. Watch charger and power key:
 #        unplug (debounced: OFFLINE_LIMIT consecutive offline ticks)
 #          -> sync + `systemctl poweroff`. The clean shutdown lets
 #          dc1-poweroff-flag.service record again, so plug -> charge ->
@@ -41,7 +34,6 @@ set -eu
 
 ONLINE=${DC1_SUPPLY_ONLINE:-/sys/class/power_supply/mt6375-charger/online}
 CAP=${DC1_FG_CAPACITY:-/sys/class/power_supply/mt6358-fg/capacity}
-PAT=${DC1_PAT_FILE:-/run/dc1-boot-watchdog.pat}
 TICK=${DC1_TICK:-1}
 OFFLINE_LIMIT=${DC1_OFFLINE_TICKS:-6}
 
@@ -93,11 +85,7 @@ if [ "${DC1_CHARGING_LIB:-0}" = "1" ]; then
 	return 0 2>/dev/null || exit 0
 fi
 
-# 1. Pat the boot-watchdog for this whole boot.
-touch "$PAT" 2>/dev/null ||
-	log "warning: cannot create $PAT; boot-watchdog stays armed"
-
-# 2. Panel-dark insurance (FB_BLANK_POWERDOWN; see dc1-screen-backlight).
+# 1. Panel-dark insurance (FB_BLANK_POWERDOWN; see dc1-screen-backlight).
 for mo_bl in /sys/class/backlight/*/bl_power; do
 	[ -w "$mo_bl" ] || continue
 	printf '%s\n' 4 >"$mo_bl" 2>/dev/null || :
@@ -106,7 +94,7 @@ done
 mo_cap=$(read_capacity) || mo_cap=""
 log "charging mode active; battery ${mo_cap:-unknown}%"
 
-# 3. Power-key watcher; timeout "0"/omitted = forever.
+# 2. Power-key watcher; timeout "0"/omitted = forever.
 /usr/sbin/dc1-pwrkey "${DC1_PWRKEY_TIMEOUT:-0}" &
 mo_pid=$!
 

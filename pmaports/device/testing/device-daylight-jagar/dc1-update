@@ -19,7 +19,7 @@
 #      accountsservice<999 pin rides along), and a kernel upgrade arms the
 #      inactive A/B slot through the device package's apk trigger -- no
 #      reboot happens here; it lands on the next reboot behind the
-#      boot-watchdog fallback.
+#      A/B fallback.
 #   3. Best-effort parity report: fetch SHA256SUMS + APKINDEX.tar.gz from
 #      the rolling release, verify the index hash strictly, and compare the
 #      three overlay packages installed-vs-candidate with `apk version -t`.

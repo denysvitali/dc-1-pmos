@@ -87,8 +87,6 @@ installer credentials.
 systemctl disable --now dc1-debug-shell
 # close sshd entirely (keeps USB serial shells if left enabled):
 systemctl disable --now sshd
-# opt out of the reachability watchdog's reboots:
-sudo touch /etc/dc1/boot-watchdog.disabled
 ```
 
 Re-enabling any of these later requires a working login path — do not

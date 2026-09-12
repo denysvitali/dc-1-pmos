@@ -183,16 +183,19 @@ state for the rest of the boot, and recursive listings have hung behind
 such wedges. Inspect shallow single-level listings only. Record:
 [hw/usb.md](hw/usb.md).
 
-### The reachability watchdog (what reboots your device)
+### Reboot watchdogs
 
-`dc1-boot-watchdog` (self-deployed by the boot image) reboots the device
-after 10 unreachable minutes — unreachable meaning: no inbound shell
-connection, and no probe answer from the USB host (`172.16.42.2`) or the
-Wi-Fi gateway. Consecutive unreachable boots escalate into LK fastboot
-via the `WDT_NONRST_REG2` nibble. Backstops: an initramfs deadman
-(15 min) and a rescue-path lease for pre-switch_root failures. The
-headless charging target stands it down with an existence-based pat
-file. Opt out: `sudo touch /etc/dc1/boot-watchdog.disabled`.
+Network reachability no longer triggers reboots. The 10-minute service and
+15-minute post-switch-root timer were removed after they repeatedly rebooted
+a working offline system. Device package r98 retires existing copies, and new
+boot images remove their old unit and script before starting systemd.
+
+For compatibility with older boot images, the package creates
+`/etc/dc1/boot-watchdog.disabled` and `/var/lib/dc1/boot-ok` through tmpfiles
+before `basic.target`, including headless charging boots. A unit condition
+prevents the old service from starting. These are migration files, not a
+new background monitor. The hardware watchdog managed by systemd and the
+pre-switch-root rescue lease remain in place.
 
 ## Device flags and units reference
 
@@ -203,7 +206,6 @@ noted):
 | --- | --- | --- |
 | `/var/lib/dc1/no-auto-update` | `dc1-update.timer` skips its `apk update`/`apk upgrade` and parity report | `dc1-update` |
 | `/var/lib/dc1/no-charging-mode` | Charging mode never engages; a plugged-in poweroff boot reaches the desktop | `dc1-charging-generator` |
-| `/etc/dc1/boot-watchdog.disabled` | The reachability watchdog stays down | `dc1-boot-watchdog` |
 
 State files (not opt-outs; do not create by hand):
 
@@ -211,7 +213,6 @@ State files (not opt-outs; do not create by hand):
 | --- | --- | --- |
 | `/var/lib/dc1/first-boot-apps-done` | First-boot app set finished; a gate for charging mode (an unprovisioned system always boots to the desktop) | `dc1-first-boot` |
 | `/var/lib/dc1/poweroff-clean` | Epoch timestamp of the last clean shutdown (expires after 7 days); the fallback charging-mode signal | `dc1-poweroff-flag.service` (ExecStop) |
-| `/run/dc1-boot-watchdog.pat` | Existence-based watchdog pat (charging mode keeps it present) | `dc1-charging-monitor` |
 
 Units worth knowing (all from the device package unless noted):
 
@@ -219,7 +220,6 @@ Units worth knowing (all from the device package unless noted):
 | --- | --- |
 | `dc1-update.timer` | Post-boot + weekly `apk upgrade`, convergence parity report |
 | `dc1-boot-sync` | Writes the inactive A/B slot with a new kernel/boot image, read-back verified (the OTA path) |
-| `dc1-boot-watchdog` | Reachability watchdog (see above) |
 | `dc1-usb-gadget` | Owns the UDC; completes the ACM+ECM gadget tree in place |
 | `dc1-debug-shell` | ttyGS0 kmsg stream, ttyGS1 root shell, TCP 4444 root shell (usb0-only) |
 | `dc1-audio` | Applies the known-good ALSA mixer state at boot, in the `sound.target` transaction |

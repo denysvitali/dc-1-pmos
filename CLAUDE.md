@@ -512,10 +512,10 @@ PD contracts settle in-kernel). Constraints future changes must preserve:
   ALWAYS boots to the desktop — a fresh install rebooting with the flash
   cable attached would otherwise wake as dark glass); and reason==1 or a
   fresh clean-poweroff flag.
-- Any future headless target must stand down `dc1-boot-watchdog` by
-  keeping `/run/dc1-boot-watchdog.pat` present (an existence-based pat);
-  otherwise ~600 s of unreachability reboots into a loop with fastboot
-  escalation — unrecoverable on a dumb charger.
+- Network reachability must not trigger automatic reboots. The old service
+  and post-switch-root deadman were removed; device r98 uses a unit condition
+  and tmpfiles markers to retire copies from older boot images, including
+  headless boots. Keep the hardware watchdog and rescue-path lease intact.
 - The power key needs its own evdev reader (`/usr/sbin/dc1-pwrkey`):
   logind ignores the power key globally on this device
   (`/etc/systemd/logind.conf.d/10-dc1-power.conf`), and `/etc` drop-ins

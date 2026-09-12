@@ -17,12 +17,8 @@ Instead, both this project's installer and installed-system boot images carry
 `bootargs`, initramfs addresses, and memory size into this port's DTB, then jumps
 to the real kernel. Its failure paths hand the original LK tree to Linux.
 
-Because a boot that runs but cannot be reached can otherwise strand the device,
-`dc1-boot-watchdog` reboots after 10 unreachable minutes and escalates to LK
-fastboot only after consecutive unreachable boots. An initramfs deadman and
-rescue-path lease backstop cover earlier phases. Offline users can opt out with
-`sudo touch /etc/dc1/boot-watchdog.disabled`; see
-[Debugging and recovery](debugging.md).
+Network loss does not trigger automatic reboots. The hardware watchdog and
+pre-switch-root rescue lease remain; see [Debugging and recovery](debugging.md).
 
 Updates use the same A/B safety boundary. `dc1-update.timer` runs `apk update`
 and `apk upgrade`; when the installed kernel changes, `dc1-boot-sync` downloads

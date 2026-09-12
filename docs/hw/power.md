@@ -251,10 +251,8 @@ present reason 1 and wake as silent dark glass — plus VBUS present
 (`/sys/class/power_supply/mt6375-charger/online` = 1; every charger
 driver is built-in, so sysfs exists before generators run).
 
-Inside the target the monitor stands down `dc1-boot-watchdog` by touching
-`/run/dc1-boot-watchdog.pat` (an existence-based pat — without it, 600 s
-of unreachability would reboot-loop a dumb charger into fastboot
-escalation), holds `bl_power=4` on all frontlight channels as insurance,
+Inside the target the monitor holds `bl_power=4` on all frontlight channels
+as insurance,
 and runs `/usr/sbin/dc1-pwrkey`, which reads KEY_POWER evdev events
 directly because logind ignores the power key globally on this device
 (`HandlePowerKey=ignore` via

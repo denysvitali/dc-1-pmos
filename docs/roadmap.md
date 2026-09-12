@@ -23,9 +23,9 @@ remediation queue, not a claim that every line is a user-visible failure.
 | **P3 expected probe/takeover noise** | SD/MMC discovery commands, one UFS DME attribute failure, simplefb region conflict, CPU dummy supplies, unused clock/domain/regulator notices; one `Playback_12` open of an intentionally unrouted FE | Storage, DRM, working UCM routes and regulator-free CPU DVFS are live. Keep as baselines; investigate only if the associated function fails or a message repeats after steady state. The initramfs now tries the hardware-observed `musb-hdrc.4.auto` UDC first; verify the four failed binds and final `UDC bind failed` line disappear on the next boot. |
 | **Closed P4 desktop-log fixes — boot-verified on r54 (2026-08-29)** | missing `autofs4`; journald BPF-firewall and ACL warnings; unsupported `bootconfig` command-line token | Kernel `ffd5800b0ba3` enables autofs, cgroup BPF/BPF syscalls, ext4 POSIX ACLs and bootconfig. Acceptance met on the live r54 boot (2026-08-29): `bootconfig` parsed cleanly (`Load bootconfig: 588 bytes 41 nodes`), no missing-`autofs4` line, no journald BPF-firewall or ACL warnings, with journald persistence, sandboxing and the boot path intact. |
 
-The capture also contains successful `dc1-boot-watchdog` and initramfs
-handoff messages because those facilities log at warning priority; they
-are state reports, not errors, and are excluded from the queue.
+The historical capture also contains successful initramfs handoff and legacy
+watchdog messages at warning priority; they are state reports, not errors.
+The network-reachability watchdog has since been removed.
 
 ## Tier 1 — close the open hardware-verification items
 

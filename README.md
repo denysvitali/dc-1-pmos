@@ -35,8 +35,7 @@ complete published-release install through first update does not yet.
 > - This guide only ever writes **`boot_a`** and **`userdata`**, plus the A/B
 >   boot-control bytes in `misc` through `fastboot set_active a` and the
 >   installed slot manager. Those writes are redoable. LK's A/B fallback
->   covers a pre-kernel slot failure; once Linux starts, the reachability
->   watchdog can return an unreachable boot to LK fastboot.
+>   covers a pre-kernel slot failure.
 > - **Never** write `preloader`, `lk`, `dtbo`, `vendor_boot`, or the UFS
 >   boot LUNs. `lk` and `dtbo` are signature-checked; one bad write marks
 >   the slot dead before Linux starts, with no way back over USB.
@@ -185,12 +184,7 @@ what each menu option does — is in
   [docs/installation.md](docs/installation.md#charging-mode). For charge
   rates, the battery percentage's caveats, and the fast-charge lever,
   see [docs/power.md](docs/power.md).
-- **Offline use needs one setting.** Because a boot that succeeds but can't
-  be reached would otherwise be unrecoverable on a device with no serial
-  header, `dc1-boot-watchdog` reboots the device after 10 unreachable
-  minutes (escalating to fastboot only if consecutive boots stay
-  unreachable). If you will use the tablet away from every network, opt
-  out once: `sudo touch /etc/dc1/boot-watchdog.disabled`.
+- **Offline use is supported.** Network loss does not trigger automatic reboots.
 - **Normal desktop boots expose the recovery channels.** SSH listens on port
   22 over configured networks; USB SSH/ECM still awaits a host-side test. Raw
   TCP 4444 and two USB serial ports are cable-only. Charging mode stops sshd
