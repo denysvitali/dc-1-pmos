@@ -64,6 +64,16 @@ still the open check.)
    successfully. This removes recurring compositor work and the polling
    delay; it is not a measured FPS or physical-rotation result.
    See [hw/sensors.md](hw/sensors.md) for the sensor side.
+   Device r99 also gates the bridge on GNOME's `SessionIsActive` and
+   Mutter's `PowerSaveMode == 0`. Direct `ApplyMonitorsConfig` calls bypass
+   Mutter's native screen-off orientation inhibitor. Each view rebuild
+   retains the old onscreen buffers until a modeset is posted; rotations
+   in an inactive greeter or with the panel blanked can therefore accumulate
+   scanout allocations in the shared 256 MiB CMA pool. Exhaustion prevents
+   waking the display even though power-key events still arrive. The bridge
+   now waits for session activation/display wake and applies only the latest
+   sensor orientation. It subscribes to both visibility properties so this
+   catch-up does not depend on another physical rotation or a polling timer.
 5. **accountsservice pin** (rootfs build, `scripts/build-rootfs.sh`). The
    pmOS fork `accountsservice-999923.13.9` ships a typelib referencing
    `libaccountsservice.so.0` while the installed gdm/gnome-shell link

@@ -15,6 +15,8 @@ SENSOR_IFACE = "net.hadess.SensorProxy"
 DISPLAY_PATH = "/org/gnome/Mutter/DisplayConfig"
 DISPLAY_IFACE = "org.gnome.Mutter.DisplayConfig"
 PROPERTIES_IFACE = "org.freedesktop.DBus.Properties"
+SESSION_PATH = "/org/gnome/SessionManager"
+SESSION_IFACE = "org.gnome.SessionManager"
 ORIENTATION_SCHEMA = "org.gnome.settings-daemon.peripherals.touchscreen"
 
 # Mutter's transforms are clockwise. The sensor names describe which edge is
@@ -42,6 +44,7 @@ class OrientationBridge:
         self.loop = loop
         self.sensor = None
         self.display = None
+        self.session_manager = None
         self.source = 0
         self.retry = False
         self.stopping = False
@@ -59,8 +62,15 @@ class OrientationBridge:
             self.queue, signal_name="MonitorsChanged",
             dbus_interface=DISPLAY_IFACE, bus_name=DISPLAY_IFACE,
             path=DISPLAY_PATH))
+        for name, path in ((DISPLAY_IFACE, DISPLAY_PATH),
+                           (SESSION_IFACE, SESSION_PATH)):
+            self.matches.append(self.session.add_signal_receiver(
+                self.visibility_changed, signal_name="PropertiesChanged",
+                dbus_interface=PROPERTIES_IFACE, bus_name=name,
+                path=path, arg0=name))
         for bus, name in ((self.system, SENSOR_IFACE),
-                          (self.session, DISPLAY_IFACE)):
+                          (self.session, DISPLAY_IFACE),
+                          (self.session, SESSION_IFACE)):
             self.matches.append(bus.add_signal_receiver(
                 self.owner_changed, signal_name="NameOwnerChanged",
                 dbus_interface="org.freedesktop.DBus",
@@ -83,7 +93,15 @@ class OrientationBridge:
             self.sensor = None
         elif name == DISPLAY_IFACE:
             self.display = None
+        elif name == SESSION_IFACE:
+            self.session_manager = None
         self.queue()
+
+    def visibility_changed(self, interface, changed, invalidated):
+        key = {DISPLAY_IFACE: "PowerSaveMode",
+               SESSION_IFACE: "SessionIsActive"}.get(interface)
+        if key and (key in changed or key in invalidated):
+            self.queue()
 
     def queue(self, delay=0):
         if self.stopping:
@@ -102,6 +120,22 @@ class OrientationBridge:
         self.source = 0
         self.retry = False
         try:
+            if self.session_manager is None:
+                self.session_manager = self.session.get_object(
+                    SESSION_IFACE, SESSION_PATH)
+            session_props = dbus.Interface(self.session_manager, PROPERTIES_IFACE)
+            if not session_props.Get(SESSION_IFACE, "SessionIsActive"):
+                return GLib.SOURCE_REMOVE
+            if self.display is None:
+                self.display = dbus.Interface(self.session.get_object(
+                    DISPLAY_IFACE, DISPLAY_PATH), DISPLAY_IFACE)
+            display_props = dbus.Interface(self.display, PROPERTIES_IFACE)
+            # ApplyMonitorsConfig bypasses Mutter's native orientation guard.
+            # Rebuilding views while blanked or in an inactive greeter retains
+            # old scanout buffers until a modeset can finish, exhausting CMA.
+            # Visibility signals above replay only the latest orientation.
+            if int(display_props.Get(DISPLAY_IFACE, "PowerSaveMode")) != 0:
+                return GLib.SOURCE_REMOVE
             if self.sensor is None:
                 sensor = self.system.get_object(SENSOR_IFACE, SENSOR_PATH)
                 sensor.ClaimAccelerometer(dbus_interface=SENSOR_IFACE)
@@ -110,9 +144,6 @@ class OrientationBridge:
             # Unlock schedules an immediate read of the latest sensor state.
             if self.settings.get_boolean("orientation-lock"):
                 return GLib.SOURCE_REMOVE
-            if self.display is None:
-                self.display = dbus.Interface(self.session.get_object(
-                    DISPLAY_IFACE, DISPLAY_PATH), DISPLAY_IFACE)
             props = dbus.Interface(self.sensor, PROPERTIES_IFACE)
             orientation = str(props.Get(SENSOR_IFACE, "AccelerometerOrientation"))
             transform = TRANSFORMS.get(orientation, DEFAULT_TRANSFORM)
@@ -149,6 +180,7 @@ class OrientationBridge:
             # Only failures retry on a timer. Successful steady state has no
             # periodic work and makes no SensorProxy or Mutter method calls.
             self.display = None
+            self.session_manager = None
             self.queue(1000)
         return GLib.SOURCE_REMOVE
 

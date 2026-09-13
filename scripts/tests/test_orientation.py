@@ -60,10 +60,17 @@ class Sensor:
 
 class Display:
     def __init__(self):
+        self.power_save_mode = 0
         self.transform = 2
         self.reads = 0
         self.applies = []
         self.fail = False
+
+    def Get(self, interface, key):
+        if self.fail:
+            raise BusError('compositor restarting')
+        assert key == 'PowerSaveMode'
+        return self.power_save_mode
 
     def GetCurrentState(self):
         self.reads += 1
@@ -79,12 +86,23 @@ class Display:
         self.transform = configs[0][3]
 
 
+class SessionManager:
+    active = True
+
+    def Get(self, interface, key):
+        assert key == 'SessionIsActive'
+        return self.active
+
+
 class Bus:
     def __init__(self, obj):
         self.obj = obj
         self.receivers = []
+        self.manager = SessionManager()
 
     def get_object(self, *args):
+        if args[0] == 'org.gnome.SessionManager':
+            return self.manager
         return self.obj
 
     def add_signal_receiver(self, callback, **kwargs):
@@ -242,6 +260,48 @@ class OrientationTests(unittest.TestCase):
         self.assertTrue(all(r.removed for r in self.system.receivers + self.session.receivers))
         self.bridge.queue()
         self.assertEqual(self.sources.pending, {})
+
+    def test_blanked_rotations_defer_without_allocating_and_wake_catches_up(self):
+        self.sources.dispatch()
+        self.display.power_save_mode = 3
+        for orientation in ['left-up', 'normal', 'bottom-up', 'right-up']:
+            self.sensor_event(orientation)
+            self.sources.dispatch()
+        self.assertEqual(self.display.reads, 1)
+        self.assertEqual(self.display.applies, [])
+        self.assertEqual(self.sources.pending, {})
+        self.display.power_save_mode = 0
+        self.bridge.visibility_changed('org.gnome.Mutter.DisplayConfig',
+                                       {'PowerSaveMode': 0}, [])
+        self.sources.dispatch()
+        self.assertEqual(self.display.transform, 3)
+        self.assertEqual(len(self.display.applies), 1)
+
+    def test_inactive_greeter_defers_even_when_its_display_reports_on(self):
+        self.session.manager.active = False
+        self.sources.dispatch()
+        self.assertEqual(self.sensor.claims, 0)
+        for orientation in ['left-up', 'normal', 'right-up']:
+            self.sensor_event(orientation)
+            self.sources.dispatch()
+        self.assertEqual(self.display.reads, 0)
+        self.assertEqual(self.display.applies, [])
+        self.assertEqual(self.sources.pending, {})
+        self.session.manager.active = True
+        self.bridge.visibility_changed('org.gnome.SessionManager', {},
+                                       ['SessionIsActive'])
+        self.sources.dispatch()
+        self.assertEqual(self.display.transform, 3)
+        self.assertEqual(len(self.display.applies), 1)
+
+    def test_session_manager_restart_rechecks_visibility(self):
+        self.session.manager.active = False
+        self.sources.dispatch()
+        self.session.manager = SessionManager()
+        self.sensor.orientation = 'left-up'
+        self.bridge.owner_changed('org.gnome.SessionManager', ':1.1', ':1.2')
+        self.sources.dispatch()
+        self.assertEqual(self.display.transform, 1)
 
 
 if __name__ == '__main__':
