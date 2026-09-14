@@ -167,3 +167,29 @@ mid-migration versions remain here only as failure-history context.
   a full CPU core while scrolling on the DC-1. Chromium therefore downloads
   PDFs for the default native Papers viewer instead of rendering them in a web
   tab. This does not change the browser used for ordinary web pages.
+- **Lock screen behind the on-screen keyboard (device r101, 2026-09-14):** with
+  the OSK up on the lock screen, the unlock sheet vanished behind it entirely
+  — avatar, user name and password entry alike — exactly while the user was
+  typing into it. gnome-shell never lifts that sheet: `keyboard.js` holds no
+  unlock/`screenShield` reference at all, and `unlockDialog.js` only asks
+  whether a click landed inside the keyboard box. gnome-shell-mobile instead
+  expects the in-sheet PIN pad (`_pinUnlockKeyboard`, a child of
+  `_promptBox` below `_authPrompt`) to occupy that space, and hides the pad
+  whenever `Main.layoutManager.isPhone` is false, which drops the sheet onto
+  the panel's bottom edge. The DC-1 can never satisfy `_checkIsPhone()` — it
+  wants <500×<1000 logical px and 1200×1600 at the 1.25 scale is 960×1280 —
+  so the pad is always hidden and the sheet is always bottom-flush.
+  `dc1-safe-area` now pads the lock dialog's main box by the OSK height while
+  the keyboard is visible. `keyboardBox` cannot supply that height
+  (`MonitorConstraint({primary: true})` makes it monitor-sized, not
+  keyboard-sized); `Main.keyboard.keyboardActor` can. The lift is padding on
+  the dialog's `St.BoxLayout` rather than a margin on the sheet, because
+  `Shell.Stack`'s custom `vfunc_allocate` makes no promise about child
+  margins while padding on a `St.BoxLayout` is what the same extension
+  already does on hardware. **Not yet hardware-verified:** the lift's
+  geometry was measured in the compositor framebuffer (compositor captures at
+  17:12/17:24 show the sheet at y=1224..1600 with the password entry at
+  y=1531..1576, and the 17:26 capture with the keyboard up shows it fully
+  covered from y≈1160 down), but GNOME cannot load a new extension into a
+  running unlock-dialog session, so the fix itself owes an on-glass check
+  after the next release lands.
