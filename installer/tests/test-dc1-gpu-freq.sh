@@ -57,7 +57,7 @@ mksysfs
 run apply
 expect_file "$tmp/gpu/min_freq" 812000000
 expect_file "$tmp/gpu/max_freq" 1100000000
-expect_file "$tmp/gpu/polling_interval" 20
+expect_file "$tmp/gpu/polling_interval" 40
 [ -f "$tmp/gpu-freq.conf" ] || fail "apply did not write conf"
 expect_status min_freq 812000000
 expect_status default_min_freq 812000000
@@ -68,6 +68,10 @@ printf 'MIN_FREQ=545000000\nMAX_FREQ=812000000\n' >"$tmp/gpu-freq.conf"
 run apply
 expect_file "$tmp/gpu/min_freq" 545000000
 expect_file "$tmp/gpu/max_freq" 812000000
+# The poll is not persisted, so a changed default must reach a device that
+# already has a conf: apply rewrites it from DEFAULT_POLL (the mock starts
+# from the kernel default of 50, which no device is expected to keep).
+expect_file "$tmp/gpu/polling_interval" 40
 
 echo "-- set-min snaps to the nearest OPP and raises max if needed"
 mksysfs
@@ -97,6 +101,8 @@ PATH=/bin:/usr/bin sh -c 'grep -q "^MIN_FREQ=545000000$" "$1"' _ "$tmp/gpu-freq.
 	|| fail "conf missing MIN_FREQ"
 PATH=/bin:/usr/bin sh -c 'grep -q "^MAX_FREQ=700000000$" "$1"' _ "$tmp/gpu-freq.conf" \
 	|| fail "conf missing MAX_FREQ"
+PATH=/bin:/usr/bin sh -c '! grep -q POLL "$1"' _ "$tmp/gpu-freq.conf" \
+	|| fail "conf must not persist the poll; apply rewrites it from DEFAULT_POLL"
 
 echo "-- reset returns to Smooth defaults"
 run reset

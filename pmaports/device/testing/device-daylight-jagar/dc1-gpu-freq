@@ -15,11 +15,17 @@
 #                   in Settings; 390 MHz is Power saver.
 #   max 1100 MHz -- hardware ceiling; thermal devfreq cooling still
 #                   caps from the top, unaffected.
-#   poll 20 ms   -- about one 60 Hz frame of ramp lag.
+#   poll 40 ms   -- half the wakeups of the 20 ms poll (25/s instead of
+#                   50/s while the GPU is awake). The governor ramps about
+#                   one 60 Hz frame later than at 20 ms; that is the
+#                   deliberate price for the lower idle wake rate.
 #
 # Writable sysfs lives on 13000000.gpu. Persistence is
 # /var/lib/dc1/gpu-freq.conf so the next boot reapplies the last
-# experiment before gdm starts. Override both paths with
+# experiment before gdm starts. Only MIN_FREQ/MAX_FREQ are persisted
+# there: the poll is not an experiment knob and is rewritten from
+# DEFAULT_POLL on every apply, so a changed default reaches existing
+# devices with no migration. Override both paths with
 # DC1_GPUFREQ_SYSFS / DC1_GPUFREQ_CONF for offline tests.
 set -eu
 
@@ -27,7 +33,7 @@ SYSFS=${DC1_GPUFREQ_SYSFS:-/sys/class/devfreq/13000000.gpu}
 CONF=${DC1_GPUFREQ_CONF:-/var/lib/dc1/gpu-freq.conf}
 DEFAULT_MIN=812000000
 DEFAULT_MAX=1100000000
-DEFAULT_POLL=20
+DEFAULT_POLL=40
 
 usage() {
 	echo "usage: dc1-gpu-freq apply|status|reset|set-min HZ|set-max HZ|set MIN MAX" >&2

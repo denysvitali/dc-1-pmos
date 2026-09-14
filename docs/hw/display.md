@@ -254,6 +254,19 @@ access path, not proof of a kernel boot failure. The later reachable boot
 completed systemd startup in 15.31 s. The exact failed reachability condition
 on the earlier boots was not recorded by the watchdog and remains unresolved.
 
+### Devfreq poll relaxed to 40 ms (2026-09-14)
+
+`dc1-gpu-freq`'s `DEFAULT_POLL` moved from 20 ms to 40 ms: 25 devfreq
+evaluations/s instead of 50/s while the GPU is awake. The poll is not
+persisted in `gpu-freq.conf` — only `MIN_FREQ`/`MAX_FREQ` are, and
+`write_limits()` rewrites the poll from `DEFAULT_POLL` on every apply — so
+a provisioned device picks up the new value at its next apply with no
+migration. This is a wake-rate change, not a smoothness one: 40 ms still
+re-evaluates sooner than the kernel's 50 ms default, but about one 60 Hz
+frame later than the 20 ms it replaces. The r57 timing table above was
+measured at a 700 MHz floor and is not a before/after for this change; the
+new poll has not been measured on hardware.
+
 ## Frontlight
 
 Dual RT4539 backlight drivers: `lcd-backlight` (white, i2c-5) and

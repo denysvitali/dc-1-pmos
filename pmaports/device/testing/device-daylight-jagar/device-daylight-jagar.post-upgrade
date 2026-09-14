@@ -67,4 +67,9 @@ udevadm trigger /dev/input/event* 2>/dev/null || true
 	/usr/libexec/dc1-fix-wireplumber-alsa || true
 # Retire network-triggered reboots, including on systems with an older ramdisk.
 [ -x /usr/libexec/dc1-retire-reachability ] && /usr/libexec/dc1-retire-reachability
+# Retire the MC3416 bring-up debug drop-in, which made iio-sensor-proxy log
+# every accelerometer sample twice at LOG_DEBUG (~70% of the journal). The
+# helper removes it only when its content is the exact known-bad body, so an
+# edited drop-in is left alone.
+[ -x /usr/libexec/dc1-retire-iio-debug ] && /usr/libexec/dc1-retire-iio-debug
 exit 0

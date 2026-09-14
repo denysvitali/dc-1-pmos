@@ -17,12 +17,14 @@ ACTION=="add|change", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LI
 # hardware floor and re-evaluates only every 50 ms, so the first frames of
 # every UI animation render at the floor and the clock catches up ~2-3
 # frames late -- visible as jank at each animation start on the 60 Hz
-# 1200x1600 panel. dc1-gpu-freq is the single writer: 20 ms poll and a
+# 1200x1600 panel. dc1-gpu-freq is the single writer: 40 ms poll and a
 # 812 MHz Super smooth floor by default, or whatever the GNOME Settings panel
-# last persisted in /var/lib/dc1/gpu-freq.conf. The floor is cheap:
-# panfrost runtime-suspends the GPU 50 ms after the last job, so min_freq
-# only applies while jobs are actually running, and thermal devfreq
-# cooling still caps from the top unaffected.
+# last persisted in /var/lib/dc1/gpu-freq.conf. The 40 ms poll is a
+# wake-rate choice, not a ramp-speed one: 25 evaluations/s instead of the
+# 50 ms default's 20/s, and half the 20 ms poll's 50/s. The floor is
+# cheap: panfrost runtime-suspends the GPU 50 ms after the last job, so
+# min_freq only applies while jobs are actually running, and thermal
+# devfreq cooling still caps from the top unaffected.
 #
 # The devfreq device appears when panfrost binds (and when dc1-gpu
 # re-probes the stock-tree mali node), well after coldplug, so this

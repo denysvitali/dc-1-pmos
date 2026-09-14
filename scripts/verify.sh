@@ -136,6 +136,16 @@ grep -qF 'Environment=LD_LIBRARY_PATH=/usr/lib:/usr/local/lib' \
 grep -qF '/usr/lib/systemd/user/localsearch-3.service.d/10-dc1-landlock.conf' \
 	"$device_dir/APKBUILD" || fail "LocalSearch user-unit drop-in is not packaged"
 
+# The MC3416 bring-up window left a G_MESSAGES_DEBUG=all drop-in on devices,
+# which floods the journal with two LOG_DEBUG lines per accelerometer sample.
+# The upgrade hook must keep retiring it, and the helper must keep matching
+# only that exact body, so an edited drop-in is never deleted.
+grep -qF '/usr/libexec/dc1-retire-iio-debug' \
+	"$device_dir/device-daylight-jagar.post-upgrade" ||
+	fail "post-upgrade no longer retires the iio-sensor-proxy debug drop-in"
+grep -qF 'Environment=G_MESSAGES_DEBUG=all' "$device_dir/dc1-retire-iio-debug" ||
+	fail "retire helper lost its content guard for the debug drop-in"
+
 grep -q "_commit=\"$KERNEL_COMMIT\"" "$kernel_dir/APKBUILD" ||
 	fail "kernel commit drift"
 grep -q 'github.com/denysvitali/$_repository/archive/$_commit.tar.gz' \

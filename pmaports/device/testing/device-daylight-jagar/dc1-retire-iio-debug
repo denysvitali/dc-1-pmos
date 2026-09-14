@@ -1,0 +1,34 @@
+#!/bin/sh
+# Retire the leftover iio-sensor-proxy debug drop-in from the MC3416
+# bring-up window. It sets G_MESSAGES_DEBUG=all, which makes the proxy log
+# every accelerometer sample twice at LOG_DEBUG -- about 70% of all journal
+# volume, continuously, even with the panel blanked. Nothing in this
+# package ships or recreates the file, so it is device-local drift that
+# only an upgrade can clear.
+#
+# Remove it only when the content is exactly the known-bad body, so an
+# edited, commented, or differently-valued drop-in is left alone: the cost
+# of keeping a stray file is a noisy journal, the cost of deleting the
+# wrong one is a silent configuration regression.
+set -eu
+ROOT=${DC1_RETIRE_ROOT:-}
+f=$ROOT/etc/systemd/system/iio-sensor-proxy.service.d/debug.conf
+# Command substitution strips trailing newlines from both sides, so a
+# missing or extra final newline does not defeat the match.
+expected=$(printf '[Service]\nEnvironment=G_MESSAGES_DEBUG=all\n')
+removed=
+# Not a symlink: never delete a path whose real content we did not read.
+if [ -f "$f" ] && [ ! -L "$f" ] && [ "$(cat "$f")" = "$expected" ]; then
+	rm -f "$f"
+	rmdir "$ROOT/etc/systemd/system/iio-sensor-proxy.service.d" 2>/dev/null || :
+	removed=1
+fi
+# Build chroots have no running systemd; the removal above still applies.
+# daemon-reload must precede the restart, or it re-injects the env var from
+# the unit systemd already has cached. try-restart, not restart: the unit
+# is Type=dbus with no [Install], so a restart of a stopped unit is a
+# no-op, which is what we want on a device that never ran it.
+if [ -n "$removed" ] && [ -d "$ROOT/run/systemd/system" ]; then
+	systemctl daemon-reload
+	systemctl try-restart iio-sensor-proxy.service
+fi
