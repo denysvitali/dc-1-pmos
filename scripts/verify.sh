@@ -247,6 +247,7 @@ python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __
 python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' 	"$device_dir/dc1-orientation"
 python3 "$script_dir/tests/test_orientation.py"
 python3 "$script_dir/tests/test_gpu_settings_poll.py"
+gjs -m "$script_dir/tests/test_dc1_safe_area_locksheet.js"
 sh -n "$device_dir/device-daylight-jagar.trigger"
 sh -n "$device_dir/device-daylight-jagar.post-install"
 sh -n "$device_dir/device-daylight-jagar.post-upgrade"

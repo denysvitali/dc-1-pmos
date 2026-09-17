@@ -179,17 +179,24 @@ mid-migration versions remain here only as failure-history context.
   the panel's bottom edge. The DC-1 can never satisfy `_checkIsPhone()` — it
   wants <500×<1000 logical px and 1200×1600 at the 1.25 scale is 960×1280 —
   so the pad is always hidden and the sheet is always bottom-flush.
-  `dc1-safe-area` now pads the lock dialog's main box by the OSK height while
-  the keyboard is visible. `keyboardBox` cannot supply that height
+  `dc1-safe-area` pads the lock dialog's main box by the OSK height while the
+  keyboard is visible. `keyboardBox` cannot supply that height
   (`MonitorConstraint({primary: true})` makes it monitor-sized, not
   keyboard-sized); `Main.keyboard.keyboardActor` can. The lift is padding on
   the dialog's `St.BoxLayout` rather than a margin on the sheet, because
   `Shell.Stack`'s custom `vfunc_allocate` makes no promise about child
   margins while padding on a `St.BoxLayout` is what the same extension
-  already does on hardware. **Not yet hardware-verified:** the lift's
-  geometry was measured in the compositor framebuffer (compositor captures at
-  17:12/17:24 show the sheet at y=1224..1600 with the password entry at
-  y=1531..1576, and the 17:26 capture with the keyboard up shows it fully
-  covered from y≈1160 down), but GNOME cannot load a new extension into a
-  running unlock-dialog session, so the fix itself owes an on-glass check
-  after the next release lands.
+  already does on hardware. Device r101's first attempt (2026-09-14) resolved
+  the lift target as the dialog's first child, but gnome-shell-mobile's
+  unlock dialog adds `_backgroundGroup` first and the clock/prompt box later,
+  so r101 padded the background and the password field stayed under the
+  keys; r102 instead pads the parent of the dialog's `_stack`
+  (`_stack.get_parent()`), which contains the password layout in both
+  sessions tested. **Not yet hardware-verified:** the lift's geometry was
+  measured in the compositor framebuffer (compositor captures at 17:12/17:24
+  show the sheet at y=1224..1600 with the password entry at y=1531..1576, and
+  the 17:26 capture with the keyboard up shows it fully covered from y≈1160
+  down), but GNOME cannot load a new extension into a running unlock-dialog
+  session, so the fix itself owes an on-glass check after the next release
+  lands. `scripts/tests/test_dc1_safe_area_locksheet.js` pins the resolver
+  against the background-first dialog shape and fails on the r101 resolver.

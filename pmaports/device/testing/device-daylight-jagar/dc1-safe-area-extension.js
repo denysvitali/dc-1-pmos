@@ -88,9 +88,9 @@ export default class Dc1SafeAreaExtension extends Extension {
     }
 
     _lockDialogMainBox() {
-        // The dialog adds exactly one child: the St.BoxLayout holding the
-        // clock/prompt stack and the switch-user button.
-        return Main.screenShield?._dialog?.get_first_child() ?? null;
+        // The background is the dialog's first child. Pad the St.BoxLayout
+        // containing the authentication stack, not that background actor.
+        return Main.screenShield?._dialog?._stack?.get_parent() ?? null;
     }
 
     _keyboardHeight() {

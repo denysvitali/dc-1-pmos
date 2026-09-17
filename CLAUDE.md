@@ -352,9 +352,12 @@ Display/DSI invariants (measured 2026-08-24):
   handled by the `dc1-safe-area` shell extension in the device package;
   other shipped UI should keep a >=12 device px margin (~40 px in
   corners). That extension also lifts the lock screen's unlock sheet clear
-  of the on-screen keyboard, which otherwise covers it outright: the mobile
-  shell puts the PIN pad below the password prompt inside the sheet, but
-  hides the pad unless `Main.layoutManager.isPhone`, and the DC-1 can never
+  of the on-screen keyboard by padding the parent of the unlock dialog's
+  `_stack` (never the dialog's first child -- that is the background actor)
+  by the OSK height while the keyboard is visible, which otherwise covers
+  the sheet outright: the mobile shell puts the PIN pad below the password
+  prompt inside the sheet, but hides the pad unless
+  `Main.layoutManager.isPhone`, and the DC-1 can never
   satisfy that test at any sane display scale.
 
 ## Repository map
