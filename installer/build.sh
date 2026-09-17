@@ -105,15 +105,16 @@ REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e91917
 
 # Alpine edge/main aarch64 packages, pinned by exact version AND content hash
 # (resolved 2026-09-01; re-resolved 2026-09-10 for musl, curl, libcurl,
-# dbus-libs and libuuid, which edge had dropped, turning this build red while
-# the non-downloading verify job stayed green -- edge deletes superseded
-# builds, so expect to repeat this and re-check every pin whenever this fails).
+# dbus-libs and libuuid; re-resolved 2026-09-17 for busybox-static and
+# libblkid, which edge had dropped, turning this build red while the
+# non-downloading verify job stayed green -- edge deletes superseded builds,
+# so expect to repeat this and re-check every pin whenever this fails).
 # A filename is not a content pin: mirrors may replace
 # bytes under one version, and dl/ is a persistent cache. Every cached or newly
 # downloaded APK is therefore verified before extraction.
 ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64"
 ALPINE_APKS="
-busybox-static-1.38.0-r4
+busybox-static-1.38.0-r6
 musl-1.2.6-r3
 curl-8.22.0-r0
 libcurl-8.22.0-r0
@@ -142,12 +143,12 @@ e2fsprogs-1.47.4-r0
 e2fsprogs-extra-1.47.4-r0
 e2fsprogs-libs-1.47.4-r0
 libcom_err-1.47.4-r0
-libblkid-2.42.2-r1
+libblkid-2.42.3-r1
 libuuid-2.42.3-r1
 libeconf-0.8.4-r0
 "
 ALPINE_APK_SHA256S="
-652bfd6acbc073a6a6ae9defe6e490fc80bcd107a820ee40db75aefb98439cb6 busybox-static-1.38.0-r4
+840c0938d4d361d411718dcdef14d4c7fba844e7492209d4161c007d1b98dc6a busybox-static-1.38.0-r6
 00fc1ac4ccc9fb5084222cd2d79a8eb3fe1a9420ca7064ec3dae752cac53d114 musl-1.2.6-r3
 e5b5f41ce308324fe0b7102a67e176dc4a841fc0400ee1139a454d99bf09749f curl-8.22.0-r0
 a0bcde87175e2e73d087e8626b8c606d83c61851b06f36e108abff4f1d8a20e9 libcurl-8.22.0-r0
@@ -176,7 +177,7 @@ f14960b7a1d40c20d6c045874682f73c0aa4e8f36bae11583d3b860fb10b6764 skalibs-libs-2.
 44096fa251d7cf4a5d8c6c1ffb4014e28fc63ccd4e02534d0e2908fc5e7bc850 e2fsprogs-extra-1.47.4-r0
 476555b7a8178a8acf7cd94e0b3d10deb12ac236b9e78e04fc1648f0a29e3ea5 e2fsprogs-libs-1.47.4-r0
 b8d23585a851bfc732cfb39638b5d92c88a309ba1eb52243796c69c18a978b10 libcom_err-1.47.4-r0
-33f45bb795525b207a6786c85cc8a9d6211f3b854b285d7e3fb7a0b7b8cde7dc libblkid-2.42.2-r1
+13ca7ec33e3235272402370dcec72c38b3285a1fb678583b2fc485d38d427dc4 libblkid-2.42.3-r1
 1fc6e03656452a390cffacef3423d463e25eef7c816fa9cce70cd22fd7a047ae libuuid-2.42.3-r1
 dd863710179743e49a6f2d446576aec31dbc5ab61f88da254e054f530b99cdb1 libeconf-0.8.4-r0
 "
