@@ -165,16 +165,20 @@ Keep boot-image documentation aligned with `boot/dtbswap/README.md` and
 
 ### USB-C data role
 
-The single Type-C port stays a power sink but is data-role dual: a PC keeps
-the installer/installed ACM+ECM gadget path, while a charging hub DR_SWAPs
-MUSB to host. The shared DTB must keep `dr_mode = "otg"`; reverting it to
+The single Type-C port is power-role dual and data-role dual, but tries sink
+first: a PC keeps the installer/installed ACM+ECM gadget path, while a
+charging hub can DR_SWAP MUSB to host and TCPM can request the MT6375 OTG
+source. The source PDO is intentionally limited to 5 V/500 mA; functional
+source-role operation was verified on 2026-09-18, while external VBUS-current
+margin and thermal validation remain pending. The shared DTB must keep `dr_mode = "otg"`; reverting it to
 `peripheral` removes the role switch. Keep the `g1` gadget driver bound in
 host mode — the kernel disconnects D+ while hosting and restores it on return
 to device mode. Never unbind it or remove configfs gadget objects to change
 roles; `musb_gadget_stop()` kills the host engine and configfs removal can
 wedge in D state.
 
-MT6375 TCPM is the VBUS authority for the charging-hub sink-host case. The
+MT6375 TCPM is the VBUS authority for both the charging-hub sink-host case and
+the conservative source-role path. The
 T-PHY's independent UTMI VBUS comparator remains at SessEnd even with a valid
 PD contract, which makes MUSB raise `VBUS_ERROR` and prevents enumeration.
 Keep jagar's opt-in `mediatek,force-vbus-valid` T-PHY property: it overrides

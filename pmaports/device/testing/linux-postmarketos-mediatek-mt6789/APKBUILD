@@ -1,7 +1,7 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=linux-postmarketos-mediatek-mt6789
 pkgver=7.2_rc5_git20260819
-pkgrel=57
+pkgrel=60
 pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
 arch="aarch64"
 _carch="arm64"
@@ -42,8 +42,43 @@ source="
 	$pkgname-$_commit.tar.gz::https://github.com/denysvitali/$_repository/archive/$_commit.tar.gz
 	sdcard.config
 	latency.config
+	usb-host.config
+	jagar-performance.patch
+	mt6375-source-role.patch
 "
 builddir="$srcdir/$_repository-$_commit"
+
+_check_kernel_config() {
+	local config=$1 fragment setting
+	for setting in \
+		CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y \
+		'# CONFIG_CC_OPTIMIZE_FOR_SIZE is not set' \
+		'# CONFIG_SLUB_TINY is not set' \
+		CONFIG_COMPACTION=y CONFIG_CC_IS_CLANG=y CONFIG_LD_IS_LLD=y; do
+		grep -qxF "$setting" "$config" || {
+			error "required kernel setting missing: $setting ($config)"
+			return 1
+		}
+	done
+	for setting in CLANG LLD; do
+		grep -qxE "CONFIG_${setting}_VERSION=20[0-9]{4}" "$config" || {
+			error "required kernel compiler/linker: $setting 20 ($config)"
+			return 1
+		}
+	done
+	for fragment in sdcard.config latency.config usb-host.config; do
+		while IFS= read -r setting; do
+			case "$setting" in
+				CONFIG_*=y)
+					grep -qxF "$setting" "$config" || {
+						error "required kernel support missing ($fragment): $setting"
+						return 1
+					}
+					;;
+			esac
+		done < "$srcdir/$fragment"
+	done
+}
 
 prepare() {
 	default_prepare
@@ -55,9 +90,9 @@ prepare() {
 	command -v ld.lld >/dev/null
 	test -x /usr/lib/llvm20/bin/llvm-ar
 	cp "$builddir/arch/arm64/configs/jagar_defconfig" .config
-	# Built-in storage and filesystems also work in the minimal initramfs,
-	# which does not provide a dependency-aware module loader.
-	for fragment in sdcard.config latency.config; do
+	# Built-in storage, filesystems, and USB host networking also work in the
+	# minimal initramfs, which does not provide a dependency-aware module loader.
+	for fragment in sdcard.config latency.config usb-host.config; do
 		while IFS= read -r setting; do
 			case "$setting" in
 				CONFIG_*=y) scripts/config --enable "${setting%=y}" ;;
@@ -66,22 +101,13 @@ prepare() {
 	done
 	make ARCH="$_carch" LLVM=/usr/lib/llvm20/bin/ \
 		LD=/usr/bin/ld.lld HOSTLD=/usr/bin/ld.lld olddefconfig
-	for fragment in sdcard.config latency.config; do
-		while IFS= read -r setting; do
-			case "$setting" in
-				CONFIG_*=y)
-					grep -qx "$setting" .config || {
-						error "required kernel support missing ($fragment): $setting"
-						return 1
-					}
-					;;
-			esac
-		done < "$srcdir/$fragment"
-	done
+	_check_kernel_config .config || return 1
 }
 
 build() {
 	unset LDFLAGS
+	rm -f .config.kernel
+	_check_kernel_config .config || return 1
 
 	# ccache is routed in EXPLICITLY through CC/HOSTCC, not through PATH.
 	# Alpine's ccache package installs /usr/lib/ccache/bin symlinks for cc,
@@ -127,9 +153,14 @@ build() {
 		KBUILD_BUILD_USER="postmarketos" \
 		KBUILD_BUILD_HOST="builder" \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor" \
-		Image.gz modules
+		Image.gz modules || return 1
+	# The serial gcc-host DTB pass runs kbuild on the same .config and can
+	# change toolchain-derived values (e.g. CONFIG_LD_IS_LLD), so package the
+	# config that actually produced the kernel image, not the post-DTB one.
+	_check_kernel_config .config || return 1
+	cp .config .config.kernel || return 1
 
-	# Device trees, in a separate pass with a gcc HOSTCC. dtbs builds the
+	# Device trees, in a post-kernel pass with a gcc HOSTCC. dtbs builds the
 	# bundled scripts/dtc/{dtc,fdtoverlay} host tools -- the "OVL" step that
 	# applies the mt7986a/mt7988a/mt8395 overlay composites -- and compiles no
 	# kernel C, so only HOSTCC matters here. clang-20 miscompiles fdtoverlay
@@ -160,6 +191,7 @@ build() {
 }
 
 package() {
+	_check_kernel_config .config.kernel || return 1
 	mkdir -p "$pkgdir"/boot
 	install -Dm644 arch/$_carch/boot/Image.gz "$pkgdir"/boot/vmlinuz
 
@@ -206,11 +238,14 @@ package() {
 
 	install -Dm644 include/config/kernel.release \
 		"$pkgdir/usr/share/kernel/$_flavor/kernel.release"
-	install -Dm644 .config "$pkgdir/usr/share/kernel/$_flavor/config"
+	install -Dm644 .config.kernel "$pkgdir/usr/share/kernel/$_flavor/config"
 }
 
 sha512sums="
 5ad14998e98d251839dc6e28dc27480a0b1d658792c6d151dfff4dd209be7c3121f2b148c26214aed88dff3517a396c06e520814944c711dd48c86223d471724  linux-postmarketos-mediatek-mt6789-7cc767cd0cff39b77e252f26c9450d035c17b038.tar.gz
 35e0cbe0891e1c696a927c3f0e83207ecff9a9a05302336b2fb76a07fcc099f41748d716c99c6fed9d6e4aa3368dbe088178985ad5fd70ce4b4b87b3dc197f57  sdcard.config
 91cdf92c1f37efb6b8e3ebc691c1ce97d4a93acc737aa5ecd4f2943943734ab2d5fa73899e6f5d254dc57ec9fe15f75813cd7008b128982a3fc1cfa19dc5fc6f  latency.config
+0189b63cbed22d27b9767e4d7478ab6b643ef20f7320e17b8401cd5f2e6717d225166125ffa6d1df853ed32bb4da5b59ba4785eb2d060d00b8c3b0b3e4a8ce2f  usb-host.config
+8b38b94778041f2fbc4ee8cb456f6c7cd7e2ea8686c6568afbb85b9ffe96deec8db144b7071e8720637daca9cb11778b1a4e68efa01a289dc90751a89de90ed1  jagar-performance.patch
+2911861392f1203543719aeb53c24868a57803541ef14ccff91b8c777d31182f70c67a829983fa8a70690c41c1835d1f296242cfd044bbad25ef503c4524df0e  mt6375-source-role.patch
 "

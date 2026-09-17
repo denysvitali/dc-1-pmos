@@ -120,8 +120,9 @@ left presenting Rd — which is why PD adapters were applying vSafe5V all
 along with nobody home to talk PD to. A new `tcpci_mt6375` driver runs
 the generic TCPCI/TCPM stack over it: vendor PHY/timing patch from the
 BSP driver, a software-node connector (the signed bootloader DT describes
-neither the bank nor an interrupt line) declaring sink-only fixed PDOs of
-5 V/3A, 9 V/3A and 12 V/3A — everything above stays out because the
+neither the bank nor an interrupt line) declaring dual power-role support:
+sink PDOs of 5 V/3A, 9 V/3A and 12 V/3A plus a deliberately conservative
+5 V/500 mA source PDO — everything above stays out because the
 charger's OVP buckets top out at 14.5 V — and alert polling at 15 ms
 instead of an IRQ. Settled contracts flow through TCPM's per-port power
 supply into the charger: OVP bucket above the contract voltage, MIVR

@@ -1,0 +1,392 @@
+diff --git a/drivers/power/supply/mt6375-charger.c b/drivers/power/supply/mt6375-charger.c
+--- a/drivers/power/supply/mt6375-charger.c
++++ b/drivers/power/supply/mt6375-charger.c
+@@ -34,10 +34,11 @@
+ 
+ #include <linux/bitops.h>
+ #include <linux/i2c.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
++#include <linux/mutex.h>
+ #include <linux/platform_device.h>
+ #include <linux/power_supply.h>
+ #include <linux/regmap.h>
+ #include <linux/slab.h>
+ #include <linux/workqueue.h>
+@@ -47,26 +48,39 @@
+ #define MT6375_REG_CHG_TOP2		0x21
+ #define MT6375_REG_CHG_AICR		0x22
+ #define MT6375_REG_CHG_MIVR		0x23
+ #define MT6375_REG_CHG_VCHG		0x25
+ #define MT6375_REG_CHG_ICHG		0x26
++#define MT6375_REG_CHG_VSYS		0x29
+ #define MT6375_REG_CHG_WDT		0x2a
++#define MT6375_REG_OTG_LBP		0x30
++#define MT6375_REG_OTG_V		0x31
++#define MT6375_REG_OTG_C		0x32
+ #define MT6375_REG_CHG_STAT		0x34
++#define MT6375_REG_CHG_DUMY0		0x35
++#define MT6375_REG_CHG_HD_BUCK5		0x40
+ #define MT6375_REG_CHG_STAT0		0xe0
++#define MT6375_REG_TM_PAS_CODE1		0x07
+ 
+ #define MT6375_VENDOR_ID_MASK		GENMASK(7, 4)
+ #define MT6375_VENDOR_ID		0x70
+ #define MT6375_CHG_EN			BIT(0)
+ #define MT6375_PWR_RDY			BIT(0)
+ #define MT6375_WDT_EN			BIT(3)
++#define MT6375_OTG_EN			BIT(2)
++#define MT6375_OTG_LBP_MASK		GENMASK(3, 0)
++#define MT6375_OTG_V_MASK		GENMASK(5, 0)
++#define MT6375_OTG_C_MASK		GENMASK(2, 0)
+ 
+ /* Secondary I2C address of the TCPCI bank behind this PMU. */
+ #define MT6375_TCPC_I2C_ADDR		0x4e
+ 
+ /* Mirrors the type in drivers/usb/typec/tcpm/tcpci_mt6375.c; both built in. */
+ struct mt6375_tcpc_pdata {
+ 	struct i2c_client *client;
++	int (*set_vbus)(void *data, bool source);
++	void *set_vbus_data;
+ };
+ 
+ /* CHG_TOP2 bits 1:0: input over-voltage thresholds in mV. */
+ static const unsigned int mt6375_vbus_ov_levels[] = { 5800, 6500, 11000, 14500 };
+ 
+@@ -110,11 +124,13 @@
+ 	MT6375_CHG_OTG = 15,
+ };
+ 
+ struct mt6375_charger {
+ 	struct regmap *regmap;
++	struct mutex otg_lock;
+ 	struct delayed_work poll_work;
++	bool otg_enabled;
+ 	bool aicr_boosted;
+ 	bool ichg_boosted;
+ 	struct i2c_client *tcpc_client;
+ 	struct platform_device *tcpc_pdev;
+ };
+@@ -122,27 +138,50 @@
+ static bool mt6375_readable_reg(struct device *dev, unsigned int reg)
+ {
+ 	switch (reg) {
+ 	case MT6375_REG_DEV_INFO:
+ 	case MT6375_REG_CHG_TOP1:
++	case MT6375_REG_CHG_TOP2:
+ 	case MT6375_REG_CHG_AICR:
+ 	case MT6375_REG_CHG_MIVR:
+ 	case MT6375_REG_CHG_VCHG:
+ 	case MT6375_REG_CHG_ICHG:
+ 	case MT6375_REG_CHG_WDT:
++	case MT6375_REG_CHG_VSYS:
++	case MT6375_REG_OTG_LBP:
++	case MT6375_REG_OTG_V:
++	case MT6375_REG_OTG_C:
+ 	case MT6375_REG_CHG_STAT:
++	case MT6375_REG_CHG_DUMY0:
++	case MT6375_REG_CHG_HD_BUCK5:
+ 	case MT6375_REG_CHG_STAT0:
+ 		return true;
+ 	default:
+ 		return false;
+ 	}
+ }
+ 
+ /* Input limit and fast-charge target are ours; the CV stays bootloader's. */
+ static bool mt6375_writeable_reg(struct device *dev, unsigned int reg)
+ {
+-	return reg == MT6375_REG_CHG_AICR || reg == MT6375_REG_CHG_ICHG;
++	switch (reg) {
++	case MT6375_REG_CHG_TOP1:
++	case MT6375_REG_CHG_TOP2:
++	case MT6375_REG_CHG_AICR:
++	case MT6375_REG_CHG_MIVR:
++	case MT6375_REG_CHG_ICHG:
++	case MT6375_REG_CHG_VSYS:
++	case MT6375_REG_OTG_LBP:
++	case MT6375_REG_OTG_V:
++	case MT6375_REG_OTG_C:
++	case MT6375_REG_CHG_DUMY0:
++	case MT6375_REG_CHG_HD_BUCK5:
++	case MT6375_REG_TM_PAS_CODE1:
++		return true;
++	default:
++		return false;
++	}
+ }
+ 
+ static const struct regmap_config mt6375_regmap_config = {
+ 	.reg_bits = 8,
+ 	.val_bits = 8,
+@@ -168,10 +207,15 @@
+ static int mt6375_get_status(struct mt6375_charger *charger, int *status)
+ {
+ 	unsigned int state, top1;
+ 	int online;
+ 	int ret;
++
++	if (charger->otg_enabled) {
++		*status = POWER_SUPPLY_STATUS_DISCHARGING;
++		return 0;
++	}
+ 
+ 	ret = mt6375_get_online(charger, &online);
+ 	if (ret)
+ 		return ret;
+ 	if (!online) {
+@@ -262,10 +306,93 @@
+ 		return -EINVAL;
+ 
+ 	value = DIV_ROUND_CLOSEST(ua - MT6375_ICHG_MIN_UA, MT6375_ICHG_STEP_UA);
+ 	*code = value + MT6375_ICHG_MIN_CODE;
+ 	return 0;
++}
++
++
++static int mt6375_set_boost_param(struct mt6375_charger *charger,
++				   bool boost_mode)
++{
++	static const unsigned int regs[] = {
++		MT6375_REG_CHG_TOP2,
++		MT6375_REG_CHG_DUMY0,
++		MT6375_REG_CHG_HD_BUCK5,
++		MT6375_REG_CHG_VSYS,
++	};
++	static const unsigned int masks[] = {
++		GENMASK(7, 6),
++		GENMASK(1, 0),
++		GENMASK(7, 6),
++		BIT(7),
++	};
++	static const unsigned int buck[] = { 0x01, 0x00, 0x01, 0x01 };
++	static const unsigned int boost_values[] = { 0x00, 0x03, 0x03, 0x00 };
++	unsigned int i;
++	int ret;
++
++	ret = regmap_write(charger->regmap, MT6375_REG_TM_PAS_CODE1, 0x69);
++	if (ret)
++		return ret;
++
++	for (i = 0; i < ARRAY_SIZE(regs); i++) {
++		unsigned int value = (boost_mode ? boost_values : buck)[i];
++
++		value <<= __ffs(masks[i]);
++		ret = regmap_update_bits(charger->regmap, regs[i], masks[i], value);
++		if (ret)
++			break;
++	}
++
++	/* Hidden-mode access is intentionally one-shot. */
++	if (regmap_write(charger->regmap, MT6375_REG_TM_PAS_CODE1, 0))
++		dev_warn(regmap_get_device(charger->regmap),
++			 "failed to relock MT6375 boost parameters\n");
++	return ret;
++}
++
++static int mt6375_charger_set_source(void *data, bool source)
++{
++	struct mt6375_charger *charger = data;
++	int ret = 0;
++
++	mutex_lock(&charger->otg_lock);
++	if (charger->otg_enabled == source)
++		goto out;
++
++	if (source) {
++		/* 5.0 V: 4.85 V + 6 * 25 mV; 500 mA is intentionally conservative. */
++		ret = regmap_update_bits(charger->regmap, MT6375_REG_OTG_LBP,
++					 MT6375_OTG_LBP_MASK, 4);
++		if (!ret)
++			ret = regmap_update_bits(charger->regmap, MT6375_REG_OTG_V,
++						 MT6375_OTG_V_MASK, 6);
++		if (!ret)
++			ret = regmap_update_bits(charger->regmap, MT6375_REG_OTG_C,
++						 MT6375_OTG_C_MASK, 0);
++		if (!ret)
++			ret = mt6375_set_boost_param(charger, true);
++		if (!ret)
++			ret = regmap_update_bits(charger->regmap,
++						 MT6375_REG_CHG_TOP1,
++						 MT6375_OTG_EN, MT6375_OTG_EN);
++		if (ret)
++			mt6375_set_boost_param(charger, false);
++		else
++			charger->otg_enabled = true;
++	} else {
++		ret = regmap_update_bits(charger->regmap, MT6375_REG_CHG_TOP1,
++					 MT6375_OTG_EN, 0);
++		if (!ret)
++			ret = mt6375_set_boost_param(charger, false);
++		if (!ret)
++			charger->otg_enabled = false;
++	}
++out:
++	mutex_unlock(&charger->otg_lock);
++	return ret;
+ }
+ 
+ /*
+  * The TCPC backend reports settled PD sink contracts through
+  * mt6375_charger_program_input(). There is one PMIC on this board, so a
+@@ -536,10 +662,12 @@
+ 
+ 	charger = devm_kzalloc(&client->dev, sizeof(*charger), GFP_KERNEL);
+ 	if (!charger)
+ 		return -ENOMEM;
+ 
++	mutex_init(&charger->otg_lock);
++
+ 	charger->regmap = devm_regmap_init_i2c(client, &mt6375_regmap_config);
+ 	if (IS_ERR(charger->regmap))
+ 		return dev_err_probe(&client->dev, PTR_ERR(charger->regmap),
+ 				     "failed to initialize regmap\n");
+ 
+@@ -588,10 +716,12 @@
+ 				     "failed to claim the TCPCI bank\n");
+ 
+ 	{
+ 		struct mt6375_tcpc_pdata tcpc_pdata = {
+ 			.client = charger->tcpc_client,
++			.set_vbus = mt6375_charger_set_source,
++			.set_vbus_data = charger,
+ 		};
+ 
+ 		charger->tcpc_pdev =
+ 			platform_device_register_data(&client->dev,
+ 						      "mt6375-tcpc",
+diff --git a/drivers/usb/typec/tcpm/tcpci_mt6375.c b/drivers/usb/typec/tcpm/tcpci_mt6375.c
+--- a/drivers/usb/typec/tcpm/tcpci_mt6375.c
++++ b/drivers/usb/typec/tcpm/tcpci_mt6375.c
+@@ -9,13 +9,14 @@
+  * MT6370 generation, and the software reset lives in SYSCTRL3.
+  *
+  * This board boots a signed bootloader device tree that cannot describe the
+  * chip: the charger driver at the primary address spawns this one with the
+  * secondary client, and the Type-C connector is described by a software node.
+- * Power stays sink-only (the MT6375 OTG boost is not wired, and a Type-C hub
+- * already supplies VBUS) but the data role is dual so a hub can DR_SWAP us
+- * to host while a PC host keeps us as the gadget. Fixed PDOs stop at 12 V so
++ * The port is power-role dual: it normally sinks, but the MT6375 OTG boost
++ * can source a conservative 5 V/500 mA contract when TCPM requests it. The
++ * data role is dual so a hub can DR_SWAP us to host while a PC host keeps us
++ * as the gadget. Fixed sink PDOs stop at 12 V so
+  * every negotiable voltage stays inside the charger's OVP buckets. No
+  * interrupt line is described either, so alerts are polled; PD sources
+  * retransmit their capabilities, which absorbs the poll latency while a
+  * contract forms. The MUSB dual-role switch is looked up by compatible
+  * because the connector is a software node and cannot graph-link into the
+@@ -77,18 +78,22 @@
+ 
+ int mt6375_charger_program_input(u32 mv, u32 ma);
+ 
+ struct mt6375_tcpc_pdata {
+ 	struct i2c_client *client;
++	int (*set_vbus)(void *data, bool source);
++	void *set_vbus_data;
+ };
+ 
+ struct mt6375_tcpc {
+ 	struct device *dev;
+ 	struct tcpci_data data;
+ 	struct tcpci *tcpci;
+ 	struct notifier_block psy_nb;
+ 	struct delayed_work poll;
++	int (*set_vbus)(void *data, bool source);
++	void *set_vbus_data;
+ };
+ 
+ static const struct regmap_config mt6375_tcpc_regmap_config = {
+ 	.reg_bits = 8,
+ 	.val_bits = 8,
+@@ -118,27 +123,33 @@
+ /*
+  * Sink capabilities: fixed PDOs only, 12 V ceiling. Everything above the
+  * 11 V mark has no matching OVP bucket yet, and PPS would want continuous
+  * input-voltage steering the policy does not implement.
+  *
+- * USB_COMM + DATA_SWAP on the 5 V PDO: we stay a power sink (hub/charger
+- * keeps supplying VBUS) but advertise that a partner may DR_SWAP us to
+- * host. PDO_FIXED_DUAL_ROLE is deliberately absent -- that flag is a
+- * power-role swap, which this charger path does not implement.
++ * The source PDO is deliberately limited to 5 V/500 mA. The Type-C policy
++ * still prefers sinking, while the charger callback enables the MT6375 OTG
++ * boost only after TCPM has negotiated a source role.
+  */
+ static const u32 mt6375_tcpc_sink_pdos[] = {
+-	PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM | PDO_FIXED_DATA_SWAP),
++	PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM | PDO_FIXED_DATA_SWAP |
++		  PDO_FIXED_DUAL_ROLE),
+ 	PDO_FIXED(9000, 3000, 0),
+ 	PDO_FIXED(12000, 3000, 0),
+ };
+ 
++static const u32 mt6375_tcpc_source_pdos[] = {
++	PDO_FIXED(5000, 500, PDO_FIXED_USB_COMM | PDO_FIXED_DATA_SWAP |
++		  PDO_FIXED_DUAL_ROLE),
++};
++
+ static const struct property_entry mt6375_tcpc_connector_props[] = {
+ 	PROPERTY_ENTRY_STRING("compatible", "usb-c-connector"),
+-	PROPERTY_ENTRY_STRING("power-role", "sink"),
++	PROPERTY_ENTRY_STRING("power-role", "dual"),
+ 	PROPERTY_ENTRY_STRING("try-power-role", "sink"),
+ 	PROPERTY_ENTRY_STRING("data-role", "dual"),
+ 	PROPERTY_ENTRY_U32_ARRAY("sink-pdos", mt6375_tcpc_sink_pdos),
++	PROPERTY_ENTRY_U32_ARRAY("source-pdos", mt6375_tcpc_source_pdos),
+ 	PROPERTY_ENTRY_U32("op-sink-microwatt", 10000000),
+ 	{ }
+ };
+ 
+ static const struct software_node mt6375_tcpc_root_node = { };
+@@ -266,10 +277,25 @@
+ 
+ 	/* The watchdog would need kicking from TCPM; keep it off. */
+ 	return regmap_read(regmap, TCPC_POWER_STATUS, &(unsigned int){ 0 });
+ }
+ 
++
++static int mt6375_tcpc_set_vbus(struct tcpci *tcpci,
++				struct tcpci_data *data,
++				bool source, bool sink)
++{
++	struct mt6375_tcpc *tcpc =
++		container_of(data, struct mt6375_tcpc, data);
++
++	(void)tcpci;
++	(void)sink;
++	if (!tcpc->set_vbus)
++		return 0;
++	return tcpc->set_vbus(tcpc->set_vbus_data, source);
++}
++
+ static int mt6375_tcpc_probe(struct platform_device *pdev)
+ {
+ 	const struct mt6375_tcpc_pdata *pdata = dev_get_platdata(&pdev->dev);
+ 	struct i2c_client *client;
+ 	struct mt6375_tcpc *tcpc;
+@@ -282,10 +308,12 @@
+ 
+ 	tcpc = devm_kzalloc(&pdev->dev, sizeof(*tcpc), GFP_KERNEL);
+ 	if (!tcpc)
+ 		return -ENOMEM;
+ 	tcpc->dev = &pdev->dev;
++	tcpc->set_vbus = pdata->set_vbus;
++	tcpc->set_vbus_data = pdata->set_vbus_data;
+ 
+ 	tcpc->data.regmap = devm_regmap_init_i2c(client,
+ 						 &mt6375_tcpc_regmap_config);
+ 	if (IS_ERR(tcpc->data.regmap))
+ 		return dev_err_probe(&pdev->dev, PTR_ERR(tcpc->data.regmap),
+@@ -315,10 +343,11 @@
+ 				     "waiting for the MUSB role switch\n");
+ 
+ 	/* The TX buffer is contiguous behind the byte count. */
+ 	tcpc->data.TX_BUF_BYTE_x_hidden = true;
+ 	tcpc->data.init = mt6375_tcpc_init;
++	tcpc->data.set_vbus = mt6375_tcpc_set_vbus;
+ 
+ 	ret = device_add_software_node(&pdev->dev, &mt6375_tcpc_root_node);
+ 	if (ret)
+ 		return dev_err_probe(&pdev->dev, ret,
+ 				     "failed to add the connector swnode\n");

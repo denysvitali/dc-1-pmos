@@ -41,11 +41,11 @@ over ECM end-to-end — tracked in [../roadmap.md](../roadmap.md).
 ## USB host / Type-C hub
 
 The installed system is packaged to use the same port as a data host for a
-charging Type-C hub while remaining a power sink. The port advertises
-data-role dual, and the MT6375 TCPM path switches MUSB to host after a
-DR_SWAP. If a discovered partner reports `type=hub` but the active role is
-still `[device]`, the packaged `90-device-daylight-jagar.rules` udev rule
-requests `host` through
+charging Type-C hub. The port is power-role dual but tries sink first: the
+MT6375 TCPM path can request its conservative 5 V/500 mA OTG source when a
+power-role swap requires it, and switches MUSB to host after a DR_SWAP. If a
+discovered partner reports `type=hub` but the active role is still `[device]`,
+the packaged `90-device-daylight-jagar.rules` udev rule requests `host` through
 `/sys/class/typec/port0/data_role`; an ordinary PC host never matches it.
 
 The `dc1-usb-gadget` service still binds `g1` on every installed boot, and
@@ -68,6 +68,17 @@ only for jagar and clears it outside host mode. Note its placement: the
 property lives on the `usb-phy@0` child of the `t-phy@11f40000` node, not
 on the T-PHY parent — grepping only the parent looks like the property is
 missing.
+
+The source-power path is intentionally not a fast-charge or Thunderbolt
+implementation: it advertises only 5 V/500 mA and leaves the RT9471 secondary
+charger disabled. Functional source-role operation was verified live on
+2026-09-18 after the pkgrel 60 boot: `/sys/class/typec/port0` reported
+`power_role=[source]`, `data_role=[host]`, and `port_type=[dual]`, while the
+attached hub chain enumerated two hubs, a Logitech receiver, a CoreChips
+USB 10/100 adapter, and a Keychron Q1 Max. An external VBUS/current meter was
+not present, so source-current margin and thermal behavior remain pending.
+USB data remains MUSB USB 2.0; this role change cannot make the port USB 3.x,
+DisplayPort Alt Mode, or Thunderbolt.
 
 The packaged linux r50 boot reproduced that host/sink state without a manual
 register write. It did **not** prove downstream peripherals: this partner is
@@ -102,6 +113,14 @@ PC, and prove the gadget reconnects without restarting `dc1-usb-gadget`.
 The 40B0 session proves the DC-1 host controller and charging/sink coexistence,
 but its Thunderbolt/USB-C fallback behavior cannot close peripheral
 enumeration. The exact session is tracked in [../roadmap.md](../roadmap.md).
+
+The kernel config audit also found a real, narrower omission: host-side USB
+network support was absent even though the USB core, hub, HID, and storage
+drivers were built in. Kernel pkgrel 60 adds built-in `usbnet`, CDC Ethernet /
+NCM, Realtek RTL8152/8153, ASIX AX8817x/AX88179, and SMSC95xx support. This
+allows a USB 2.0 Ethernet adapter exposed by a dock to bind once its hub
+reports the device; it does not create a missing downstream connection, USB 3
+link, Thunderbolt transport, or DisplayPort Alt Mode.
 
 ## configfs teardown
 
