@@ -159,11 +159,24 @@ The current attachment's kernel messages contained no descriptor errors,
 `VBUS_ERROR`, or hub `activate --> -11` failure. Earlier-boot descriptor
 timeouts were not attributed to this attachment. These observations establish
 charging and internal-device enumeration, **not working mouse input**.
-Fresh hub GET_STATUS and a confirmed mouse move between ports are still
-needed to distinguish an absent connection indication from a missed status
-notification in this session; cached sysfs state alone cannot do that.
-The [read-only hub reader](../../tools/usb/README.md) supports that check
-without resetting the dock or changing port power.
+
+The owner then confirmed moving the mouse between dock USB-A ports. No new
+USB device, input node, or MUSB interrupt appeared. A subsequent fresh
+GET_STATUS using the [read-only hub reader](../../tools/usb/README.md)
+reported ports 1--2 as `status=0x0103` (connected, enabled, powered) and
+ports 3--5 as `status=0x0100` (powered only), with `change=0x0000` on all
+five ports. The status requests completed and increased the MUSB interrupt
+count, so control transfers were still working. In this snapshot there was
+neither a downstream connection indication nor a pending connection-change
+bit for Linux to process. This isolates the failure before mouse enumeration;
+it does not establish whether dock firmware, topology, cabling, or the host's
+interaction with the dock is responsible. A reversed-plug host reconnect and
+a comparison with a known USB 2.0 host remain open checks.
+
+The installed fwupd service identifies the dock firmware as `10.18`. Its MCU
+component inventory includes a USB 2 hub, USB 3 hub and Thunderbolt controller;
+these are firmware-management records, not additional enumerated USB devices
+or proof of an active Thunderbolt link. No firmware update was attempted.
 
 This session still runs r60/r102: it does not validate the new r61 modules
 APK or r103 identity-change helper. The attached display has no supported
