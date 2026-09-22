@@ -187,8 +187,9 @@ Ports 1, 2 and 4 advertise non-removable attachments; ports 3 and 5 advertise
 removable attachments. Port 4 nevertheless reports no connection. Its exact
 internal component and the mapping from these hub ports to the dock's sockets
 are not established, so do not assume each empty hub port is a mouse socket.
-Comparison with the same dock/cable/mouse on another computer, and then a
-known USB 2.0-only host path, remain open checks.
+The owner confirms that the same dock/cable/mouse works on other computers.
+Their negotiated link modes were not measured; comparison through a known
+USB 2.0-only host path remains open. Stock Android behavior is unknown.
 
 The installed fwupd service identifies the dock firmware as `10.18`. Its MCU
 component inventory includes a USB 2 hub, USB 3 hub and Thunderbolt controller;
@@ -201,6 +202,32 @@ DP/HDMI output path in this port: the board support implements neither
 DisplayPort Alt Mode nor Thunderbolt. This is separate from mouse support,
 and is not a physical board-wiring measurement. No dock reset, role forcing,
 gadget unbind, package install or reboot was used for these observations.
+
+## 2026-09-22 replacement hub (running kernel r60 / device r102)
+
+Replacing the Lenovo dock with a generic USB-C hub enumerated two four-port
+USB 2.0 hubs (`1a40:0101`) at 480 Mbit/s. Type-C reported data host / power
+source, with the plug in reverse orientation. The charger reported
+`online=0` and `status=Discharging`: this is a source-host test, not a
+charging-hub test.
+
+The hub's `aaaa:8816` mass-storage function bound to `usb-storage`, exposing
+a removable block device with zero capacity; no media contents were read.
+Its `0fe6:9900` Ethernet function bound to `cdc_ether` and created `eth0`.
+No Ethernet link or traffic was verified.
+
+Plugging in a Logitech receiver (`046d:c548`) after hub enumeration created
+a new full-speed USB device and bound its standard keyboard/mouse interfaces
+to `usbhid`/`hid-generic`. Linux registered a mouse event node with relative
+X/Y and button capabilities. This proves peripheral hotplug and HID binding
+through this hub, unlike the missing receiver on the 40B0. Two bounded,
+read-only captures of the mouse event node recorded no motion or button
+events; without confirmed mouse activity during those windows, neither
+working input nor an input failure is established. Pointer movement, powered
+hub operation, repeated reconnect and return to the PC gadget remain open.
+
+These observations used the existing r60/r102 packages, without a reset,
+forced role change or gadget unbind. They do not validate the r61 modules APK.
 
 ## configfs teardown
 
