@@ -31,7 +31,7 @@ measurement was made. "Pending" items live in
 | USB gadget: SSH over ECM from a host | — | **pending host** | [hw/usb.md](hw/usb.md) |
 | USB host: charging hub DR_SWAP, enumeration, charging | live UTMI session override equivalent to kernel `a1a5a465fb61` | 2026-08-28 | [hw/usb.md](hw/usb.md) |
 | USB host: packaged-kernel hub enumeration in sink-host mode | linux r50 / device r85 | 2026-08-28 | [hw/usb.md](hw/usb.md) |
-| USB host: 40B0 charging plus internal hub/MCU/Billboard enumeration; mouse absent | linux r60 / device r102 | 2026-09-22; downstream input remains unverified | [hw/usb.md](hw/usb.md#2026-09-22-lenovo-40b0-attachment-running-kernel-r60--device-r102) |
+| USB host: 40B0 charging and internal hub/MCU/Billboard in both Type-C orientations; fresh hub status has no downstream connection, mouse absent | linux r60 / device r102 | 2026-09-22; one reconnect, downstream input remains unverified | [hw/usb.md](hw/usb.md#2026-09-22-lenovo-40b0-attachment-running-kernel-r60--device-r102) |
 | USB docking: modular drivers, late PD identity and package parity | linux r61 / device r103 | **offline checks only; dock acceptance pending** | [USB docking](usb-docking.md) |
 | USB host: PIO hub status URB survives repeated reconnect | linux r52 (`05abbc2ae75c`) | **patched kernel booted 2026-08-28; physical reconnect pending** | [hw/usb.md](hw/usb.md) |
 | USB host: source-host downstream receiver/keyboard enumeration | linux r60 | 2026-09-18; input events and charging-hub sink-host acceptance pending | [hw/usb.md](hw/usb.md) |

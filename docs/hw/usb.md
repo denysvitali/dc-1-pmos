@@ -170,8 +170,25 @@ count, so control transfers were still working. In this snapshot there was
 neither a downstream connection indication nor a pending connection-change
 bit for Linux to process. This isolates the failure before mouse enumeration;
 it does not establish whether dock firmware, topology, cabling, or the host's
-interaction with the dock is responsible. A reversed-plug host reconnect and
-a comparison with a known USB 2.0 host remain open checks.
+interaction with the dock is responsible.
+
+Reconnecting with the tablet-end Type-C plug rotated changed `orientation`
+from `normal` to `reverse`. Linux logged a clean disconnect and fresh
+enumeration of the same hub/MCU/Billboard, with no descriptor, VBUS or hub
+activation errors. Host/sink roles and charging returned; the mouse remained
+absent. A fresh GET_STATUS after this reconnect returned exactly the same
+five port-status words and zero change bits. The failure therefore reproduced
+in both connector orientations, including attachment with the mouse already
+present. This is one verified reconnect, not the full repeated-hotplug test.
+
+A bounded class GET_DESCRIPTOR(HUB) read returned five ports, individual
+port-power switching, a 350 ms power-good delay, and a compound-device flag.
+Ports 1, 2 and 4 advertise non-removable attachments; ports 3 and 5 advertise
+removable attachments. Port 4 nevertheless reports no connection. Its exact
+internal component and the mapping from these hub ports to the dock's sockets
+are not established, so do not assume each empty hub port is a mouse socket.
+Comparison with the same dock/cable/mouse on another computer, and then a
+known USB 2.0-only host path, remain open checks.
 
 The installed fwupd service identifies the dock firmware as `10.18`. Its MCU
 component inventory includes a USB 2 hub, USB 3 hub and Thunderbolt controller;
