@@ -208,7 +208,8 @@ apk $apk_root_args upgrade
 
 # ---- 7. report + reboot hint.
 msg "installed versions now:"
-for package in mutter-mobile linux-postmarketos-mediatek-mt6789 device-daylight-jagar; do
+for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
+    linux-postmarketos-mediatek-mt6789-modules device-daylight-jagar; do
 	v=$(installed_version "$package") && v=" $v" || v=" (not installed)"
 	msg "  $package:$v"
 done

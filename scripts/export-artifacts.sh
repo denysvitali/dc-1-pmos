@@ -99,7 +99,7 @@ zstd -q -12 -T0 --rm "$output_dir/jagar-rootfs.ext4"
 [ -s "$output_dir/jagar-rootfs.ext4.zst" ] ||
 	fail "ext4 image compression produced nothing"
 
-# Publish the three packages by EXACT version, never "whatever *.apk is there".
+# Publish all four packages by EXACT version, never "whatever *.apk is there".
 # The local binary repository is cached between CI runs so it legitimately
 # holds older builds; globbing would ship one of those and the release would
 # describe a kernel it does not contain.
@@ -122,8 +122,11 @@ as_root [ -s "$installed_db" ] ||
 mkdir "$output_dir/packages"
 package_provenance=""
 for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
+	linux-postmarketos-mediatek-mt6789-modules \
 	device-daylight-jagar; do
-	apkbuild="$overlay/$package/APKBUILD"
+	recipe=$package
+	[ "$package" != linux-postmarketos-mediatek-mt6789-modules ] || recipe=${package%-modules}
+	apkbuild="$overlay/$recipe/APKBUILD"
 	[ -f "$apkbuild" ] || fail "missing overlay APKBUILD: $apkbuild"
 	pkgver=$(apkbuild_field "$apkbuild" pkgver)
 	pkgrel=$(apkbuild_field "$apkbuild" pkgrel)
@@ -157,6 +160,11 @@ for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
 			fail "$wanted contains a different vmlinuz than the installed rootfs (same-version cache drift?)"
 		rm -f "$apk_vmlinuz"
 		trap - EXIT HUP INT TERM
+	fi
+	if [ "$package" = linux-postmarketos-mediatek-mt6789-modules ]; then
+		as_root python3 "$script_dir/verify-kernel-modules.py" \
+			"$output_dir/packages/$wanted" "$rootfs_dir" ||
+			fail "modules APK and rootfs differ"
 	fi
 	# Space-separated: $(...) strips the trailing newline a printf-per-entry
 	# would produce, so the lines are split again where they are written.

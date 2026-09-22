@@ -41,7 +41,11 @@ show installed part markings. MediaTek's
 and [case study](https://www.mediatek.com/products/internet-of-things/case-studies/daylight-computer)
 corroborate the platform; [Liliputing](https://liliputing.com/daylight-computer-dc-1-is-a-799-tablet-with-a-live-paper-display-designed-to-be-easy-on-the-eyes-but-not-the-wallet/)
 and [The Verge](https://www.theverge.com/2024/7/20/24201356/daylight-computer-dc-1-hands-on)
-provide hands-on detail. The community
+provide hands-on detail. Daylight also documents [wired hubs and peripherals](https://support.daylightcomputer.com/getting-started/accessories-guide-daylight-works-with-devices),
+[Ethernet](https://support.daylightcomputer.com/getting-started/connect-to-ethernet),
+and [external webcams](https://support.daylightcomputer.com/dc-1-webcam-guide);
+[USB docking](usb-docking.md) maps these stock-software capabilities to this port.
+The community
 [awesome-daylight-computer](https://github.com/hermeticvm/awesome-daylight-computer)
 list indexes further coverage. Where a published claim conflicts with a live
 measurement on this unit, the measurement is called out below and takes

@@ -133,8 +133,11 @@ fi
 # Build job only: --validate-only exited above and verify.sh stays offline.
 overlay_dir="$script_dir/../pmaports/device/testing"
 for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
+	linux-postmarketos-mediatek-mt6789-modules \
 	device-daylight-jagar; do
-	apkbuild="$overlay_dir/$package/APKBUILD"
+	recipe=$package
+	[ "$package" != linux-postmarketos-mediatek-mt6789-modules ] || recipe=${package%-modules}
+	apkbuild="$overlay_dir/$recipe/APKBUILD"
 	pkgver=$(awk -F= -v field=pkgver '
 		$1 == field { gsub(/"/, "", $2); print $2; exit }' "$apkbuild")
 	pkgrel=$(awk -F= -v field=pkgrel '

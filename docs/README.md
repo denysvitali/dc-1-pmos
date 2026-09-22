@@ -9,6 +9,7 @@ what has actually been tested. A successful build is not hardware validation.
 | Guide | Covers |
 | --- | --- |
 | [Installation](installation.md) | Prerequisites, unlocking, on-device and Linux-host installation, updates, buttons, charging mode, and recovery limits |
+| [USB docking](usb-docking.md) | Driver coverage, modules package, dock compatibility and acceptance tests |
 | [Battery and charging](power.md) | Charge profiles, battery percentage limitations, and owner controls |
 | [GNOME desktop](gnome.md) | Desktop components, settings, integration, and remaining session checks |
 | [Debugging](debugging.md) | Installer diagnostics, USB consoles, boot failures, and safe collection of evidence |

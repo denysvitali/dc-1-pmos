@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Offline refusal checks for local kernel image inspection."""
 import gzip
+import io
 import importlib.util
 from pathlib import Path
 import struct
 import json
 import tempfile
+import tarfile
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -33,6 +35,39 @@ def fixture():
 
 
 class LocalKernelTests(unittest.TestCase):
+    def test_matching_modules_refuses_missing_or_wrong_package(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            kernel = root / 'kernel.apk'
+            modules = root / (local.MODULES_PACKAGE + '-1-r1.apk')
+
+            def package(path, info):
+                with tarfile.open(path, 'w:gz') as archive:
+                    data = info.encode()
+                    entry = tarfile.TarInfo('.PKGINFO')
+                    entry.size = len(data)
+                    archive.addfile(entry, io.BytesIO(data))
+
+            package(kernel, 'depend = ' + local.MODULES_PACKAGE + '=1-r1\n')
+            with self.assertRaisesRegex(RuntimeError, 'missing matching modules'):
+                local.matching_modules(kernel)
+            package(modules, 'pkgname = other\npkgver = 1-r1\narch = aarch64\n')
+            with self.assertRaisesRegex(RuntimeError, 'wrong modules'):
+                local.matching_modules(kernel)
+            package(modules, 'pkgname = ' + local.MODULES_PACKAGE + '\npkgver = 1-r1\narch = aarch64\n')
+            self.assertEqual(local.matching_modules(kernel), modules)
+            package(kernel, 'pkgname = ' + local.PACKAGE + '\n')
+            self.assertIsNone(local.matching_modules(kernel))
+
+    def test_split_install_is_one_apk_transaction(self):
+        with patch.object(local, 'run') as run, patch.object(local, 'member', return_value=b'7.2-test\n'):
+            local.install_apk(Path('kernel.apk'), Path('keys'), modules=Path('modules.apk'))
+        calls = [call.args for call in run.call_args_list]
+        self.assertEqual(calls[0], ('apk', '--keys-dir', 'keys', '--scripts=no',
+                                    'add', 'kernel.apk', 'modules.apk'))
+        self.assertEqual(calls[1][-2:], ('del', local.MODULES_PACKAGE))
+        self.assertEqual(calls[2], ('depmod', '-a', '7.2-test'))
+
     def test_valid_image(self):
         image, kernel = fixture()
         payload, offset, ramdisk, signature, end = local.unpack(image)
@@ -165,6 +200,43 @@ class ConfirmationTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             local.confirm()
         self.install.assert_not_called()
+
+    def test_split_fallback_restores_verified_pair(self):
+        (self.root/'version').write_text(self.state['old_banner'])
+        (self.directory/'previous-modules.apk').write_bytes(b'old modules')
+        self.state.update(split_modules=True, previous_modules_sha256=local.sha(b'old modules'))
+        self.pending.write_text(json.dumps(self.state))
+        local.confirm()
+        self.install.assert_called_once_with(self.directory/'previous.apk', self.directory/'keys',
+                                             rollback=True, modules=self.directory/'previous-modules.apk',
+                                             remove_modules_world=False)
+
+    def test_split_fallback_refuses_modified_modules(self):
+        (self.root/'version').write_text(self.state['old_banner'])
+        (self.directory/'previous-modules.apk').write_bytes(b'changed')
+        self.state.update(split_modules=True, previous_modules_sha256=local.sha(b'old modules'))
+        self.pending.write_text(json.dumps(self.state))
+        with self.assertRaisesRegex(RuntimeError, 'rollback modules'):
+            local.confirm()
+        self.install.assert_not_called()
+        self.assertTrue(self.pending.exists())
+
+    def test_split_fallback_to_legacy_kernel(self):
+        (self.root/'version').write_text(self.state['old_banner'])
+        self.state.update(split_modules=True, previous_modules_sha256=None)
+        self.pending.write_text(json.dumps(self.state))
+        local.confirm()
+        self.install.assert_called_once_with(self.directory/'previous.apk', self.directory/'keys',
+                                             rollback=True, modules=None, remove_modules_world=True)
+
+    def test_wrong_modules_never_marks_successful(self):
+        self.state.update(split_modules=True, modules_checksum='expected')
+        self.pending.write_text(json.dumps(self.state))
+        with patch.object(local, 'installed_package_checksum', return_value='other'):
+            with self.assertRaisesRegex(RuntimeError, 'installed modules'):
+                local.confirm()
+        self.run.assert_not_called()
+        self.assertTrue(self.pending.exists())
 
 
 class CardMountTests(unittest.TestCase):

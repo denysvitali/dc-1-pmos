@@ -20,11 +20,15 @@ REQUIRED = [
 ]
 for fragment in ("sdcard.config", "latency.config", "usb-host.config"):
     REQUIRED.extend(line for line in (OVERLAY / fragment).read_text().splitlines()
-                    if line.startswith("CONFIG_") and line.endswith("=y"))
+                    if line.startswith("CONFIG_") and line.endswith(("=y", "=m")))
 VALID = "\n".join(dict.fromkeys(REQUIRED)) + "\n"
 HARNESS = r'''
 error() { printf '%s\n' "$*" >&2; }
 msg() { :; }
+amove() {
+    mkdir -p "$subpkgdir/$(dirname "$1")"
+    mv "$pkgdir/$1" "$subpkgdir/$1"
+}
 make() {
     case " $* " in
         *' Image.gz modules '*)
@@ -79,6 +83,37 @@ class KernelConfigTest(unittest.TestCase):
                 result = self.run_recipe("_check_kernel_config .config\n")
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("required kernel", result.stderr)
+
+    def test_optional_driver_must_remain_modular(self):
+        for setting in REQUIRED:
+            if not setting.endswith("=m"):
+                continue
+            with self.subTest(setting=setting):
+                (self.work / ".config").write_text(VALID.replace(setting, setting[:-1] + "y"))
+                result = self.run_recipe("_check_kernel_config .config\n")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(setting, result.stderr)
+
+    def test_modules_split_keeps_tree_and_metadata_together(self):
+        pkgdir = self.work / "pkg"
+        tree = pkgdir / "lib/modules/test-release"
+        (tree / "kernel/drivers/usb").mkdir(parents=True)
+        (tree / "kernel/drivers/usb/example.ko").write_bytes(b"module")
+        (tree / "modules.alias").write_text("alias usb:* example\n")
+        (tree / "modules.dep").write_text("kernel/drivers/usb/example.ko:\n")
+        (pkgdir / "boot").mkdir()
+        (pkgdir / "boot/vmlinuz").write_bytes(b"kernel")
+        subpkg = self.work / "modules-package"
+        result = self.run_recipe('printf "%s\\n" "$depends"\nmodules\nprintf "%s\\n" "$depends"\n',
+                                 subpkgdir=str(subpkg))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("linux-postmarketos-mediatek-mt6789-modules=", result.stdout)
+        self.assertEqual(result.stdout.splitlines()[-1], "kmod linux-firmware-rtl_nic")
+        self.assertFalse((pkgdir / "lib/modules").exists())
+        self.assertTrue((pkgdir / "boot/vmlinuz").exists())
+        self.assertEqual((subpkg / "lib/modules/test-release/modules.alias").read_text(),
+                         "alias usb:* example\n")
+        self.assertTrue((subpkg / "lib/modules/test-release/kernel/drivers/usb/example.ko").exists())
 
     def test_wrong_compiler_versions(self):
         for compiler in ("CLANG", "LLD"):

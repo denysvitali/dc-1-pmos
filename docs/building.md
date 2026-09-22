@@ -1,6 +1,7 @@
 # Building from pinned sources
 
-This repository builds three aarch64 packages (kernel, device, and Mutter),
+This repository builds four aarch64 packages (kernel, kernel modules, device, and Mutter)
+from three recipes,
 a GNOME Mobile rootfs, and installer/system boot images. The
 [build workflow](../.github/workflows/build.yml) is the complete release recipe.
 Local rootfs export is an intermediate output, not a complete installer release.
@@ -63,7 +64,7 @@ It never selects a device, flashes a slot, or writes a block-device target.
 The rootfs export contains:
 
 - `jagar-rootfs.tar.gz` and `jagar-rootfs.ext4.zst` (ext4 label `jagar-root`);
-- exact-version copies of the three overlay APKs;
+- exact-version copies of the four overlay APKs;
 - kernel and DTB inputs under `boot/`;
 - `FILES.tsv`, `PACKAGES.tsv`, `SOURCES`, `PROVENANCE`, and `SHA256SUMS`.
 
@@ -89,8 +90,15 @@ On Ubuntu with the CI stub toolchain, add
 `DTBSWAP_LLVM=/usr/lib/llvm-19/bin/ DTBSWAP_LLD=/usr/bin/ld.lld-19`
 to that `env` invocation. On Alpine the default LLVM 20 paths apply.
 
+The kernel APK requires its exact-version `-modules` APK; both are exported
+and included in the signed index. Gate A also compares module bytes and kmod
+metadata against the rootfs. Optional docking drivers remain modules, while
+the USB controller and recovery gadget stay built in.
+
 When the rootfs ships kernel modules, also set `MODDIR` to its matching modules
-directory as the workflow does. Outputs are under `installer/out/`, including
+directory as the workflow does. Only the explicit legacy gadget module
+allowlist enters the installer ramdisk; dock modules stay on the rootfs.
+Outputs are under `installer/out/`, including
 `installer-boot.img` and `jagar-boot.img`. Downloaded inputs are cached in
 `installer/dl/`; temporary staging lives in `installer/root/`.
 See the [installer implementation guide](../installer/README.md#building)

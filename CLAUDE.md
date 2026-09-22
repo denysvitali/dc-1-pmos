@@ -92,6 +92,15 @@ an unchanged `pkgver-pkgrel`, and the cached package can otherwise be silently
 reused. `scripts/verify.sh` checks the overlay, checksums, pins, and safety
 properties.
 
+The kernel recipe also emits `linux-postmarketos-mediatek-mt6789-modules`.
+The main APK depends on that exact version; the subpackage owns the whole
+`/lib/modules` tree and kmod indexes. `usb-host.config` pins optional dock
+drivers to `=m`, with controller/gadget/basic HID/storage built in. Preserve
+both y and m checks after Kconfig. Export, installed-version parity, signing
+and local-update rollback must cover all four APKs. The installer stages only
+its explicit legacy gadget-module allowlist, never the whole module tree.
+See `docs/usb-docking.md` for the acceptance boundary.
+
 The kernel compiler boundary is deliberate and must not drift without a
 measured reason:
 
@@ -431,9 +440,9 @@ prefetcher handles the archive separately from this local config input.
 `scripts/prepare.sh WORK` fetches only the pinned pmaports and pmbootstrap
 commits, validates the overlay scope, copies the three recipes, and writes
 `WORK/SOURCES`. `scripts/build-rootfs.sh [--validate-only]
-[--verify-sources] WORK OUTPUT` prepares those sources, builds the three
-aarch64 packages, installs a non-deploying pmbootstrap rootfs, shuts down the
-chroot, and calls `scripts/export-artifacts.sh`.
+[--verify-sources] WORK OUTPUT` prepares those sources, builds four
+aarch64 packages from those three recipes, installs a non-deploying pmbootstrap
+rootfs, shuts down the chroot, and calls `scripts/export-artifacts.sh`.
 
 The rootfs builder must stay non-deploying: it uses `pmbootstrap install
 --no-image --no-sshd --no-firewall --no-recommends`, never fastboot, ssh, scp,
@@ -441,7 +450,7 @@ or a block-device target. The build-time `dc1`/placeholder account state is
 not a user secret; the installer provisions the real account and password.
 
 The exporter produces a tar archive, a `jagar-root` ext4 image compressed as
-zstd, exact-version copies of all three APKs, the kernel and DTB inputs under
+zstd, exact-version copies of all four APKs, the kernel and DTB inputs under
 `boot/`, `FILES.tsv`, the installed package/checksum inventory `PACKAGES.tsv`,
 `SOURCES`, `PROVENANCE`, and `SHA256SUMS`. Its
 `PROVENANCE` intentionally records `flash_method=none`,
@@ -452,7 +461,7 @@ The final published release directory contains:
 
 - `installer-boot.img` and `jagar-boot.img`;
 - `jagar-rootfs.ext4.zst` and `jagar-rootfs.tar.gz`;
-- the three exact-version APKs;
+- the four exact-version APKs (kernel, kernel modules, device, Mutter);
 - `dc1-install.sh`, `dc1-repair-apk.sh`, `dc1-apk.rsa.pub`,
   `PROVENANCE`, `SOURCES`, `FILES.tsv`, `PACKAGES.tsv`,
   signed `APKINDEX.tar.gz`, and one final `SHA256SUMS` covering all files.
@@ -473,7 +482,7 @@ Installed devices converge on the release without reflashing, and CI keeps
 that path honest:
 
 - `dc1-update.timer` (device package) runs `apk update`/`apk upgrade`
-  after boot and weekly; its parity report compares the three overlay
+  after boot and weekly; its parity report compares the four overlay
   packages against the published `APKINDEX.tar.gz`. Opt-out is
   `/var/lib/dc1/no-auto-update`.
 - `installer/host/dc1-repair-apk.sh` repairs pre-key installs
@@ -483,10 +492,10 @@ that path honest:
   Alpine key links, then upgrades. It must never silently replace an
   existing differing key or repo list — both are trust decisions.
 - Gate A (`scripts/export-artifacts.sh`) fails if the rootfs's installed
-  versions of the three overlay packages differ from the shipped APKs, and
+  versions of the four overlay packages differ from the shipped APKs, and
   records them in `PROVENANCE` as `package_*` lines. Gate B
   (`scripts/build-rootfs.sh`) fails if any upstream postmarketOS mirror
-  serves one of the three packages at a version that does not strictly lose
+  serves one of the four packages at a version that does not strictly lose
   to ours — bump pkgrel rather than bypassing it. Version ordering for both
   comes from `scripts/apk_version_compare.py`, which matches apk-tools 3.x
   exactly (validated against on-device `apk version -t`).

@@ -116,7 +116,13 @@ candidate binds and no final `UDC bind failed`. The currently running system
 predates that candidate-order fix; checking files on disk cannot close a boot
 handoff claim. Details: [hw/usb.md](hw/usb.md).
 
-### USB host — downstream peripheral and gadget return (needs a USB 2.0 hub and a PC)
+### USB host — docking acceptance (needs a USB 2.0 hub and a PC)
+
+Use the [docking acceptance procedure](usb-docking.md#hardware-acceptance-session)
+for kernel r61/device r103: validate the matching modules APK, late PD identity,
+Ethernet traffic, storage, USB audio/UVC, repeated hotplug and gadget return.
+The 2026-09-18 source-host session already recorded downstream device
+enumeration; charging-hub sink-host peripheral use remains a separate check.
 
 The live register A/B on 2026-08-28 proved the charging hub reaches data
 host / power sink and enumerates once the T-PHY receives valid UTMI session

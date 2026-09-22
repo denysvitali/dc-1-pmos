@@ -23,6 +23,7 @@ BASE = Path('/var/lib/dc1/local-kernel')
 STATE = BASE / 'pending.json'
 FLAVOR = 'postmarketos-mediatek-mt6789'
 PACKAGE = 'linux-' + FLAVOR
+MODULES_PACKAGE = PACKAGE + '-modules'
 
 
 def require(ok, message):
@@ -125,12 +126,31 @@ def slot_status():
     return selected[1], {s: tuple(map(int, (p, t, o))) for s, p, t, o in slots}, text
 
 
-def installed_package_checksum():
+def installed_package_checksum(package=PACKAGE, optional=False):
     for entry in Path('/lib/apk/db/installed').read_text().split('\n\n'):
         fields = dict(line.split(':', 1) for line in entry.splitlines() if ':' in line)
-        if fields.get('P') == PACKAGE:
+        if fields.get('P') == package:
             return fields['C']
-    raise RuntimeError('kernel package not installed')
+    require(optional, package + ' not installed')
+    return None
+
+
+def matching_modules(apk):
+    """Legacy kernels carry their modules; split kernels require a sibling APK."""
+    info = member(apk, '.PKGINFO').decode().splitlines()
+    prefix = 'depend = ' + MODULES_PACKAGE + '='
+    versions = [line[len(prefix):] for line in info if line.startswith(prefix)]
+    if not versions:
+        return None
+    require(len(versions) == 1 and re.fullmatch(r'[A-Za-z0-9._+~-]+', versions[0]),
+            'invalid modules dependency')
+    modules = apk.parent / (MODULES_PACKAGE + '-' + versions[0] + '.apk')
+    require(modules.is_file(), 'missing matching modules APK: ' + str(modules))
+    module_info = member(modules, '.PKGINFO').decode().splitlines()
+    require('pkgname = ' + MODULES_PACKAGE in module_info and
+            'pkgver = ' + versions[0] in module_info and 'arch = aarch64' in module_info,
+            'wrong modules package identity/version')
+    return modules
 
 
 def control_checksum(apk):
@@ -146,14 +166,22 @@ def control_checksum(apk):
     return 'Q1'+base64.b64encode(hashlib.sha1(compressed).digest()).decode()
 
 
-def install_apk(apk, keys, rollback=False):
+def install_apk(apk, keys, rollback=False, modules=None, remove_modules_world=False):
     # Suppress the release-download trigger; deploy the local image explicitly.
     args = ['apk', '--keys-dir', str(keys), '--scripts=no']
     if rollback:
         # This cached package was authenticated against the installed APK
         # database before staging; CI's ephemeral package key is not retained.
         args.append('--allow-untrusted')
-    run(*args, 'add', str(apk))
+    if remove_modules_world:
+        # The current split kernel still requires the modules, so this only
+        # removes an explicit world constraint before restoring a legacy APK.
+        run(*args, 'del', MODULES_PACKAGE)
+    run(*args, 'add', str(apk), *([str(modules)] if modules else []))
+    if modules:
+        # The parent now pins the installed subpackage exactly. Keep it as a
+        # dependency so a later downgrade to a pre-split kernel can drop it.
+        run(*args, 'del', MODULES_PACKAGE)
     release = member(apk, 'usr/share/kernel/'+FLAVOR+'/kernel.release').decode().strip()
     require(re.fullmatch(r'[A-Za-z0-9._+-]+', release), 'invalid kernel release')
     run('depmod', '-a', release)
@@ -208,7 +236,16 @@ def confirm():
     if current == state['old_banner']:
         require(sha((directory/'previous.apk').read_bytes()) == state['previous_sha256'],
                 'rollback package changed')
-        install_apk(directory/'previous.apk', directory/'keys', rollback=True)
+        if state.get('split_modules'):
+            previous_modules = None
+            if state.get('previous_modules_sha256'):
+                previous_modules = directory/'previous-modules.apk'
+                require(sha(previous_modules.read_bytes()) == state['previous_modules_sha256'],
+                        'rollback modules package changed')
+            install_apk(directory/'previous.apk', directory/'keys', rollback=True,
+                        modules=previous_modules, remove_modules_world=previous_modules is None)
+        else:
+            install_apk(directory/'previous.apk', directory/'keys', rollback=True)
         no_update = Path('/var/lib/dc1/no-auto-update')
         if not no_update.exists():
             no_update.write_text('Local kernel fallback: review '+str(directory)+' before re-enabling updates.\n')
@@ -222,6 +259,9 @@ def confirm():
         require(sha(payload[offset:]) == state['kernel_sha256'], 'boot kernel hash mismatch')
         require(sha(gzip.decompress(Path('/boot/vmlinuz').read_bytes())) == state['kernel_sha256'],
                 'installed kernel differs from running candidate')
+        if state.get('split_modules'):
+            require(installed_package_checksum(MODULES_PACKAGE) == state['modules_checksum'],
+                    'installed modules differ from the staged candidate')
         filesystems = Path('/proc/filesystems').read_text().split()
         require(all(fs in filesystems for fs in ('vfat', 'exfat', 'ext4')), 'storage filesystem missing')
         for _ in range(30):
@@ -265,6 +305,10 @@ def install(repo, apk, keydir):
     directory.mkdir(mode=0o700)
     apk_copy = directory/apk.name
     shutil.copyfile(apk, apk_copy)
+    modules = matching_modules(apk)
+    if modules:
+        shutil.copyfile(modules, directory/modules.name)
+        modules = directory/modules.name
     keys = directory/'keys'
     shutil.copytree('/etc/apk/keys', keys, symlinks=False)
     for key in keydir.glob('*.pub'):
@@ -272,7 +316,10 @@ def install(repo, apk, keydir):
         require(not dest.exists() or dest.read_bytes() == key.read_bytes(), 'APK key name collision')
         shutil.copyfile(key, dest)
     run('apk', '--keys-dir', str(keys), 'verify', str(apk_copy))
-    run('apk', '--keys-dir', str(keys), '--scripts=no', '--simulate', 'add', str(apk_copy))
+    if modules:
+        run('apk', '--keys-dir', str(keys), 'verify', str(modules))
+    run('apk', '--keys-dir', str(keys), '--scripts=no', '--simulate', 'add', str(apk_copy),
+        *([str(modules)] if modules else []))
     info = member(apk_copy, '.PKGINFO').decode()
     require('pkgname = '+PACKAGE+'\n' in info and 'arch = aarch64\n' in info, 'wrong package identity')
     kernel_gz = member(apk_copy, 'boot/vmlinuz')
@@ -307,6 +354,8 @@ def install(repo, apk, keydir):
     candidates = list(Path('/var/cache/apk').glob(PACKAGE+'-*.apk'))
     candidates.extend(BASE.glob('*/'+PACKAGE+'-*.apk'))
     for candidate in candidates:
+        if candidate.name.startswith(MODULES_PACKAGE + '-'):
+            continue
         if control_checksum(candidate) == installed_checksum and \
                 member(candidate, 'boot/vmlinuz') == Path('/boot/vmlinuz').read_bytes():
             previous = candidate
@@ -316,6 +365,19 @@ def install(repo, apk, keydir):
     require(control_checksum(directory/'previous.apk') == installed_checksum,
             'rollback package changed while staging')
     run('apk', '--allow-untrusted', 'verify', str(directory/'previous.apk'))
+    previous_modules_checksum = installed_package_checksum(MODULES_PACKAGE, optional=True)
+    previous_modules_sha256 = None
+    if previous_modules_checksum:
+        candidates = list(Path('/var/cache/apk').glob(MODULES_PACKAGE+'-*.apk'))
+        candidates.extend(BASE.glob('*/'+MODULES_PACKAGE+'-*.apk'))
+        previous_modules = next((p for p in candidates
+                                 if control_checksum(p) == previous_modules_checksum), None)
+        require(previous_modules is not None, 'no cached rollback modules APK matching installed metadata')
+        backup = directory/'previous-modules.apk'
+        shutil.copyfile(previous_modules, backup)
+        require(control_checksum(backup) == previous_modules_checksum, 'rollback modules changed while staging')
+        run('apk', '--allow-untrusted', 'verify', str(backup))
+        previous_modules_sha256 = sha(backup.read_bytes())
     for slot, data in boots.items():
         (directory/('boot_'+slot+'.img')).write_bytes(data)
     (directory/'bcb-before.txt').write_text(bcb)
@@ -323,6 +385,9 @@ def install(repo, apk, keydir):
     state = dict(directory=str(directory), target=target, old_banner=current,
                  new_banner=new_banner, kernel_sha256=sha(kernel),
                  previous_sha256=sha((directory/'previous.apk').read_bytes()),
+                 split_modules=modules is not None,
+                 modules_checksum=control_checksum(modules) if modules else None,
+                 previous_modules_sha256=previous_modules_sha256,
                  card=card_identity(),
                  boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
     # Install a boot-time verifier before the package or any slot is changed.
@@ -353,8 +418,10 @@ def install(repo, apk, keydir):
             'boot state changed during preparation')
     require(installed_package_checksum() == installed_checksum,
             'installed package changed during preparation')
+    require(installed_package_checksum(MODULES_PACKAGE, optional=True) == previous_modules_checksum,
+            'installed modules changed during preparation')
     save_state(state)
-    install_apk(apk_copy, keys)
+    install_apk(apk_copy, keys, modules=modules)
     require(Path('/boot/vmlinuz').read_bytes() == kernel_gz, 'APK installation mismatch')
     # Existing guarded deployer verifies hash, kernel parity, readback and arms
     # exactly one try. Its best-effort exit is NOT accepted as proof below.

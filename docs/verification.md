@@ -31,8 +31,9 @@ measurement was made. "Pending" items live in
 | USB gadget: SSH over ECM from a host | — | **pending host** | [hw/usb.md](hw/usb.md) |
 | USB host: charging hub DR_SWAP, enumeration, charging | live UTMI session override equivalent to kernel `a1a5a465fb61` | 2026-08-28 | [hw/usb.md](hw/usb.md) |
 | USB host: packaged-kernel hub enumeration in sink-host mode | linux r50 / device r85 | 2026-08-28 | [hw/usb.md](hw/usb.md) |
+| USB docking: modular drivers, late PD identity and package parity | linux r61 / device r103 | **offline checks only; dock acceptance pending** | [USB docking](usb-docking.md) |
 | USB host: PIO hub status URB survives repeated reconnect | linux r52 (`05abbc2ae75c`) | **patched kernel booted 2026-08-28; physical reconnect pending** | [hw/usb.md](hw/usb.md) |
-| USB host: downstream keyboard/mouse enumeration | — | **pending ordinary USB 2.0 charging hub; Lenovo 40B0 withholds port connect** | [hw/usb.md](hw/usb.md) |
+| USB host: source-host downstream receiver/keyboard enumeration | linux r60 | 2026-09-18; input events and charging-hub sink-host acceptance pending | [hw/usb.md](hw/usb.md) |
 | USB role: gadget return after host mode | linux r50 / device r85 | **pending PC session** | [hw/usb.md](hw/usb.md) |
 | configfs: D-state wedge measurement, teardown removed | device r34 | 2026-08-17 | [hw/usb.md](hw/usb.md) |
 | Internal storage: UFS | earlier bring-up | pre-2026-08-17 | [hw/storage.md](hw/storage.md) |

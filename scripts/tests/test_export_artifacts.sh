@@ -29,13 +29,14 @@ printf '7.2.0-rc5-postmarketos-mediatek-mt6789\n' \
 
 # The installed-package database Gate A reads. Versions must match the
 # overlay APKBUILDs exactly -- that is the contract under test.
-# write_installed_db ROOT MUTTER_V KERNEL_V DEVICE_V   ("-" omits a block)
+# write_installed_db ROOT MUTTER_V KERNEL_V DEVICE_V [MODULES_V]   ("-" omits a block)
 write_installed_db() {
 	mkdir -p "$1/lib/apk/db"
 	: >"$1/lib/apk/db/installed"
 	[ "$2" = - ] || printf 'P:mutter-mobile\nV:%s\nA:aarch64\nC:Q1-mutter\n\n' "$2" >>"$1/lib/apk/db/installed"
 	[ "$3" = - ] || printf 'P:linux-postmarketos-mediatek-mt6789\nV:%s\nA:aarch64\nC:Q1-kernel\n\n' "$3" \
 		>>"$1/lib/apk/db/installed"
+	[ "${5:-$3}" = - ] || printf 'P:linux-postmarketos-mediatek-mt6789-modules\nV:%s\nA:aarch64\nC:Q1-modules\n\n' "${5:-$3}" >>"$1/lib/apk/db/installed"
 	[ "$4" = - ] || printf 'P:device-daylight-jagar\nV:%s\nA:aarch64\nC:Q1-device\n\n' "$4" \
 		>>"$1/lib/apk/db/installed"
 }
@@ -61,11 +62,20 @@ mutter_rel=$(awk -F= '$1=="pkgrel" { print $2; exit }' \
 write_installed_db "$root" \
 	"$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel"
 kernel_apk="linux-postmarketos-mediatek-mt6789-$kernel_ver-r$kernel_rel.apk"
+modules_apk="linux-postmarketos-mediatek-mt6789-modules-$kernel_ver-r$kernel_rel.apk"
 device_apk="device-daylight-jagar-$device_ver-r$device_rel.apk"
 mutter_apk="mutter-mobile-$mutter_ver-r$mutter_rel.apk"
 mkdir -p "$tmp/kernel-apk/boot"
 cp "$root/boot/vmlinuz" "$tmp/kernel-apk/boot/vmlinuz"
 tar -czf "$packages/$kernel_apk" -C "$tmp/kernel-apk" boot/vmlinuz
+module_path=lib/modules/7.2.0-rc5-postmarketos-mediatek-mt6789
+mkdir -p "$tmp/modules-apk/$module_path/kernel/drivers/usb"
+printf 'module bytes\n' >"$tmp/modules-apk/$module_path/kernel/drivers/usb/test.ko"
+printf 'kernel/drivers/usb/test.ko:\n' >"$tmp/modules-apk/$module_path/modules.dep"
+printf 'alias usb:* test\n' >"$tmp/modules-apk/$module_path/modules.alias"
+printf 'kernel/drivers/usb/core/usbcore.ko\n' >"$tmp/modules-apk/$module_path/modules.builtin"
+tar -czf "$packages/$modules_apk" -C "$tmp/modules-apk" lib
+cp -a "$tmp/modules-apk/lib/modules" "$root/lib/"
 printf 'fake\n' >"$packages/$device_apk"
 printf 'fake\n' >"$packages/$mutter_apk"
 printf 'stale\n' >"$packages/linux-postmarketos-mediatek-mt6789-0.1_git1-r0.apk"
@@ -79,7 +89,7 @@ PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$root" "$tmp/packages" "$tmp/SOURCES" \
 for f in jagar-rootfs.tar.gz jagar-rootfs.ext4.zst FILES.tsv PACKAGES.tsv SOURCES \
 	PROVENANCE SHA256SUMS boot/Image.gz \
 	boot/mt8781-daylight-jagar.dtb \
-	"packages/$kernel_apk" "packages/$device_apk" "packages/$mutter_apk"; do
+	"packages/$kernel_apk" "packages/$modules_apk" "packages/$device_apk" "packages/$mutter_apk"; do
 	[ -s "$out/$f" ] || fail "missing or empty output: $f"
 done
 [ ! -e "$out/jagar-rootfs.ext4" ] || fail "uncompressed image was left behind"
@@ -97,6 +107,7 @@ for line in flash_method=none boot_image_included=false \
 	kernel_release=7.2.0-rc5-postmarketos-mediatek-mt6789 \
 	"package_mutter_mobile=$mutter_ver-r$mutter_rel" \
 	"package_linux_postmarketos_mediatek_mt6789=$kernel_ver-r$kernel_rel" \
+	"package_linux_postmarketos_mediatek_mt6789_modules=$kernel_ver-r$kernel_rel" \
 	"package_device_daylight_jagar=$device_ver-r$device_rel"; do
 	grep -qx "$line" "$out/PROVENANCE" || fail "PROVENANCE lacks $line"
 done
@@ -115,7 +126,7 @@ check_gate_a_refusal() { # LABEL MUTTER_V KERNEL_V DEVICE_V
 	root_bad="$tmp/root-gatea-$label"
 	rm -rf "$root_bad"
 	cp -a "$root" "$root_bad"
-	write_installed_db "$root_bad" "$2" "$3" "$4"
+	write_installed_db "$root_bad" "$2" "$3" "$4" "${5:-$3}"
 	mkdir "$tmp/out-gatea-$label"
 	if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$root_bad" "$tmp/packages" \
 		"$tmp/SOURCES" "$tmp/out-gatea-$label" >/dev/null 2>&1; then
@@ -125,6 +136,8 @@ check_gate_a_refusal() { # LABEL MUTTER_V KERNEL_V DEVICE_V
 check_gate_a_refusal stale "0.9-r1" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel"
 check_gate_a_refusal kernel-stale "$mutter_ver-r$mutter_rel" "0.1-r0" "$device_ver-r$device_rel"
 check_gate_a_refusal missing-device-block "$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" -
+check_gate_a_refusal modules-stale "$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel" "0.1-r0"
+check_gate_a_refusal missing-modules "$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel" -
 check_gate_a_refusal missing-database "" "" ""
 rm -rf "$root/lib/apk/db/installed"
 mkdir -p "$tmp/out-nodb"
@@ -134,6 +147,15 @@ if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$root" "$tmp/packages" \
 fi
 write_installed_db "$root" \
 	"$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel"
+
+# A modules APK with the right version but different bytes must also fail.
+cp -a "$root" "$tmp/root-modules-drift"
+printf 'other build\n' >"$tmp/root-modules-drift/$module_path/kernel/drivers/usb/test.ko"
+mkdir "$tmp/out-modules-drift"
+if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$tmp/root-modules-drift" \
+	"$tmp/packages" "$tmp/SOURCES" "$tmp/out-modules-drift" >/dev/null 2>&1; then
+	fail "Gate A accepted a same-version modules APK with different content"
+fi
 
 # Content Gate A: a same-version kernel APK containing different bytes must be
 # rejected even though its filename and the installed package database agree.

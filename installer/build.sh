@@ -16,8 +16,8 @@
 #                                          payload (mainline device tree --
 #                                          there is no stock-DT image path,
 #                                          KERNEL_DTB is required)
-#   MODDIR=/path/to/modules ./build.sh  -> stage flat .ko files into the
-#                                          installer image's /lib/modules
+#   MODDIR=/path/to/modules ./build.sh  -> stage only legacy gadget .ko files
+#                                          into the installer image
 #                                          (gadget stack, if modular)
 #
 # Run as root (or under fakeroot): the cpio needs real device nodes.
@@ -516,8 +516,7 @@ chmod 0644 "$d/etc/group"
 mkdir -p "$d/dev/pts" "$d/etc/dropbear"
 
 if [ -n "$MODDIR" ] && [ -d "$MODDIR" ]; then
-	mkdir -p "$d/lib/modules"
-	find "$MODDIR" -name '*.ko' -exec cp -t "$d/lib/modules" {} +
+	sh "$HERE/stage-gadget-modules.sh" "$MODDIR" "$d/lib/modules"
 	echo "  staged $(ls "$d/lib/modules" | wc -l) modules from $MODDIR"
 fi
 

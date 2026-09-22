@@ -461,7 +461,8 @@ jobs:
           EOF
 
           kernel_apk=$(find out/packages -type f \
-            -name 'linux-postmarketos-mediatek-mt6789-*.apk' -print -quit)
+            -name 'linux-postmarketos-mediatek-mt6789-*.apk' \
+            ! -name '*-modules-*.apk' -print -quit)
           test -n "$kernel_apk"
           python3 scripts/verify-kernel-artifacts.py \
             "$kernel_apk" out/boot/Image.gz \

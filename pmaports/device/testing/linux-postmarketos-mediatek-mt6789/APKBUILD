@@ -1,13 +1,16 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=linux-postmarketos-mediatek-mt6789
 pkgver=7.2_rc5_git20260819
-pkgrel=60
+pkgrel=61
 pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
 arch="aarch64"
 _carch="arm64"
 _flavor="postmarketos-mediatek-mt6789"
 url="https://github.com/denysvitali/dc-1-linux-kernel"
 license="GPL-2.0-only"
+subpackages="$pkgname-modules"
+# One transaction must install the matching module tree with every kernel.
+depends="$pkgname-modules=$pkgver-r$pkgrel"
 options="!check !strip !tracedeps pmb:cross-native pmb:kconfigcheck-community"
 makedepends="
 	bash
@@ -69,7 +72,7 @@ _check_kernel_config() {
 	for fragment in sdcard.config latency.config usb-host.config; do
 		while IFS= read -r setting; do
 			case "$setting" in
-				CONFIG_*=y)
+				CONFIG_*=y|CONFIG_*=m)
 					grep -qxF "$setting" "$config" || {
 						error "required kernel support missing ($fragment): $setting"
 						return 1
@@ -90,12 +93,13 @@ prepare() {
 	command -v ld.lld >/dev/null
 	test -x /usr/lib/llvm20/bin/llvm-ar
 	cp "$builddir/arch/arm64/configs/jagar_defconfig" .config
-	# Built-in storage, filesystems, and USB host networking also work in the
-	# minimal initramfs, which does not provide a dependency-aware module loader.
+	# Storage and recovery USB stay built in; optional peripherals are modules.
+	# Check exact y/m values after Kconfig resolves all dependencies.
 	for fragment in sdcard.config latency.config usb-host.config; do
 		while IFS= read -r setting; do
 			case "$setting" in
 				CONFIG_*=y) scripts/config --enable "${setting%=y}" ;;
+				CONFIG_*=m) scripts/config --module "${setting%=m}" ;;
 			esac
 		done < "$srcdir/$fragment"
 	done
@@ -241,11 +245,19 @@ package() {
 	install -Dm644 .config.kernel "$pkgdir/usr/share/kernel/$_flavor/config"
 }
 
+modules() {
+	pkgdesc="Loadable drivers for the DC-1 kernel"
+	depends="kmod linux-firmware-rtl_nic"
+	# Include modules.dep/alias and modules.builtin metadata for udev/kmod.
+	# The parent pins this subpackage exactly; clear its inherited dependency.
+	amove lib/modules
+}
+
 sha512sums="
 5ad14998e98d251839dc6e28dc27480a0b1d658792c6d151dfff4dd209be7c3121f2b148c26214aed88dff3517a396c06e520814944c711dd48c86223d471724  linux-postmarketos-mediatek-mt6789-7cc767cd0cff39b77e252f26c9450d035c17b038.tar.gz
 35e0cbe0891e1c696a927c3f0e83207ecff9a9a05302336b2fb76a07fcc099f41748d716c99c6fed9d6e4aa3368dbe088178985ad5fd70ce4b4b87b3dc197f57  sdcard.config
 91cdf92c1f37efb6b8e3ebc691c1ce97d4a93acc737aa5ecd4f2943943734ab2d5fa73899e6f5d254dc57ec9fe15f75813cd7008b128982a3fc1cfa19dc5fc6f  latency.config
-0189b63cbed22d27b9767e4d7478ab6b643ef20f7320e17b8401cd5f2e6717d225166125ffa6d1df853ed32bb4da5b59ba4785eb2d060d00b8c3b0b3e4a8ce2f  usb-host.config
+bd26a81433c10a7c93596d081de1e4c09f4a458ff0b94ccb8297d6995618dd99847358d0dc73223ce5e0e2e529688a55561001ddc1e61d53639ca3a544688364  usb-host.config
 8b38b94778041f2fbc4ee8cb456f6c7cd7e2ea8686c6568afbb85b9ffe96deec8db144b7071e8720637daca9cb11778b1a4e68efa01a289dc90751a89de90ed1  jagar-performance.patch
 2911861392f1203543719aeb53c24868a57803541ef14ccff91b8c777d31182f70c67a829983fa8a70690c41c1835d1f296242cfd044bbad25ef503c4524df0e  mt6375-source-role.patch
 "

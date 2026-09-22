@@ -65,7 +65,7 @@ model and records sourced board specifications.
 | USB-C data | 🟡 | USB 2.0 ACM serial works; ECM is configured device-side but host Ethernet/SSH remains unverified, and host mode is partial. No SuperSpeed, video Alt Mode, or Thunderbolt |
 | Suspend/sleep | 🚧 | One pre-pin s2idle cycle completed; a current-build cycle and wake path remain unverified, so sleep targets stay masked |
 | Ambient light / proximity sensor | ❌ | An unidentified MN29-family part ACKs at `0x49`; protocol and driver remain unknown |
-| Gyro, magnetometer, cellular, GPS, cameras | ❌ | Not fitted/exposed on this hardware |
+| Gyro, magnetometer, cellular, GPS, onboard cameras | ❌ | Not fitted/exposed on this hardware |
 
 ✅ works · 🟡 works, with stated caveats · 🚧 being worked on · ❌ unavailable
 
@@ -87,6 +87,7 @@ model and records sourced board specifications.
   [docs/installation.md](docs/installation.md#charging-mode). For charge
   rates, the battery percentage's caveats, and the fast-charge lever,
   see [docs/power.md](docs/power.md).
+- **USB docks:** see the [docking guide](docs/usb-docking.md) for USB 2.0 peripheral coverage and compatibility limits. Optional drivers ship in the matching kernel modules APK.
 - **Offline use is supported.** Network loss does not trigger automatic reboots.
 - **Normal desktop boots expose the recovery channels.** SSH listens on port
   22 over configured networks; USB SSH/ECM still awaits a host-side test. Raw
@@ -118,7 +119,7 @@ Every successful push build on `main` republishes the rolling prerelease:
 - `jagar-boot.img` — the installed system's boot image;
 - `jagar-rootfs.ext4.zst` / `.tar.gz` — the root filesystem (ext4, label
   `jagar-root`);
-- the three overlay packages as `.apk`, plus the signed
+- the four APKs (kernel, matching kernel modules, device and Mutter), plus the signed
   `APKINDEX.tar.gz`;
 - `dc1-install.sh` and `dc1-repair-apk.sh` (host-side helpers),
   `dc1-apk.rsa.pub`, `PROVENANCE`, `SOURCES`, `FILES.tsv`, the exact installed

@@ -7,11 +7,9 @@
 # calibration_matrix (hardware corner testing); sway's own config overrides
 # this with the identical value, so there is no double-application.
 #
-# Matched generically (ID_INPUT_TOUCHSCREEN) rather than by controller name:
-# the device has exactly one touchscreen, and its vendor driver is not
-# characterized in the mainline DT (the touch node is intentionally unwritten
-# there), so a name match would encode a guess.
-ACTION=="add|change", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LIBINPUT_CALIBRATION_MATRIX}="-1 0 1 0 -1 1"
+# Only the internal Ilitek panel has this mounting. Applying its inversion
+# to a touchscreen attached through a dock would rotate that device too.
+ACTION=="add|change", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", ATTRS{name}=="ilitek_ts", ENV{LIBINPUT_CALIBRATION_MATRIX}="-1 0 1 0 -1 1"
 
 # Mali-G57 devfreq responsiveness. simple_ondemand holds the GPU at its
 # hardware floor and re-evaluates only every 50 ms, so the first frames of
@@ -35,12 +33,15 @@ ACTION=="add", SUBSYSTEM=="devfreq", KERNEL=="13000000.gpu", \
 
 # A charging Type-C hub may wait for the tablet to initiate DR_SWAP. Ask
 # TCPM for the host data role only for an identified hub while the port is
-# still UFP; the power role remains sink. PC hosts never match this rule.
+# still UFP. Discover Identity arrives after partner creation and the Type-C
+# class reports it with KOBJ_CHANGE, so add alone misses real attachments.
+# The helper rechecks the partner and role before asking TCPM for DR_SWAP.
+# PC hosts never match this rule; power policy remains with TCPM.
 # Keep the configfs gadget bound: the kernel drops D+ while host and restores
 # it when the port returns to device mode.
-ACTION=="add", SUBSYSTEM=="typec", ENV{DEVTYPE}=="typec_partner", \
+ACTION=="add|change", SUBSYSTEM=="typec", ENV{DEVTYPE}=="typec_partner", \
   ATTR{type}=="hub", \
-  RUN+="/bin/sh -c 'grep -qF \"[device]\" /sys/class/typec/port0/data_role && echo host > /sys/class/typec/port0/data_role || :'"
+  RUN+="/usr/libexec/dc1-usb-host %k"
 
 # Hide the fuel gauge from UPower while it is mute. The BQ78Z100 at i2c-7
 # 0x55 registers a power_supply and then NAKs every read (-ENXIO), so UPower

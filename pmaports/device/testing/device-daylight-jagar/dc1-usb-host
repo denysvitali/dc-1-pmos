@@ -1,0 +1,28 @@
+#!/bin/sh
+# Request a data-role swap for a PD-identified hub. Called by udev on add
+# and identity change. TCPM bounds the synchronous request with its timeout;
+# no polling, gadget teardown, power-role writes or forced controller mode.
+set -eu
+
+partner=${1:-}
+case "$partner" in
+	port*-partner) port=${partner%-partner}; number=${port#port} ;;
+	*) echo "usage: dc1-usb-host portN-partner" >&2; exit 2 ;;
+esac
+case "$number" in
+	''|*[!0-9]*) echo "invalid Type-C partner: $partner" >&2; exit 2 ;;
+esac
+
+# Override only for offline tests against a synthetic sysfs tree.
+typec=${DC1_TYPEC_SYSFS:-/sys/class/typec}
+[ "$(cat "$typec/$partner/type" 2>/dev/null || :)" = hub ] || exit 0
+role=$typec/$port/data_role
+grep -qF '[device]' "$role" 2>/dev/null || exit 0
+
+# The partner can disappear between the uevent and this helper. Opening an
+# existing sysfs attribute never recreates it; TCPM arbitrates a disconnect
+# or a swap already in progress and returns an error for a rejected request.
+if ! printf 'host\n' > "$role"; then
+	echo "dc1-usb-host: $port rejected the hub data-role swap" >&2
+	exit 1
+fi

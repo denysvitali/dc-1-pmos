@@ -1,0 +1,97 @@
+diff --git a/arch/arm64/configs/jagar_defconfig b/arch/arm64/configs/jagar_defconfig
+index 55a72c99140f..eec529efbd60 100644
+--- a/arch/arm64/configs/jagar_defconfig
++++ b/arch/arm64/configs/jagar_defconfig
+@@ -5,7 +5,9 @@ CONFIG_LOG_BUF_SHIFT=18
+ # CONFIG_SCHED_CACHE is not set
+ CONFIG_BLK_DEV_INITRD=y
+ CONFIG_BOOT_CONFIG=y
+-CONFIG_CC_OPTIMIZE_FOR_SIZE=y
++# This is an 8 GiB desktop-class target; kernel throughput matters more than
++# shaving a few kilobytes from the image.
++CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
+ CONFIG_EXPERT=y
+ CONFIG_MODULES=y
+ CONFIG_KEXEC=y
+@@ -165,9 +167,11 @@ CONFIG_ARM_MEDIATEK_CPUFREQ_HW=y
+ CONFIG_PARTITION_ADVANCED=y
+ CONFIG_BINFMT_SCRIPT=y
+ CONFIG_COREDUMP=y
+-CONFIG_SLUB_TINY=y
++# SLUB_TINY is intended for systems with only a few megabytes of RAM and
++# sacrifices allocator scalability and reclaim accounting.
++# CONFIG_SLUB_TINY is not set
+ # CONFIG_COMPAT_BRK is not set
+-# CONFIG_COMPACTION is not set
++CONFIG_COMPACTION=y
+ CONFIG_CMA=y
+ # CONFIG_ZONE_DMA is not set
+ # CONFIG_ZONE_DMA32 is not set
+diff --git a/drivers/gpu/drm/mediatek/mtk_crtc.c b/drivers/gpu/drm/mediatek/mtk_crtc.c
+index e6a4c1010d48..a2f1635ebe98 100644
+--- a/drivers/gpu/drm/mediatek/mtk_crtc.c
++++ b/drivers/gpu/drm/mediatek/mtk_crtc.c
+@@ -446,45 +446,26 @@ static int mtk_crtc_handoff_stop_pipeline(struct mtk_crtc *mtk_crtc,
+ 	ret = mtk_mutex_disable_sync(mtk_crtc->mutex);
+ 	if (ret)
+ 		goto cancel_irqs;
+-	if (mtk_dsi_handoff_source_starved(dsi->dev)) {
+-		mtk_ovl_handoff_frame_cancel(ovl->dev);
+-		mtk_rdma_handoff_frame_cancel(rdma->dev);
+-		ovl_touched = false;
+-		rdma_touched = false;
+-		ret = mtk_crtc_handoff_prove_idle(mtk_crtc, ovl, rdma, dsi);
+-		if (ret)
+-			goto cancel_irqs;
++	/*
++	 * mtk_dsi_handoff_quiesce() has already switched the sink to command
++	 * mode and mtk_mutex_disable_sync() has blocked later SOF requests.
++	 * A fresh OVL/RDMA frame edge is not guaranteed after quiescence;
++	 * an edge already observed could satisfy the old waits immediately.
++	 * Cancel the observation IRQs and require terminal-idle proof directly.
++	 */
++	mtk_ovl_handoff_frame_cancel(ovl->dev);
++	mtk_rdma_handoff_frame_cancel(rdma->dev);
++	ovl_touched = false;
++	rdma_touched = false;
++	ret = mtk_crtc_handoff_prove_idle(mtk_crtc, ovl, rdma, dsi);
++	if (ret)
++		goto cancel_irqs;
++	if (mtk_dsi_handoff_source_starved(dsi->dev))
+ 		drm_info(drm,
+ 			 "MT6789 reset authorized by source-starved terminal-idle proof\n");
+-	} else {
+-		ret = mtk_ovl_handoff_frame_wait(ovl->dev, fme_seq);
+-		if (!ret)
+-			ret = mtk_rdma_handoff_frame_wait(rdma->dev,
+-							  rdma_frame_seq);
+-		if (ret == -ETIMEDOUT) {
+-			/*
+-			 * The edge waits run after the DSI has been quiesced
+-			 * and the mutex disabled.  With the panel in command
+-			 * mode nothing generates a further frame, so the edge
+-			 * can be unobtainable by construction (observed
+-			 * seq==now at the timeout on hardware, 2026-08-14).
+-			 * Substitute the strictly stronger terminal-idle
+-			 * proof the source-starved arm already relies on.
+-			 */
+-			mtk_ovl_handoff_frame_cancel(ovl->dev);
+-			mtk_rdma_handoff_frame_cancel(rdma->dev);
+-			ovl_touched = false;
+-			rdma_touched = false;
+-			drm_info(drm,
+-				 "MT6789 frame edge unobtainable; proving terminal idle\n");
+-			ret = mtk_crtc_handoff_prove_idle(mtk_crtc, ovl, rdma,
+-							  dsi);
+-		}
+-		if (ret)
+-			goto cancel_irqs;
+-		ovl_touched = false;
+-		rdma_touched = false;
+-	}
++	else
++		drm_info(drm,
++			 "MT6789 reset authorized by direct terminal-idle proof\n");
+ 	ret = mtk_ovl_handoff_stop(ovl->dev);
+ 	if (ret)
+ 		goto cancel_irqs;

@@ -22,7 +22,7 @@
 #      A/B fallback.
 #   3. Best-effort parity report: fetch SHA256SUMS + APKINDEX.tar.gz from
 #      the rolling release, verify the index hash strictly, and compare the
-#      three overlay packages installed-vs-candidate with `apk version -t`.
+#      four overlay packages installed-vs-candidate with `apk version -t`.
 #      The summary lands in the journal and /var/lib/dc1/update-state.
 #
 # Library mode for the offline tests: DC1_UPDATE_LIB=1 sources this file for
@@ -37,8 +37,9 @@ URL_BASE=${DC1_URL_BASE:-https://github.com/denysvitali/dc-1-pmos/releases/downl
 VERSION_CMP=${DC1_VERSION_CMP:-apk version -t}
 
 # The overlay packages whose versions define "converged". Keep in step with
-# scripts/export-artifacts.sh, which publishes exactly these three.
+# scripts/export-artifacts.sh, which publishes exactly these four.
 OVERLAY_PACKAGES="mutter-mobile linux-postmarketos-mediatek-mt6789 \
+linux-postmarketos-mediatek-mt6789-modules \
 device-daylight-jagar"
 
 log() { echo "dc1-update: $*" >&2; }

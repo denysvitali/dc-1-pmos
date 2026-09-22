@@ -21,6 +21,7 @@ recipe="$repo/pmaports/device/testing/$package/APKBUILD"
 version=$(awk -F= '$1=="pkgver" {print $2}' "$recipe")
 release=$(awk -F= '$1=="pkgrel" {print $2}' "$recipe")
 apk="$work/pmbootstrap-work/packages/edge/aarch64/$package-$version-r$release.apk"
+modules_apk="$work/pmbootstrap-work/packages/edge/aarch64/$package-modules-$version-r$release.apk"
 
 if [ "$action" != install ]; then
 	# The rootfs script's validation mode initializes pinned sources and the
@@ -48,7 +49,9 @@ if [ "$action" != install ]; then
 		--aports "$work/pmaports" build --lax "$package"
 fi
 [ -f "$apk" ] || { echo "missing package: $apk" >&2; exit 1; }
+[ -f "$modules_apk" ] || { echo "missing package: $modules_apk" >&2; exit 1; }
 echo "Kernel package: $apk"
+echo "Modules package: $modules_apk"
 if [ "$action" != build ]; then
 	python3 "$work/pmbootstrap/pmbootstrap.py" --config "$work/pmbootstrap.cfg" \
 		--aports "$work/pmaports" shutdown

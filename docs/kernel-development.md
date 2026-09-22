@@ -25,6 +25,12 @@ the pinned defconfig; `latency.config` requires high-resolution timers for
 GPU wake and desktop scheduling precision. The recipe verifies the resolved
 values from both fragments, and packages the resulting configuration.
 
+The kernel recipe emits a separate `-modules` APK and requires its exact
+version. Keep both APKs together for local installation. `usb-host.config`
+checks that optional dock drivers remain modules and the recovery controller
+and gadget remain built in. Both packages are backed up for rollback; the
+updater also handles returning to an older kernel with unsplit modules.
+
 The installer is for **kernel-only updates**: it preserves the running slot's
 dtbswap stub, device tree, ramdisk and signature. Use the full image build
 workflow for device-tree or initramfs changes. It refuses ambiguous running
@@ -36,7 +42,7 @@ It also refuses a ramdisk containing kernel modules, which would need to be
 rebuilt against the new kernel instead of copied into the new boot image.
 
 Before writing, it stages and verifies the package, backs up both boot images
-and the previous matching package under `/var/lib/dc1/local-kernel/`, and
+and the previous matching kernel/modules packages under `/var/lib/dc1/local-kernel/`, and
 checks the repacked image with `mkboot` and the kernel-parity verifier.
 The rollback APK's control checksum must match the installed package database;
 its archive integrity and kernel bytes are checked before it is retained.
@@ -51,7 +57,7 @@ the automatic updater and boot-sync services racing installation; those
 masks disappear on reboot.
 
 On the next boot, `dc1-local-kernel-confirm.service` verifies the candidate's
-full build banner, installed/boot kernel hashes, MMC host and available
+full build banner, installed/boot kernel hashes, installed modules identity, MMC host and available
 filesystems before marking its slot successful. When the same SD card is
 still inserted, it also verifies an existing kernel filesystem mount or
 performs a temporary read-only mount (ext4 uses `noload` to avoid journal

@@ -1,4 +1,4 @@
-# USB gadget and configfs — measurement record
+# USB gadget, docking and configfs — measurement record
 
 Deep-dive for the status-table rows *USB gadget* and *configfs teardown*
 in [README.md](../../README.md#hardware-support-at-a-glance). The exposure/ownership consequences of
@@ -121,6 +121,24 @@ NCM, Realtek RTL8152/8153, ASIX AX8817x/AX88179, and SMSC95xx support. This
 allows a USB 2.0 Ethernet adapter exposed by a dock to bind once its hub
 reports the device; it does not create a missing downstream connection, USB 3
 link, Thunderbolt transport, or DisplayPort Alt Mode.
+
+## 2026-09-22 software audit (kernel r61 / device r103)
+
+The [docking guide](../usb-docking.md) records the manufacturer accessory
+specifications, driver matrix and end-to-end acceptance procedure. This audit
+found missing USB audio/UVC and CoreChips Ethernet drivers, and an add-only
+Type-C rule that missed later PD identity discovery. Optional peripheral
+drivers now build as modules in the version-matched kernel `-modules` APK;
+existing r60 host-networking drivers move there too. The controller and
+ACM/ECM recovery path stay built in. The installer stages only its legacy
+gadget module allowlist, so new peripheral modules do not inflate boot images.
+Device r103 handles identity changes and confines internal touch calibration
+to the Ilitek panel.
+
+Configuration resolution with clang/LLD 20 and offline packaging/role tests
+cover the software changes. There was no dock attached during this audit;
+charging-hub peripheral traffic, repeated reconnect, USB audio/video and the
+return to a PC gadget connection remain hardware acceptance work.
 
 ## configfs teardown
 
