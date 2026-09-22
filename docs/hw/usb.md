@@ -203,6 +203,41 @@ DisplayPort Alt Mode nor Thunderbolt. This is separate from mouse support,
 and is not a physical board-wiring measurement. No dock reset, role forcing,
 gadget unbind, package install or reboot was used for these observations.
 
+### Lenovo return attachment: PD and Billboard checks
+
+After the working unpowered-hub test below, the Lenovo was reattached. A fresh
+TCPM capture recorded a successful 12 V/3 A contract, followed by a
+dock-initiated DR_SWAP accepted by the DC-1. The tablet became host while
+remaining power sink. Discover Identity, SVIDs and modes received ACKs before
+and after the swap. The captured exchange contains no incoming dock request
+for the tablet's identity, so it does not support the hypothesis that a missing
+identity reply from the DC-1 caused this attachment's failure. Pending reset
+timeouts in TCPM logs were canceled by successful responses; they are not
+evidence that a hard reset actually occurred.
+
+Fresh hub status again showed only the MCU and Billboard connected. The
+Billboard BOS reports revision 1.21, `additional_failure=0x02`, and modes for
+SVIDs `ff00`, `8087` and `ff01` all `not-attempted`. The
+[bounded Billboard reader](../../tools/usb/README.md) reproduces this without
+resetting the dock. Infineon's public reference implementation also sets the
+`0x02` PD-failure flag for alternate-mode entry timeout; this is not evidence
+that the measured charging contract failed, nor confirmation of Lenovo's
+internal firmware path.
+
+The [USB-IF functional test specification](https://www.usb.org/sites/default/files/USB%20Type%20C%20Functional%20Test%20Specification%202024%2003%2003.pdf),
+sections 5.5.2--5.5.3, describes downstream gating until upstream capabilities
+are known and explicit `Enter_USB` selection of USB 2.0. The running TCPM
+does not implement that message. This is an interoperability hypothesis,
+**not an established required fix**: USB 2.0 fallback does not inherently
+require an alternate mode or that explicit selection. A comparison with a
+known USB 2.0 data cable or USB 2.0-only upstream host path remains needed.
+Do not inject raw PD messages outside TCPM to test it.
+
+Lenovo's [1.0.20 revision 2 release notes](https://download.lenovo.com/pccbbs/mobiles/tbt4dkfw1020_2.html)
+list display-related fixes and updater eligibility handling, without an
+explicit USB 2.0 fallback fix. The measured dock remains at 10.18; no firmware
+was flashed. Downstream mouse operation through the Lenovo is still unresolved.
+
 ## 2026-09-22 replacement hub (running kernel r60 / device r102)
 
 Replacing the Lenovo dock with a generic USB-C hub enumerated two four-port
