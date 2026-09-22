@@ -140,6 +140,34 @@ cover the software changes. There was no dock attached during this audit;
 charging-hub peripheral traffic, repeated reconnect, USB audio/video and the
 return to a PC gadget connection remain hardware acceptance work.
 
+## 2026-09-22 Lenovo 40B0 attachment (running kernel r60 / device r102)
+
+After the software audit, the owner attached the 40B0 with its power supply,
+display and mouse connected. The tablet remained data host / power sink with
+USB-PD active; the charger reported `online=1` and `status=Charging`.
+The Fresco Logic V1003 hub (`17ef:30ba`) enumerated at 480 Mbit/s, with the
+dock MCU (`17ef:30b4`) and Billboard (`17ef:30b5`) at 12 Mbit/s. The MCU's
+HID interface bound to `usbhid`. No mouse USB device or input event node
+appeared, and no dock network interface appeared.
+
+The hub was runtime-active, with zero port over-current counts. Sysfs showed
+ports 1--2 configured and ports 3--5 `not attached`; none was disabled.
+The current attachment's kernel messages contained no descriptor errors,
+`VBUS_ERROR`, or hub `activate --> -11` failure. Earlier-boot descriptor
+timeouts were not attributed to this attachment. These observations establish
+charging and internal-device enumeration, **not working mouse input**.
+Fresh hub GET_STATUS and a confirmed mouse move between ports are still
+needed to distinguish an absent connection indication from a missed status
+notification in this session; cached sysfs state alone cannot do that.
+The [read-only hub reader](../../tools/usb/README.md) supports that check
+without resetting the dock or changing port power.
+
+This session still runs r60/r102: it does not validate the new r61 modules
+APK or r103 identity-change helper. The attached display cannot use the
+dock's DP/HDMI output because the DC-1 provides neither DisplayPort Alt Mode
+nor Thunderbolt. No dock reset, role forcing, gadget unbind, package install
+or reboot was used for these observations.
+
 ## configfs teardown
 
 The gadget teardown used to unbind the UDC, unlink the functions, then

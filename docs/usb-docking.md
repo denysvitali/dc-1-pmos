@@ -98,6 +98,11 @@ role negotiation, absent hub/port connection, unbound driver, or application
 behavior. Summarize results in the USB record and verification ledger without
 publishing serial numbers, network credentials or raw recovery logs.
 
+If a peripheral never appears, use the
+[read-only hub status tool](../tools/usb/README.md) to compare fresh port
+GET_STATUS responses with sysfs's cached port state. This separates a dock
+that reports no connection from a host that missed its change notification.
+
 No dock was attached during the r61/r103 software audit. Offline checks cover
 configuration, packaging, identity events, module content and rollback; they
 do not establish that every docking station works.

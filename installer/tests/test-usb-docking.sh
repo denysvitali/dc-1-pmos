@@ -3,3 +3,4 @@
 set -eu
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 python3 "$here/test-usb-docking.py"
+python3 "$here/../../tools/usb/test-hub-status.py"
