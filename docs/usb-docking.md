@@ -33,10 +33,12 @@ firmware. No downloaded firmware is committed here.
 | USB audio/headsets | Modular `snd-usb-audio`, existing PipeWire/WirePlumber monitor | Output selection, playback/capture and reconnect |
 | External webcams | Modular UVC/V4L2 | Application capture and audio/video concurrency within USB 2.0 bandwidth |
 
-The r60 session recorded a hub chain, Logitech receiver, CoreChips adapter and
-Keychron keyboard **enumerating in source-host mode**. That does not prove
-Ethernet traffic or keyboard input, nor charging-hub sink-host operation.
-See the [dated USB record](hw/usb.md).
+The 2026-09-18 r60 session recorded a hub chain, Logitech receiver, CoreChips
+adapter and Keychron keyboard **enumerating in source-host mode**. On
+2026-09-22, the owner confirmed working mouse input through a replacement
+USB 2.0 hub after receiver hotplug, also on r60. Ethernet traffic, keyboard
+input and charging-hub sink-host operation remain unverified. See the
+[dated USB record](hw/usb.md).
 
 Device r103 listens for both Type-C partner creation and later identity
 changes. Linux publishes Discover Identity results through `KOBJ_CHANGE`;

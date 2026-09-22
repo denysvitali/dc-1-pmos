@@ -121,8 +121,10 @@ handoff claim. Details: [hw/usb.md](hw/usb.md).
 Use the [docking acceptance procedure](usb-docking.md#hardware-acceptance-session)
 for kernel r61/device r103: validate the matching modules APK, late PD identity,
 Ethernet traffic, storage, USB audio/UVC, repeated hotplug and gadget return.
-The 2026-09-18 source-host session already recorded downstream device
-enumeration; charging-hub sink-host peripheral use remains a separate check.
+The 2026-09-18 source-host session recorded downstream device enumeration.
+On 2026-09-22, a replacement USB 2.0 hub accepted a hotplugged Logitech
+receiver and the owner confirmed working mouse input on r60/r102. Charging-hub
+sink-host peripheral use remains a separate check.
 
 The live register A/B on 2026-08-28 proved the charging hub reaches data
 host / power sink and enumerates once the T-PHY receives valid UTMI session

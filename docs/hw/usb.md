@@ -220,10 +220,11 @@ Plugging in a Logitech receiver (`046d:c548`) after hub enumeration created
 a new full-speed USB device and bound its standard keyboard/mouse interfaces
 to `usbhid`/`hid-generic`. Linux registered a mouse event node with relative
 X/Y and button capabilities. This proves peripheral hotplug and HID binding
-through this hub, unlike the missing receiver on the 40B0. Two bounded,
-read-only captures of the mouse event node recorded no motion or button
-events; without confirmed mouse activity during those windows, neither
-working input nor an input failure is established. Pointer movement, powered
+through this hub, unlike the missing receiver on the 40B0. The owner then
+confirmed that the mouse works and the pointer moves on the DC-1. This closes
+basic mouse operation through this hub in source-host mode. Two earlier,
+bounded read-only event captures were quiet, so the functional result is
+owner-confirmed rather than an automated event-count measurement. Powered
 hub operation, repeated reconnect and return to the PC gadget remain open.
 
 These observations used the existing r60/r102 packages, without a reset,

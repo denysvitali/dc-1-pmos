@@ -35,7 +35,7 @@ measurement was made. "Pending" items live in
 | USB docking: modular drivers, late PD identity and package parity | linux r61 / device r103 | **offline checks only; dock acceptance pending** | [USB docking](usb-docking.md) |
 | USB host: PIO hub status URB survives repeated reconnect | linux r52 (`05abbc2ae75c`) | **patched kernel booted 2026-08-28; physical reconnect pending** | [hw/usb.md](hw/usb.md) |
 | USB host: source-host downstream receiver/keyboard enumeration | linux r60 | 2026-09-18; input events and charging-hub sink-host acceptance pending | [hw/usb.md](hw/usb.md) |
-| USB host: replacement hub, Logitech receiver hotplug/HID binding, Ethernet and storage driver binding | linux r60 / device r102 | 2026-09-22; source-host only, input events and peripheral traffic unverified | [hw/usb.md](hw/usb.md#2026-09-22-replacement-hub-running-kernel-r60--device-r102) |
+| USB host: replacement hub, Logitech receiver hotplug and working mouse; Ethernet and storage driver binding | linux r60 / device r102 | 2026-09-22; mouse use owner-confirmed in source-host mode; Ethernet/storage traffic unverified | [hw/usb.md](hw/usb.md#2026-09-22-replacement-hub-running-kernel-r60--device-r102) |
 | USB role: gadget return after host mode | linux r50 / device r85 | **pending PC session** | [hw/usb.md](hw/usb.md) |
 | configfs: D-state wedge measurement, teardown removed | device r34 | 2026-08-17 | [hw/usb.md](hw/usb.md) |
 | Internal storage: UFS | earlier bring-up | pre-2026-08-17 | [hw/storage.md](hw/storage.md) |
