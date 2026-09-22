@@ -49,17 +49,29 @@ invert an external USB touchscreen.
 
 ## Limits
 
-- USB-C is the connector type. This port supplies no SuperSpeed, USB4,
-  Thunderbolt or DisplayPort Alt Mode. HDMI/DP sockets on an Alt Mode dock
-  therefore have no supported video source. USB graphics adapters would need
-  separate driver/compositor work and are not covered by this change.
-- The Lenovo 40B0 exposed only its internal hub/MCU/Billboard in the recorded
-  session; its downstream ports never reported an electrical connection.
-  Lenovo's [compatibility note](https://support.lenovo.com/sg/en/solutions/pd500503)
-  requires USB-C Alt Mode or Thunderbolt. Its broad USB-C marketing does not
-  establish compatibility with this USB 2.0-only tablet.
-- A driver is only useful after a hub reports its peripheral. Enabling more
-  drivers cannot fix a dock that withholds the connection indication.
+- Current board support exposes MUSB USB 2.0, with no implemented SuperSpeed,
+  USB4, Thunderbolt or DisplayPort Alt Mode path. The dock's HDMI/DP sockets
+  therefore have no supported video source in this port. Daylight's
+  [public specification](https://support.daylightcomputer.com/daylight-dc-1-press-kit-1)
+  lists Type-C with PD without specifying data speed or alt modes; that is
+  not a definitive board-wiring specification. USB graphics adapters would
+  need separate driver/compositor work and are not covered by this change.
+- **A USB mouse does not require Thunderbolt or DisplayPort.** USB 2.0 uses
+  a separate data path from the high-speed lanes used for these transports;
+  see the [USB-IF/VESA explanation, slides 21--23](https://www.usb.org/sites/default/files/D2T1-4%20-%20VESA%20DP%20Alt%20Mode%20over%20USB%20Type-C.pdf).
+  USB 2.0 operation alone also does not establish that DP Alt Mode is absent.
+- The Lenovo 40B0 exposed its internal hub/MCU/Billboard, but no downstream
+  mouse, in the recorded sessions. Its USB-only peripheral compatibility
+  remains **unresolved**, not proven impossible. Lenovo's
+  [compatibility note](https://pcsupport.lenovo.com/gp/en/accessories/PD500503)
+  lists USB-C Alt Mode or Thunderbolt hosts; this describes supported host
+  configurations, without establishing which individual functions must fail
+  on other hosts. Successful internal-device enumeration already proves
+  that some of the dock's USB 2.0 path works with the DC-1.
+- Peripheral drivers bind after USB enumeration. Generic HID is already
+  built in; a missing mouse descriptor does not identify a missing HID
+  driver. Host/hub status handling, dock behavior and the physical connection
+  still need to be distinguished before assigning the cause.
 - Kernel modules apply after the matching kernel is booted. Do not judge a
   new APK's drivers using an older running kernel.
 

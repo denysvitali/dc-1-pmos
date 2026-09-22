@@ -111,8 +111,11 @@ This path remains 🚧 until an ordinary USB 2.0-capable charging hub proves a
 keyboard or mouse and the return path is exercised: unplug the hub, attach a
 PC, and prove the gadget reconnects without restarting `dc1-usb-gadget`.
 The 40B0 session proves the DC-1 host controller and charging/sink coexistence,
-but its Thunderbolt/USB-C fallback behavior cannot close peripheral
-enumeration. The exact session is tracked in [../roadmap.md](../roadmap.md).
+but does not close downstream peripheral enumeration. This is a failed test,
+not proof that the dock's mouse ports inherently require Thunderbolt or
+DisplayPort. USB-only fallback remains unresolved; see the
+[compatibility interpretation](../usb-docking.md#limits). The exact session
+is tracked in [../roadmap.md](../roadmap.md).
 
 The kernel config audit also found a real, narrower omission: host-side USB
 network support was absent even though the USB core, hub, HID, and storage
@@ -163,10 +166,11 @@ The [read-only hub reader](../../tools/usb/README.md) supports that check
 without resetting the dock or changing port power.
 
 This session still runs r60/r102: it does not validate the new r61 modules
-APK or r103 identity-change helper. The attached display cannot use the
-dock's DP/HDMI output because the DC-1 provides neither DisplayPort Alt Mode
-nor Thunderbolt. No dock reset, role forcing, gadget unbind, package install
-or reboot was used for these observations.
+APK or r103 identity-change helper. The attached display has no supported
+DP/HDMI output path in this port: the board support implements neither
+DisplayPort Alt Mode nor Thunderbolt. This is separate from mouse support,
+and is not a physical board-wiring measurement. No dock reset, role forcing,
+gadget unbind, package install or reboot was used for these observations.
 
 ## configfs teardown
 

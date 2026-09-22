@@ -62,7 +62,7 @@ model and records sourced board specifications.
 | Buttons | 🟡 | Power/volume event paths work; Quick Action / Back remaps are shipped but still need on-device confirmation |
 | Storage & microSD | ✅ | UFS internal storage; microSD slot works |
 | Battery & charging | 🟡 | USB-C PD negotiates (12 V PDO verified); Charging Profile selects 3.15 A or 2.00 A; charge % is restored only after a valid clean reboot within ten minutes; pack-temperature control is unavailable |
-| USB-C data | 🟡 | USB 2.0 ACM serial works; ECM is configured device-side but host Ethernet/SSH remains unverified, and host mode is partial. No SuperSpeed, video Alt Mode, or Thunderbolt |
+| USB-C data | 🟡 | USB 2.0 ACM serial works; ECM is configured device-side but host Ethernet/SSH remains unverified, and host mode is partial. No implemented SuperSpeed, video Alt Mode, or Thunderbolt path |
 | Suspend/sleep | 🚧 | One pre-pin s2idle cycle completed; a current-build cycle and wake path remain unverified, so sleep targets stay masked |
 | Ambient light / proximity sensor | ❌ | An unidentified MN29-family part ACKs at `0x49`; protocol and driver remain unknown |
 | Gyro, magnetometer, cellular, GPS, onboard cameras | ❌ | Not fitted/exposed on this hardware |
