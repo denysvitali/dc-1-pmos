@@ -17,8 +17,8 @@
 # once and cannot flap into an immediate re-blank. A >=2 s hold opens the
 # quick-settings power menu. Suspend and hibernate are masked system-wide
 # (see the sleep-target masks in the APKBUILD), so logind reports
-# CanSuspend=no and the menu offers only restart/power off -- the s2idle path
-# that aborts with unfreezable tasks stays unreachable.
+# CanSuspend=no and the menu offers only restart/power off until a current-build
+# suspend/resume cycle and reliable wake path are verified.
 power-button-action='nothing'
 sleep-inactive-ac-type='nothing'
 sleep-inactive-battery-type='nothing'

@@ -75,12 +75,15 @@ disable that gauge node, so it cannot register.
 
 ## Battery life today
 
-There is **no suspend** yet — by design, while the freezer/wake work is
-unfinished — so idle drain is higher than the hardware is capable of.
-The biggest lever you have today is the **power key**: a short press
-blanks the panel (the reflective display uses ~nothing with the
-frontlight off; the frontlight is the main draw). Suspend is the top
-item on the feature track in [roadmap.md](roadmap.md).
+Automatic suspend remains disabled. A pre-pin s2idle cycle completed on
+2026-08-19, but suspend/resume on the current build and a reliable wake path
+have not been verified. The freezer blocker was fixed; the sleep-target masks
+remain an owner policy until the remaining tests pass. See the
+[suspend record](hw/suspend.md) and [roadmap](roadmap.md).
+
+A short power-key press blanks the panel and turns off the frontlights. The
+current reduction from doing so has not been measured in a controlled quiet
+session, so there is no reliable frontlight share of the battery budget yet.
 
 ## Thermal behavior
 

@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=103
+pkgrel=104
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -395,12 +395,11 @@ package() {
 	install -Dm644 "$srcdir"/dc1-safe-area-metadata.json \
 		"$pkgdir"/usr/share/gnome-shell/extensions/dc1-safe-area@denv.it/metadata.json
 
-	# Suspend is not merely unsupported here, it is harmful: the s2idle path
-	# aborts after ~20 s with user-space tasks refusing to freeze and returns
-	# with the panel dark. Masking the sleep targets makes logind answer
-	# CanSuspend/CanHibernate "no", which is what GNOME's power menu keys off,
-	# so the entries are absent instead of failing when tapped. Drop these
-	# masks when suspend/resume actually works (README.md support status).
+	# A pre-pin s2idle cycle completed on 2026-08-19, but suspend/resume on
+	# the current build and a reliable wake path remain unverified. Masking
+	# sleep targets makes logind answer CanSuspend/CanHibernate "no", which
+	# keeps GNOME's sleep menu entries unavailable. Remove the masks after
+	# current-build hardware acceptance (README.md support status).
 	install -d "$pkgdir"/etc/systemd/system
 	for target in suspend sleep hibernate hybrid-sleep suspend-then-hibernate; do
 		ln -s /dev/null "$pkgdir"/etc/systemd/system/"$target".target
@@ -413,8 +412,8 @@ package() {
 	# UDC to its own developer-mode gadget. That teardown wedges in configfs:
 	# on 2026-08-16 it sat in D state (unlinkat/AT_REMOVEDIR) from boot,
 	# blocked every later configfs access, and -- since an uninterruptible task
-	# cannot be frozen -- failed the s2idle freezer on every attempt. Mask it
-	# and its mode units; our own gadget provides the ECM + 2x ACM the
+	# cannot be frozen -- failed the s2idle freezer before teardown was removed.
+	# Mask it and its mode units; our own gadget provides the ECM + 2x ACM the
 	# installer and the recovery path expect.
 	for unit in usb-signaller usb-signaller-developer-mode \
 		usb-signaller-mtp-mode usb-signaller-tethering-mode; do
@@ -586,10 +585,10 @@ df47ab24cd0528aa95203a94dd0b556c2f9d31e239276e3c64a4a8968fbb66760ddc2af80b46b0aa
 eaa30f6757c6cf3111d87146858a0ad9c0f309bd6bd3a5c72158a463a0d624cb11bc57dcd6068a75b3c94aa2ed0d00f0515930f3a543dfc4c6415ab36a405554  dc1-retired-watchdog.conf
 944327aee23c0e6cd526645f47f466d8bca52839861997569503d87b54f7d6b3040938e8d928399a7799c0ba12027f6d748fef72aea3824fc407795ae4f6f155  dc1-retire-reachability
 cc5e4610fb18d78207eb83bae191493e2fb03cbd9d5e2bc1b7f9dea93d20771446a52b3048dd20523e88428dae177a3c248ad2ca778aea9497b03cacfb68adbb  dc1-retire-iio-debug
-350167580c840fa1ac3e356ee32cc6f25b6f566cd7d3e2777e00498ebd774fcc93c5d1bcb01f84616db946f85cad647dbb6b2c83bd429a4d8ae82356a7ebd7d1  10-dc1-gnome.gschema.override
+d43cf2e5317fcc5fdb864ff9a76c2106d9ce5ccea2f634f80506033b37dc1c5e012945f6f87a7998ec5f512b8a56ded6e8048b9f037279d705fa6e19f77a85dc  10-dc1-gnome.gschema.override
 35ed4afb186d649ece52f36dc2d1b9df640f07aaf796f3ea4a63805b7aa24674fba9b945694d0e6863f15908de91931e8766010a2e34b19bbea52e2f2006dbfd  61-daylight-jagar-keyboard.hwdb
 d6aec155af0def9a5b480a60e713aeee0738271bfe85c397ec1f23fda73359e9280b6f3332f02e4801d940005610b4c71a82820afb3e7865ca4345cb32ff6105  daylight-dc1.tablet
-50dfd0ea25c80a97c1625dbf6dc42a8c114148cadafa20e21d210a9ea8c224e0069a75251ce11e427b51b50896929c833166988855a2c96deef03e6d3b94eb58  10-dc1-power.conf
+dfabf2e5a9eca548c5a07de0eb010678b0ade1c4ddc844b82fe9d2fddb12ae5c8ebd783f6f9e4a4c08c958df73f6b81edc774c44ecd533cc4b97ae4ff7e6cc6d  10-dc1-power.conf
 98ccb4d352f0c1ded1a33e159b0b2d3229835e124cb645eec062dabd55cccdf46d4ec3073be8a431d0d74ce71a7c20c9b17be1225a06c51290676429675ed3cf  10-dc1-pdf.json
 c52919a5cedd59e1be8037fd306b98b15a7176a8f6d287ef52f96f44fd5d6c76462b49d486981b069d06b0db41b7920461b1b2b59d2dbe302c2718a565218681  dc1-mimeapps.list
 27d1223ba673ee4639d12a7eb2bf7b24e8baf549c3eca7dc943d2e26d30aa094fcb3d22db7d15ac150329100e4af68443ef8324e4af919612bc43b262734abec  49-device-daylight-jagar-sensors.rules

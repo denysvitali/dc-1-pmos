@@ -67,8 +67,9 @@ controller (`mmc0`), and MT6375 TCPM (`tcpm-source-psy-mt6375-tcpc` — the
 only one with accumulated events, matching `/sys/power/wakeup_count`).
 There is no touch-controller (`5-0034`) wakeup entry; an earlier list here
 included one in error. `suspend_stats` still reads success=0/fail=0 on
-this boot, and the sleep targets stay masked until a full cycle is
-observed.
+this boot. Those counters describe this boot: success=0 means no successful
+cycle here, not that the pre-pin cycle never happened. The sleep targets stay
+masked until a full cycle and wake path are observed on the current build.
 
 ## Escalation plan (tracked in ../roadmap.md)
 
