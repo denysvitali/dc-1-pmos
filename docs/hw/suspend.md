@@ -58,8 +58,11 @@ provokes about 492 IRQ/s from a line that never reports an INT2 event, so
 kernel r48 deliberately removes that unusable board IRQ while retaining
 timekeeping. The MT6358 PMIC RTC still does not register, so a timed wake
 cannot be armed (see [power.md](power.md)). Candidate wake paths to
-establish before real-mem testing: the PMIC RTC (`rtc-mt6397` family
-support for mt6358), the USB gadget, or the hall switch.
+establish before real-mem testing: the PMIC power key, the PMIC RTC
+(`rtc-mt6397` family support for mt6358), the USB gadget, or the hall
+switch. The power-key child declares `wakeup-source`, and
+`mtk-pmic-keys` enables its PMIC IRQ for suspend; that is a configured
+path, not a live wake result.
 
 Enabled wakeup sources on the r54 boot (2026-08-29): the hall switch, the
 USB gadget (`musb-hdrc`), the MT7902 SDIO function (`mmc1`), the eMMC
@@ -79,15 +82,17 @@ before it can try again. The opt-in helper unmasks the former package-owned
 `sleep.target` and `suspend.target` masks immediately before its first
 request. Do not create the marker from a remote-only session: this build has
 no RTC `wakealarm`, and the listed hall, USB and SDIO wakeup sources are not
-yet a proven recovery path. The power key is not listed as a wakeup source.
+yet a proven recovery path. The power key is configured separately by
+`mtk-pmic-keys` and does not get its own `/sys/class/wakeup` entry; it
+still needs a full-cycle wake measurement on this build.
 
 ## Escalation plan (tracked in ../roadmap.md)
 
 1. Escalate `pm_test` level by level (`devices` → `platform` →
    `processors` → `core`) on hardware, fixing whatever each level
    surfaces, before any real `echo mem`.
-2. Establish a wakeup source (PMIC RTC driver or verified gadget/hall
-   wake).
+2. Verify power-key wake, or establish another source (PMIC RTC driver or
+   verified gadget/hall wake).
 3. Absorb or fix the mt7921s resume `-EIO` (upstream mt7921s SDIO resume
    behavior).
 4. Only then unmask the sleep targets behind an owner opt-in.
