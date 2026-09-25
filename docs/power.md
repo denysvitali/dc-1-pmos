@@ -81,6 +81,12 @@ have not been verified. The freezer blocker was fixed; the sleep-target masks
 remain an owner policy until the remaining tests pass. See the
 [suspend record](hw/suspend.md) and [roadmap](roadmap.md).
 
+A 2026-09-25 remote suspend-stage test resumed Wi-Fi, but the display
+pipeline quarantined itself after a first-frame underflow. A temporary
+PMIC RTC module fired an alarm while awake, but wake from real sleep is
+still unverified. Keep automatic sleep disabled until the display resume
+fault and timed wake are resolved.
+
 The device package now contains an opt-in `dc1-sleep-on-blank` service. Once
 enabled, it requests suspend after the DRM screen and both frontlights have
 been off for 60 seconds **on battery**. It makes one attempt per screen-off
