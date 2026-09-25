@@ -81,6 +81,16 @@ have not been verified. The freezer blocker was fixed; the sleep-target masks
 remain an owner policy until the remaining tests pass. See the
 [suspend record](hw/suspend.md) and [roadmap](roadmap.md).
 
+The device package now contains an opt-in `dc1-sleep-on-blank` service. Once
+enabled, it requests suspend after the DRM screen and both frontlights have
+been off for 60 seconds **on battery**. It makes one attempt per screen-off
+cycle, so a failed suspend or immediate wake cannot trap the device in a
+sleep loop. The service stays inactive without
+`/var/lib/dc1/enable-auto-suspend`; create that marker only after a full
+suspend and a reliable physical wake have been verified on the installed
+kernel. Removing it prevents further automatic attempts. The hardware
+acceptance sequence is in the [suspend record](hw/suspend.md).
+
 A short power-key press blanks the panel and turns off the frontlights. The
 current reduction from doing so has not been measured in a controlled quiet
 session, so there is no reliable frontlight share of the battery budget yet.

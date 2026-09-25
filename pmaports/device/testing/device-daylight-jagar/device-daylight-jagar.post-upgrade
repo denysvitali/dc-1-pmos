@@ -55,6 +55,12 @@ systemctl reenable dc1-poweroff-flag.service 2>/dev/null || true
 # in the middle of an apk transaction.
 systemctl reenable dc1-battery-state.service 2>/dev/null || true
 
+# The screen-off suspend helper is opt-in through
+# /var/lib/dc1/enable-auto-suspend. Enable its unit for existing installs but
+# do not start it during the apk transaction; the condition is checked at
+# boot, and the helper checks the marker again before every suspend attempt.
+systemctl reenable dc1-sleep-on-blank.service 2>/dev/null || true
+
 # Keep in step with post-install: rebuild the udev hwdb for the side-button
 # remap and re-trigger the input devices. Best-effort, as above.
 systemd-hwdb update 2>/dev/null || true

@@ -1,0 +1,14 @@
+[Unit]
+Description=Suspend the DC-1 after the screen stays off on battery
+Requires=dc1-screen-backlight.service
+After=dc1-screen-backlight.service
+ConditionPathExists=/var/lib/dc1/enable-auto-suspend
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/dc1-sleep-on-blank
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

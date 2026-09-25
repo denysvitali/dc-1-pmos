@@ -71,6 +71,16 @@ this boot. Those counters describe this boot: success=0 means no successful
 cycle here, not that the pre-pin cycle never happened. The sleep targets stay
 masked until a full cycle and wake path are observed on the current build.
 
+The device package now stages a 60-second screen-off suspend helper behind
+`/var/lib/dc1/enable-auto-suspend`. Its service is enabled but skipped
+without that marker. It checks DRM DPMS, both frontlights and unplugged
+charger state before requesting sleep, and waits for a screen-on observation
+before it can try again. The opt-in helper unmasks the former package-owned
+`sleep.target` and `suspend.target` masks immediately before its first
+request. Do not create the marker from a remote-only session: this build has
+no RTC `wakealarm`, and the listed hall, USB and SDIO wakeup sources are not
+yet a proven recovery path. The power key is not listed as a wakeup source.
+
 ## Escalation plan (tracked in ../roadmap.md)
 
 1. Escalate `pm_test` level by level (`devices` → `platform` →
@@ -81,3 +91,8 @@ masked until a full cycle and wake path are observed on the current build.
 3. Absorb or fix the mt7921s resume `-EIO` (upstream mt7921s SDIO resume
    behavior).
 4. Only then unmask the sleep targets behind an owner opt-in.
+5. With local physical access and an alternate recovery plan, enable the
+   marker and observe a full 60-second screen-off cycle. Confirm that the
+   power key or another intended input wakes the device, the panel relights,
+   Wi-Fi reconnects, and the battery current falls during sleep. Remove the
+   marker if any check fails.

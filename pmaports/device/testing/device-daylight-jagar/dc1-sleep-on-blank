@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Suspend once after a minute of screen-off time on battery.
+
+The screen state comes from DRM, not GNOME's idle hint: a short power-key
+press blanks the panel but leaves the logind session marked active. Require
+the frontlights to be off as well. After a suspend attempt, wait for an
+observed screen-on state before arming again; an immediate wake or a failed
+request must not create a suspend loop.
+
+The service has a separate opt-in marker until a current-build wake path has
+been verified on hardware. Environment overrides exist only for fake-sysfs
+offline tests; the packaged unit supplies none.
+"""
+
+import glob
+import os
+import subprocess
+import sys
+import time
+
+
+SYSFS = os.environ.get("DC1_SLEEP_SYSFS", "/sys")
+COMMAND = os.environ.get("DC1_SLEEP_COMMAND", "/usr/sbin/systemctl")
+ENABLE_FILE = os.environ.get("DC1_SLEEP_ENABLE_FILE", "/var/lib/dc1/enable-auto-suspend")
+DELAY = float(os.environ.get("DC1_SLEEP_DELAY", "60"))
+POLL = float(os.environ.get("DC1_SLEEP_POLL", "0.5"))
+
+
+def read(path):
+    try:
+        with open(path, encoding="ascii") as stream:
+            value = stream.read()
+    except (OSError, UnicodeError):
+        return None
+    return value.strip() if value.endswith("\n") else None
+
+
+def screen_state():
+    off = False
+    for path in glob.glob(f"{SYSFS}/class/drm/*/dpms"):
+        value = read(path)
+        if value == "On":
+            return "on"
+        if value is not None:
+            off = True
+    return "off" if off else "unknown"
+
+
+def ready_to_sleep():
+    if not os.path.exists(ENABLE_FILE):
+        return False
+    if read(f"{SYSFS}/class/power_supply/mt6375-charger/online") != "0":
+        return False
+    lights = glob.glob(f"{SYSFS}/class/backlight/*/bl_power")
+    return bool(lights) and all(read(path) == "4" for path in lights)
+
+
+def main():
+    if DELAY <= 0 or POLL <= 0:
+        raise ValueError("sleep delay and poll interval must be positive")
+
+    since = None
+    attempted = False
+    while True:
+        state = screen_state()
+        if state == "on":
+            since = None
+            attempted = False
+        elif state != "off" or not ready_to_sleep():
+            since = None
+        elif not attempted:
+            now = time.monotonic()
+            if since is None:
+                since = now
+            elif now - since >= DELAY:
+                attempted = True
+                print("dc1-sleep-on-blank: requesting suspend", file=sys.stderr, flush=True)
+                try:
+                    # Old device packages masked these targets. The unit's
+                    # opt-in marker is the owner's authority to lift them.
+                    unmask = subprocess.run([COMMAND, "unmask", "sleep.target",
+                                             "suspend.target"], check=False)
+                    if unmask.returncode:
+                        print(f"dc1-sleep-on-blank: unmask returned {unmask.returncode}",
+                              file=sys.stderr, flush=True)
+                        time.sleep(POLL)
+                        continue
+                    result = subprocess.run([COMMAND, "--no-wall", "suspend"], check=False)
+                    if result.returncode:
+                        print(f"dc1-sleep-on-blank: suspend returned {result.returncode}",
+                              file=sys.stderr, flush=True)
+                except OSError as error:
+                    print(f"dc1-sleep-on-blank: suspend request failed: {error}",
+                          file=sys.stderr, flush=True)
+        time.sleep(POLL)
+
+
+if __name__ == "__main__":
+    main()

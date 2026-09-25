@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=104
+pkgrel=105
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -108,6 +108,8 @@ source="
 	dc1-frontlight.service
 	dc1-screen-backlight
 	dc1-screen-backlight.service
+	dc1-sleep-on-blank
+	dc1-sleep-on-blank.service
 	dc1-rtcsync.service
 	dc1-rtcsync.timer
 	80-device-daylight-jagar.preset
@@ -295,6 +297,10 @@ package() {
 		"$pkgdir"/usr/lib/systemd/system/dc1-frontlight.service
 	install -Dm644 "$srcdir"/dc1-screen-backlight.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-screen-backlight.service
+	install -Dm755 "$srcdir"/dc1-sleep-on-blank \
+		"$pkgdir"/usr/libexec/dc1-sleep-on-blank
+	install -Dm644 "$srcdir"/dc1-sleep-on-blank.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-sleep-on-blank.service
 	install -Dm644 "$srcdir"/dc1-rtcsync.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-rtcsync.service
 	install -Dm644 "$srcdir"/dc1-rtcsync.timer \
@@ -576,9 +582,11 @@ f29500ad474be305cd8934aa059a50921a403b0922451a8a36fce295186cbd01bde2972616857bc3
 a611b818be1a7af166b59f9b8498c28275725d1de95c3cffe6b2c38900e3a31065fc4e5d2bda023a1bd95549246a0e5ba72126450b53a733f1a5dbf3bd654af7  dc1-frontlight.service
 c46f6366f7145a50e8d4bb64f84300b60fb2103765da8572546d66a502a68af353291a7ff1c9a78d42e2d8f865c434206d8d1b5224b62f43d0c4016ddbab1aed  dc1-screen-backlight
 51c547dff77fe30aa8459ff2fbc64856ad2ad05fad2d050901fed169d72960deeb22b21e212e5e529a78044b2a62e661efb9c9de44cb3f152c37a5876889a0a7  dc1-screen-backlight.service
+7906a8a2843de4e6467c8b71b97513939d6b367ff00af56aa4227db93aab5df1ed45a7ee3fa0dc4484b659e8c1f7c7642add6994fa019604cb0845c1501f0467  dc1-sleep-on-blank
+f876faf66677356a64029f9c72625473932f2e20d9e20a97c71c728b47808f64226e3f8ccba61e2dd6f09cacb334ca25128aef3f5fb961b007320dc3b6348c46  dc1-sleep-on-blank.service
 7d241e69a4aaf124d949a6dc04c1ce16fc38532759f7643952b3df8645c3483bf74318c09c2eaf05742b071acbf8a5cbb4f475c96390272975efd614d2052f21  dc1-rtcsync.service
 e1fe76f67e3d81bf9b7783db9a0be83451d080131b38dd8411167e1dcd7bad2ef892a60d7dc4d99cfa9065ee15298c54054f83f997c95a99a03346d73f92d5b7  dc1-rtcsync.timer
-db2b478a8eeac96ccbbe94b0489a1d9b0cbf93dc5f6f1e62f2a5cbfe64ba5a77100c7fcc095d5edb1bc2cf4766a9e833030f23c7e207328fe50fee04e2b0d93d  80-device-daylight-jagar.preset
+c439ddd9bb19e62c705b5891d5886faefe483cd3941860d129737378eeb0176c54de9d7484b50c837dcb524b45ec1cf6b70f65a26fa73dfab46c7fc733fe5f91  80-device-daylight-jagar.preset
 df47ab24cd0528aa95203a94dd0b556c2f9d31e239276e3c64a4a8968fbb66760ddc2af80b46b0aa72ffb05c0d21a2562066f192ea484e7efc9cdb91d26d767e  90-device-daylight-jagar.rules
 0e7762a93506f1ec322ed7ca16469f1705d0e712716d87edbc121061ce7e3f2185d1b7beaf52c6c9380375accc7f038b37f52662515a4a981a781304d433e8d2  10-dc1-watchdog.conf
 09b71bfa7d50983c845c7bd7ea355a3259b15df9bf4a188a5d9e22317e23178cddca628a043050def323cc5dde6c49a44228e6a82996aa785746c96e2bf01cbc  90-retired-reachability.conf
