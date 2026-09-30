@@ -75,17 +75,15 @@ disable that gauge node, so it cannot register.
 
 ## Battery life today
 
-Automatic suspend remains disabled. A pre-pin s2idle cycle completed on
-2026-08-19, but suspend/resume on the current build and a reliable wake path
-have not been verified. The freezer blocker was fixed; the sleep-target masks
-remain an owner policy until the remaining tests pass. See the
+Automatic suspend remains disabled. Kernel r63 passed device and platform
+resume tests after fixes to display memory routing and FIFO policy. A full
+s2idle cycle, screen relight and reliable physical wake on the installed build
+remain unverified, so the sleep targets stay masked. See the
 [suspend record](hw/suspend.md) and [roadmap](roadmap.md).
 
-A 2026-09-25 remote suspend-stage test resumed Wi-Fi, but the display
-pipeline quarantined itself after a first-frame underflow. A temporary
-PMIC RTC module fired an alarm while awake, but wake from real sleep is
-still unverified. Keep automatic sleep disabled until the display resume
-fault and timed wake are resolved.
+A temporary PMIC RTC module fired an alarm while awake on 2026-09-25, but it
+is not packaged and wake from real sleep remains unverified. Keep automatic
+sleep disabled until a full cycle and intended physical wake path are verified.
 
 The device package now contains an opt-in `dc1-sleep-on-blank` service. Once
 enabled, it requests suspend after the DRM screen and both frontlights have

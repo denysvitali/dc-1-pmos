@@ -46,8 +46,9 @@ A development unit upgraded over time does not replace fresh-rootfs acceptance.
 
 ## Remaining features
 
-- **Suspend/resume:** fix display resume/OVL quarantine, prove a wake source,
-  handle Wi-Fi resume failures, then test the owner opt-in screen-off cycle.
+- **Suspend/resume:** prove a wake source and full-cycle screen relight on the
+  installed build, handle Wi-Fi resume failures, then test the owner opt-in
+  screen-off cycle.
   Keep sleep masked by default. See [suspend](hw/suspend.md).
 - **Pack gauge:** establish live BQ78Z100 ACK and protocol before enabling it.
   Learned capacity and pack-temperature-informed charging depend on this.
