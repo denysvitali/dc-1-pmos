@@ -1,0 +1,142 @@
+diff --git a/drivers/gpu/drm/mediatek/mtk_disp_ovl.c b/drivers/gpu/drm/mediatek/mtk_disp_ovl.c
+index bd33ffa3cd7e..b4d45fa9405d 100644
+--- a/drivers/gpu/drm/mediatek/mtk_disp_ovl.c
++++ b/drivers/gpu/drm/mediatek/mtk_disp_ovl.c
+@@ -44,6 +44,7 @@
+ #define DISP_REG_OVL_ROI_SIZE			0x0020
+ #define DISP_REG_OVL_DATAPATH_CON		0x0024
+ #define OVL_LAYER_SMI_ID_EN				BIT(0)
++#define OVL_OUTPUT_CLAMP				BIT(26)
+ #define OVL_BGCLR_SEL_IN				BIT(2)
+ #define OVL_LAYER_AFBC_EN(n)				BIT(4+n)
+ #define DISP_REG_OVL_ROI_BGCLR			0x0028
+@@ -59,6 +60,10 @@
+ #define DISP_REG_OVL_RDMA_GMC(n)		(0x00c8 + 0x20 * (n))
+ #define DISP_REG_OVL_ADDR_MT2701		0x0040
+ #define DISP_REG_OVL_CLRFMT_EXT			0x02d0
++#define DISP_REG_OVL_RDMA_GREQ_NUM		0x01f8
++#define DISP_REG_OVL_RDMA_GREQ_URG_NUM		0x01fc
++#define DISP_REG_OVL_RDMA_BUF_LOW(n)		(0x0210 + 4 * (n))
++#define DISP_REG_OVL_RDMA_BUF_HIGH(n)		(0x0220 + 4 * (n))
+ #define DISP_REG_OVL_SMI_DBG			0x0230
+ #define DISP_REG_OVL_GREQ_LAYER_CNT		0x0234
+ #define DISP_REG_OVL_GDRDY_PRD_NUM		0x0238
+@@ -190,6 +195,7 @@ struct mtk_disp_ovl_data {
+ 	bool defer_irq_enable;
+ 	bool needs_physical_larb;
+ 	unsigned int larb_id;
++	bool preserve_handoff_qos;
+ };
+ 
+ /*
+@@ -212,6 +218,12 @@ struct mtk_disp_ovl {
+ 	wait_queue_head_t		fme_wait_queue;
+ 	bool				irq_enabled;
+ 	bool				handoff_terminal_proven;
++	bool				qos_saved;
++	u32				qos_greq;
++	u32				qos_greq_urg;
++	u32				qos_buf_low[4];
++	u32				qos_buf_high[4];
++	u32				qos_output_clamp;
+ };
+ 
+ static void mtk_ovl_handoff_log_state(struct mtk_disp_ovl *ovl,
+@@ -345,11 +357,72 @@ bool mtk_ovl_is_afbc_supported(struct device *dev)
+ 	return ovl->data->supports_afbc;
+ }
+ 
++static void mtk_ovl_save_handoff_qos(struct mtk_disp_ovl *ovl)
++{
++	unsigned int i;
++
++	if (!ovl->data->preserve_handoff_qos || ovl->qos_saved)
++		return;
++
++	/* Save only policy that has passed the first-frame integrity checks. */
++	ovl->qos_greq = readl(ovl->regs + DISP_REG_OVL_RDMA_GREQ_NUM);
++	ovl->qos_greq_urg = readl(ovl->regs + DISP_REG_OVL_RDMA_GREQ_URG_NUM);
++	for (i = 0; i < ovl->data->layer_nr; i++) {
++		ovl->qos_buf_low[i] = readl(ovl->regs + DISP_REG_OVL_RDMA_BUF_LOW(i));
++		ovl->qos_buf_high[i] = readl(ovl->regs + DISP_REG_OVL_RDMA_BUF_HIGH(i));
++	}
++	ovl->qos_output_clamp = readl(ovl->regs + DISP_REG_OVL_DATAPATH_CON) &
++				OVL_OUTPUT_CLAMP;
++	ovl->qos_saved = true;
++}
++
++static int mtk_ovl_restore_qos_reg(struct mtk_disp_ovl *ovl, u32 offset, u32 value)
++{
++	writel(value, ovl->regs + offset);
++	if (readl(ovl->regs + offset) != value)
++		return dev_err_probe(ovl->dev, -EIO,
++				     "Failed to restore OVL QoS register %#x\n", offset);
++	return 0;
++}
++
+ int mtk_ovl_clk_enable(struct device *dev)
+ {
+ 	struct mtk_disp_ovl *ovl = dev_get_drvdata(dev);
++	u32 reg;
++	unsigned int i;
++	int ret;
+ 
+-	return clk_prepare_enable(ovl->clk);
++	ret = clk_prepare_enable(ovl->clk);
++	if (ret || !ovl->qos_saved)
++		return ret;
++
++	/* DISP power loss resets request limits and pre-ultra thresholds. */
++	ret = mtk_ovl_restore_qos_reg(ovl, DISP_REG_OVL_RDMA_GREQ_NUM, ovl->qos_greq);
++	if (ret)
++		goto err_clk_disable;
++	ret = mtk_ovl_restore_qos_reg(ovl, DISP_REG_OVL_RDMA_GREQ_URG_NUM,
++				      ovl->qos_greq_urg);
++	if (ret)
++		goto err_clk_disable;
++	for (i = 0; i < ovl->data->layer_nr; i++) {
++		ret = mtk_ovl_restore_qos_reg(ovl, DISP_REG_OVL_RDMA_BUF_LOW(i),
++					      ovl->qos_buf_low[i]);
++		if (ret)
++			goto err_clk_disable;
++		ret = mtk_ovl_restore_qos_reg(ovl, DISP_REG_OVL_RDMA_BUF_HIGH(i),
++					      ovl->qos_buf_high[i]);
++		if (ret)
++			goto err_clk_disable;
++	}
++	reg = readl(ovl->regs + DISP_REG_OVL_DATAPATH_CON);
++	reg = (reg & ~OVL_OUTPUT_CLAMP) | ovl->qos_output_clamp;
++	ret = mtk_ovl_restore_qos_reg(ovl, DISP_REG_OVL_DATAPATH_CON, reg);
++	if (!ret)
++		return 0;
++
++err_clk_disable:
++	clk_disable_unprepare(ovl->clk);
++	return ret;
+ }
+ 
+ void mtk_ovl_clk_disable(struct device *dev)
+@@ -1228,6 +1301,7 @@ int mtk_ovl_handoff_wait_for_fme(struct device *dev, u32 fme_seq)
+ 
+ 	dev_info(dev, "OVL first frame complete: seq=%u status=%#x flow=%#x\n",
+ 		 atomic_read(&ovl->fme_seq), irq_status, flow);
++	mtk_ovl_save_handoff_qos(ovl);
+ 	return 0;
+ }
+ 
+@@ -1431,6 +1505,7 @@ static const struct mtk_disp_ovl_data mt6789_ovl_driver_data = {
+ 	.defer_irq_enable = true,
+ 	.needs_physical_larb = true,
+ 	.larb_id = 0,
++	.preserve_handoff_qos = true,
+ };
+ 
+ static const struct mtk_disp_ovl_data mt6789_ovl_2l_driver_data = {
+@@ -1447,6 +1522,7 @@ static const struct mtk_disp_ovl_data mt6789_ovl_2l_driver_data = {
+ 	.defer_irq_enable = true,
+ 	.needs_physical_larb = true,
+ 	.larb_id = 1,
++	.preserve_handoff_qos = true,
+ };
+ 
+ static const struct mtk_disp_ovl_data mt8192_ovl_driver_data = {

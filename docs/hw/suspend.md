@@ -130,10 +130,25 @@ local CRTC teardown change that skips unobtainable frame-edge waits was active
 and did not prevent this fault.
 
 Kernel r62 backports `110d34e0792a`: physical-DMA overlays acquire runtime-PM
-links to LARB0/1, and the SMI driver restores and reads back MMU bypass before
-scanout. The translated-DMA path and first-frame underflow checks remain
-active. This is a kernel-only change; it preserves the source pin, running
-DT and initramfs. Current-build hardware acceptance is still required.
+links to their LARBs, and the SMI driver restores and reads back MMU bypass
+before scanout. Its #63 boot passed confirmation and device-stage tests, but
+`platform` still produced `0x4203` and quarantine with the active LARB0 ports
+correctly bypassing translation. A fresh-boot platform test confirmed this
+was not caused by the preceding device tests. LARB1 remains suspended because
+OVL2L is unused in the production path; active OVL0 holds LARB0 and SMI common.
+
+Additional read-only comparisons found lost OVL memory policy: request limits
+changed from `0xf1ff5555` to `0x41ffbbbb`, urgent requests from `0x5555` to
+`0x20305555`, low buffer thresholds from zero to `0x30020`, and high thresholds
+from `0x80000000` to `0x40000`. The output-clamp bit also cleared. FIFO controls
+and second-stage GMC settings did not change.
+
+Kernel r63 adds `2e706d50b9c8`: save the proven request/threshold policy only
+after a successful first frame, then restore it with checked readback before
+later pipeline starts. The translated-DMA path and first-frame underflow
+checks remain active. These are kernel-only changes; they preserve the source
+pin, running DT and initramfs. Current-build hardware acceptance is still
+required.
 
 After the three tests, `suspend_stats` reported success=3/fail=0 but
 failed_resume=2. These counters include test cycles and do not establish
