@@ -25,12 +25,13 @@ resume or full suspend.
 
 ## What remains
 
-The rest of the sequence: `pm_test` escalates through `devices`,
-`platform`, `processors`, `core`, and only `core` is close to a real
-`mem`. Those levels do suspend devices, so the panel goes dark. Every
-`pm_test` level stops the sequence at its test point and resumes
-automatically, so no wakeup source is needed until a real `echo mem` is
-attempted.
+The current kernel exposes only `[s2idle]` in `/sys/power/mem_sleep`;
+hardware `deep` suspend is unavailable. For s2idle, the supported automatic-return
+`pm_test` stages are `freezer`, `devices`, and `platform`. The kernel rejects
+`processors` and `core` with `-EAGAIN` before testing anything. Device stages
+can leave the display unusable even though the test returns automatically;
+establish local recovery access before running them. A proven wake source is
+needed before real `mem` testing.
 
 **Updated 2026-08-28: the previously claimed RTC wake backstop does not
 exist.** The `rtc-s35390a` at i2c-8 is `rtc0`; its newly added alarm path
@@ -97,11 +98,45 @@ recovery path: `mtk_wdt_suspend()` stops an active watchdog and restarts
 it only on resume. Fix and verify display resume, then package and prove
 a timed wake path before remotely enabling automatic suspend.
 
+## Current-build stage tests on 2026-09-30
+
+The running kernel and `/boot/vmlinuz` identify as
+`#61-postmarketos-mediatek-mt6789`; installed APK metadata says r60, and the
+saved r60 APK contains that same #61 banner. The panel was on at 60 Hz,
+USB power was connected, and local physical recovery access was confirmed.
+Only automatic-return test stages were exercised:
+
+| Stage | Return time | Display result |
+| --- | --- | --- |
+| `freezer` | 5.19 s | GPIO83 TE remained 59.18 Hz |
+| `devices` | 11.12 s | First frame completed with OVL status `0x4003`; TE returned to 59.18 Hz |
+| `platform` | 12.23 s | First frame reported OVL status `0x4203`; CRTC permanently quarantined |
+
+Both device stages logged mt7921s resume `-EIO`; Wi-Fi recovered and
+NetworkManager reported connected after each. The platform fault reproduces
+the September 25 layer-0 SMI underflow (`0x200`). Its frame-completion bit and
+operational flow were present. TE still measured 59.18 Hz after quarantine:
+this establishes panel-controller liveness, not successful delivery of new
+frames or a visually correct image. DRM DPMS also remained `On`.
+
+The extra late/noirq path in `platform` includes SMI forced runtime suspend
+and resume, plus display power-domain callbacks. Compared with the successful
+first frame after `devices`, this makes memory-path restoration a candidate
+for investigation; it does not identify the cause. The local CRTC teardown
+change that skips unobtainable frame-edge waits was active during these tests
+and did not prevent the resume fault.
+
+After the three tests, `suspend_stats` reported success=3/fail=0 but
+failed_resume=2. These counters include test cycles and do not establish
+successful real sleep or display resume. `pm_test` was restored to `none`,
+temporary PM diagnostics were restored, and the sleep targets remain masked
+with the auto-suspend marker absent. Only the external RTC is registered;
+there is still no `wakealarm`. No real s2idle or timed-wake test was attempted.
+
 ## Escalation plan (tracked in ../roadmap.md)
 
-1. Escalate `pm_test` level by level (`devices` → `platform` →
-   `processors` → `core`) on hardware, fixing whatever each level
-   surfaces, before any real `echo mem`.
+1. With local recovery access, exercise the supported s2idle test stages
+   (`freezer` → `devices` → `platform`), fixing faults before real `echo mem`.
 2. Verify power-key wake, or establish another source (PMIC RTC driver or
    verified gadget/hall wake).
 3. Resolve the OVL first-frame underflow and display quarantine seen after
