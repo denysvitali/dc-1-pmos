@@ -1,7 +1,7 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=linux-postmarketos-mediatek-mt6789
 pkgver=7.2_rc5_git20260819
-pkgrel=61
+pkgrel=62
 pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
 arch="aarch64"
 _carch="arm64"
@@ -34,6 +34,8 @@ makedepends="
 
 _repository="dc-1-linux-kernel"
 _commit="7cc767cd0cff39b77e252f26c9450d035c17b038"
+# The physical-DMA resume patch backports kernel commit 110d34e0792a;
+# retain the boot-proven source pin and DT for this kernel-only update.
 # The kernel source tarball supplies the base config. The config used to be
 # fetched separately from raw.githubusercontent.com under a commit-independent
 # filename (config-$_flavor.$arch), which collided with the persisted distfiles
@@ -48,6 +50,7 @@ source="
 	usb-host.config
 	jagar-performance.patch
 	mt6375-source-role.patch
+	mt6789-display-smi-resume.patch
 "
 builddir="$srcdir/$_repository-$_commit"
 
@@ -260,4 +263,5 @@ sha512sums="
 bd26a81433c10a7c93596d081de1e4c09f4a458ff0b94ccb8297d6995618dd99847358d0dc73223ce5e0e2e529688a55561001ddc1e61d53639ca3a544688364  usb-host.config
 8b38b94778041f2fbc4ee8cb456f6c7cd7e2ea8686c6568afbb85b9ffe96deec8db144b7071e8720637daca9cb11778b1a4e68efa01a289dc90751a89de90ed1  jagar-performance.patch
 2911861392f1203543719aeb53c24868a57803541ef14ccff91b8c777d31182f70c67a829983fa8a70690c41c1835d1f296242cfd044bbad25ef503c4524df0e  mt6375-source-role.patch
+7c0b89e7ef790180584c5b87a3a6513f12119f008934e92966ffaaf493a5ff7959e0d89dba356a370ef2364e93d04defe3710e17a5bc26cbec536648e957b967  mt6789-display-smi-resume.patch
 "

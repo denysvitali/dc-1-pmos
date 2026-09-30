@@ -1,0 +1,185 @@
+diff --git a/drivers/gpu/drm/mediatek/mtk_disp_ovl.c b/drivers/gpu/drm/mediatek/mtk_disp_ovl.c
+index 14d0675fd89b..bd33ffa3cd7e 100644
+--- a/drivers/gpu/drm/mediatek/mtk_disp_ovl.c
++++ b/drivers/gpu/drm/mediatek/mtk_disp_ovl.c
+@@ -13,6 +13,7 @@
+ #include <linux/iopoll.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
++#include <linux/of_platform.h>
+ #include <linux/platform_device.h>
+ #include <linux/pm_runtime.h>
+ #include <linux/soc/mediatek/mtk-cmdq.h>
+@@ -187,6 +188,8 @@ struct mtk_disp_ovl_data {
+ 	bool skip_config_reset;
+ 	bool reset_on_stop;
+ 	bool defer_irq_enable;
++	bool needs_physical_larb;
++	unsigned int larb_id;
+ };
+ 
+ /*
+@@ -1264,6 +1267,38 @@ static const struct component_ops mtk_disp_ovl_component_ops = {
+ 	.unbind = mtk_disp_ovl_unbind,
+ };
+ 
++/* MT6789 physical scanout still needs its LARB restored after power loss. */
++static int mtk_disp_ovl_link_larb(struct device *dev, unsigned int larb_id)
++{
++	struct platform_device *larb_pdev;
++	struct device_node *node;
++	struct device_link *link;
++	u32 id;
++
++	for_each_available_child_of_node(dev->of_node->parent, node) {
++		if (!of_device_is_compatible(node, "mediatek,mt6789-smi-larb") ||
++		    of_property_read_u32(node, "mediatek,larb-id", &id) ||
++		    id != larb_id)
++			continue;
++
++		larb_pdev = of_find_device_by_node(node);
++		of_node_put(node);
++		if (!larb_pdev)
++			return -EPROBE_DEFER;
++		if (!platform_get_drvdata(larb_pdev)) {
++			put_device(&larb_pdev->dev);
++			return -EPROBE_DEFER;
++		}
++
++		link = device_link_add(dev, &larb_pdev->dev,
++				       DL_FLAG_PM_RUNTIME | DL_FLAG_AUTOREMOVE_CONSUMER);
++		put_device(&larb_pdev->dev);
++		return link ? 0 : -EINVAL;
++	}
++
++	return -ENODEV;
++}
++
+ static int mtk_disp_ovl_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -1311,6 +1346,14 @@ static int mtk_disp_ovl_probe(struct platform_device *pdev)
+ 		return dev_err_probe(dev, ret, "Failed to request irq %d\n", irq);
+ 	priv->irq_enabled = !priv->data->defer_irq_enable;
+ 
++	/* The IOMMU supplies these links itself when translated DMA is used. */
++	if (priv->data->needs_physical_larb &&
++	    !of_find_property(dev->of_node, "iommus", NULL)) {
++		ret = mtk_disp_ovl_link_larb(dev, priv->data->larb_id);
++		if (ret)
++			return dev_err_probe(dev, ret, "Failed to link physical DMA LARB\n");
++	}
++
+ 	pm_runtime_enable(dev);
+ 
+ 	ret = component_add(dev, &mtk_disp_ovl_component_ops);
+@@ -1386,6 +1429,8 @@ static const struct mtk_disp_ovl_data mt6789_ovl_driver_data = {
+ 	.skip_config_reset = true,
+ 	.reset_on_stop = true,
+ 	.defer_irq_enable = true,
++	.needs_physical_larb = true,
++	.larb_id = 0,
+ };
+ 
+ static const struct mtk_disp_ovl_data mt6789_ovl_2l_driver_data = {
+@@ -1400,6 +1445,8 @@ static const struct mtk_disp_ovl_data mt6789_ovl_2l_driver_data = {
+ 	.skip_config_reset = true,
+ 	.reset_on_stop = true,
+ 	.defer_irq_enable = true,
++	.needs_physical_larb = true,
++	.larb_id = 1,
+ };
+ 
+ static const struct mtk_disp_ovl_data mt8192_ovl_driver_data = {
+diff --git a/drivers/memory/mtk-smi.c b/drivers/memory/mtk-smi.c
+index 45ffeb4cf46c..013278189285 100644
+--- a/drivers/memory/mtk-smi.c
++++ b/drivers/memory/mtk-smi.c
+@@ -92,6 +92,7 @@
+ #define MTK_SMI_FLAG_SW_FLAG		BIT(1)
+ #define MTK_SMI_FLAG_SLEEP_CTL		BIT(2)
+ #define MTK_SMI_FLAG_CFG_PORT_SEC_CTL	BIT(3)
++#define MTK_SMI_FLAG_PHYSICAL_DISPLAY	BIT(4)
+ #define MTK_SMI_CAPS(flags, _x)		(!!((flags) & (_x)))
+ 
+ struct mtk_smi_reg_pair {
+@@ -247,6 +248,12 @@ static int mtk_smi_larb_config_port_gen2_general(struct device *dev)
+ 	if (BIT(larb->larbid) & larb->larb_gen->larb_direct_to_common_mask)
+ 		return 0;
+ 
++	/* Only the MT6789 display LARBs support an unbound physical DMA path. */
++	if (!larb->mmu &&
++	    (!MTK_SMI_CAPS(flags_general, MTK_SMI_FLAG_PHYSICAL_DISPLAY) ||
++	     larb->larbid > 1 || !larbostd))
++		return -ENODEV;
++
+ 	if (MTK_SMI_CAPS(flags_general, MTK_SMI_FLAG_THRT_UPDATE)) {
+ 		reg = readl_relaxed(larb->base + SMI_LARB_CMD_THRT_CON);
+ 		reg &= ~SMI_LARB_THRT_RD_NU_LMT_MSK;
+@@ -260,6 +267,23 @@ static int mtk_smi_larb_config_port_gen2_general(struct device *dev)
+ 	for (i = 0; i < SMI_LARB_PORT_NR_MAX && larbostd && !!larbostd[i]; i++)
+ 		writel_relaxed(larbostd[i], larb->base + SMI_LARB_OSTDL_PORTx(i));
+ 
++	if (!larb->mmu) {
++		/*
++		 * Power loss resets MMU_EN to one on MT6789. Without an IOMMU
++		 * binding, display addresses are physical and must bypass translation.
++		 * Preserve the remaining port settings, including bank selection.
++		 */
++		for (i = 0; i < SMI_LARB_PORT_NR_MAX && larbostd[i]; i++) {
++			reg = readl(larb->base + SMI_LARB_NONSEC_CON(i));
++			writel(reg & ~F_MMU_EN, larb->base + SMI_LARB_NONSEC_CON(i));
++			if (readl(larb->base + SMI_LARB_NONSEC_CON(i)) & F_MMU_EN) {
++				dev_err(dev, "Physical DMA routing failed on port %d\n", i);
++				return -EIO;
++			}
++		}
++		return 0;
++	}
++
+ 	/*
+ 	 * When mmu_en bits are in security world, the bank_sel still is in the
+ 	 * LARB_NONSEC_CON below. And the mmu_en bits of LARB_NONSEC_CON have no
+@@ -557,7 +581,8 @@ static const struct mtk_smi_larb_gen mtk_smi_larb_mt6779 = {
+  */
+ static const struct mtk_smi_larb_gen mtk_smi_larb_mt6789 = {
+ 	.config_port                = mtk_smi_larb_config_port_gen2_general,
+-	.flags_general	            = MTK_SMI_FLAG_THRT_UPDATE | MTK_SMI_FLAG_SW_FLAG,
++	.flags_general	            = MTK_SMI_FLAG_THRT_UPDATE | MTK_SMI_FLAG_SW_FLAG |
++				      MTK_SMI_FLAG_PHYSICAL_DISPLAY,
+ 	.larb_direct_to_common_mask = BIT(3) | BIT(5) | BIT(6) | BIT(8) |
+ 				      BIT(10) | BIT(11) | BIT(12) | BIT(15) |
+ 				      BIT(18) | BIT(19) | BIT(21) | BIT(22),
+@@ -712,6 +737,7 @@ static int mtk_smi_larb_probe(struct platform_device *pdev)
+ {
+ 	struct mtk_smi_larb *larb;
+ 	struct device *dev = &pdev->dev;
++	u32 larbid;
+ 	int ret;
+ 
+ 	larb = devm_kzalloc(dev, sizeof(*larb), GFP_KERNEL);
+@@ -719,6 +745,12 @@ static int mtk_smi_larb_probe(struct platform_device *pdev)
+ 		return -ENOMEM;
+ 
+ 	larb->larb_gen = of_device_get_match_data(dev);
++	if (MTK_SMI_CAPS(larb->larb_gen->flags_general, MTK_SMI_FLAG_PHYSICAL_DISPLAY)) {
++		ret = of_property_read_u32(dev->of_node, "mediatek,larb-id", &larbid);
++		if (ret || larbid >= ARRAY_SIZE(mtk_smi_larb_mt6789_ostd))
++			return dev_err_probe(dev, ret ?: -EINVAL, "Invalid LARB ID\n");
++		larb->larbid = larbid;
++	}
+ 	larb->base = devm_platform_ioremap_resource(pdev, 0);
+ 	if (IS_ERR(larb->base))
+ 		return PTR_ERR(larb->base);
+@@ -772,7 +804,10 @@ static int __maybe_unused mtk_smi_larb_resume(struct device *dev)
+ 		mtk_smi_larb_sleep_ctrl_disable(larb);
+ 
+ 	/* Configure the basic setting for this larb */
+-	return larb_gen->config_port(dev);
++	ret = larb_gen->config_port(dev);
++	if (ret)
++		clk_bulk_disable_unprepare(larb->smi.clk_num, larb->smi.clks);
++	return ret;
+ }
+ 
+ static int __maybe_unused mtk_smi_larb_suspend(struct device *dev)

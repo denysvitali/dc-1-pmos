@@ -119,12 +119,21 @@ operational flow were present. TE still measured 59.18 Hz after quarantine:
 this establishes panel-controller liveness, not successful delivery of new
 frames or a visually correct image. DRM DPMS also remained `On`.
 
-The extra late/noirq path in `platform` includes SMI forced runtime suspend
-and resume, plus display power-domain callbacks. Compared with the successful
-first frame after `devices`, this makes memory-path restoration a candidate
-for investigation; it does not identify the cause. The local CRTC teardown
-change that skips unobtainable frame-edge waits was active during these tests
-and did not prevent the resume fault.
+The fault also reproduces when `platform` is the first test after a fresh
+boot. Read-only register comparisons identified a routing mismatch: all four
+LARB0 and five LARB1 display ports changed their `SMI_LARB_NONSEC_CON.MMU_EN`
+bit from zero to one. This DT has no enabled IOMMU and OVL submits physical
+DMA addresses, so these ports must bypass translation. The SMI devices stayed
+runtime-suspended while scanout was active; their forced resume callbacks
+therefore skipped restoring the ports after display-domain power loss. The
+local CRTC teardown change that skips unobtainable frame-edge waits was active
+and did not prevent this fault.
+
+Kernel r62 backports `110d34e0792a`: physical-DMA overlays acquire runtime-PM
+links to LARB0/1, and the SMI driver restores and reads back MMU bypass before
+scanout. The translated-DMA path and first-frame underflow checks remain
+active. This is a kernel-only change; it preserves the source pin, running
+DT and initramfs. Current-build hardware acceptance is still required.
 
 After the three tests, `suspend_stats` reported success=3/fail=0 but
 failed_resume=2. These counters include test cycles and do not establish
