@@ -1,8 +1,8 @@
 # Documentation
 
 The [project README](../README.md) summarizes support and installation risk.
-Use these guides for procedures; use the dated hardware records to assess
-what has actually been tested. A successful build is not hardware validation.
+Use guides for procedures and subsystem references for current constraints
+and the measurements supporting them. A successful build is not hardware validation.
 
 ## Install and use
 
@@ -30,8 +30,8 @@ what has actually been tested. A successful build is not hardware validation.
 ## Hardware references
 
 [Hardware architecture and specification](hardware.md) explains the board,
-DT delivery, and A/B update model. Subsystem records retain measured results
-and their limits; their older versions are evidence, not the current source pins.
+DT delivery, and A/B update model. Subsystem references describe operating constraints and measured limits.
+Build revisions come from `scripts/versions.env`, not measurement dates.
 
 | Subsystem | Record |
 | --- | --- |
@@ -63,3 +63,13 @@ Kernel source lives in the public
 repository, branch `jagar`. The exact revision used here is in
 [`scripts/versions.env`](../scripts/versions.env). Private lab repositories,
 raw captures, credentials, and vendor downloads are not documentation inputs.
+
+## Keeping documentation focused
+
+Each page has one role: README for support and the quickstart, guides for
+procedures, subsystem references for constraints, verification for tested
+claims, and roadmap for open work. Link to the owning page instead of copying
+its detail. Remove obsolete procedures, migration diaries and completed tasks;
+Git preserves earlier versions. Keep dates and artifact versions when they
+limit the validity of a measurement. Do not turn software checks into claims
+of physical hardware acceptance.

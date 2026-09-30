@@ -16,32 +16,12 @@ yet observed by a human. The sleep targets stay **masked** — unmasking
 trades remote reachability for battery and is an owner decision, now an
 informed one.
 
-## The freezer saga (root-caused and fixed)
+## Freezer and USB safety
 
-s2idle used to abort with `Freezing user space processes failed after
-20.001 seconds (2 tasks refusing to freeze)`, twice per attempt,
-returning with the panel dark. Root-caused on 2026-08-16: the
-unfreezable tasks are not a suspend bug at all but `usb-signaller` stuck
-in `unlinkat(…, AT_REMOVEDIR)` on configfs (see
-[usb.md](usb.md)), plus whatever later touched configfs and inherited its
-D state — an uninterruptible task can never be frozen. Masking
-`usb-signaller` removes that particular offender, but the 2026-08-17
-teardown measurement shows the wedge is not specific to it: **any**
-`rmdir` of a gadget function object goes to D state, so the freezer would
-have kept failing for whoever ran one. Removing teardown entirely takes
-the blocker out for good.
-
-**The freezer is now fixed and measured.** `CONFIG_PM_DEBUG=y` (kernel
-pkgrel=22) brings `/sys/power/pm_test`, which stops the suspend sequence
-after freezing without touching devices — so the freezer can be exercised
-with the panel lit and no dark-screen recovery risk. Run on hardware
-2026-08-17 at kernel pkgrel=24 (`echo freezer > /sys/power/pm_test; echo
-freeze > /sys/power/state`): `Freezing user space processes completed
-(elapsed 0.003 seconds)`, `Freezing remaining freezable tasks completed
-(elapsed 0.002 seconds)`, held 5 s, `Restarting tasks: Done`,
-`PM: suspend exit`, return code 0. Against the previous failure — 20.001
-s timeout, twice per attempt — that is the configfs teardown removal
-doing exactly what it was predicted to do.
+Never tear down configfs gadget functions: removal can wedge tasks in D state
+and prevent freezing. Keep the gadget bound and let the kernel handle role
+changes. The freezer-only `pm_test` path has passed; this does not prove device
+resume or full suspend.
 
 ## What remains
 

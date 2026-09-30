@@ -55,9 +55,10 @@ checking its result.
 ## Documentation changes
 
 Keep procedures in the installation/build guides and link to them from the
-README. Keep dated measurements in the subsystem records; old evidence remains
-useful when its version and limitations are explicit. Put remaining acceptance
-work in the roadmap. Remove superseded instructions rather than appending a
+README. Keep current constraints and reproducible measurements in subsystem references,
+with dates/versions where needed to bound a claim. Git retains development
+history; remove superseded narratives and completed work. Put remaining
+acceptance work in the roadmap. Remove superseded instructions rather than appending a
 second, conflicting procedure. Check relative links and heading anchors after
 moving a section, and compare command examples against the implementation.
 

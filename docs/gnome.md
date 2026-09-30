@@ -1,202 +1,62 @@
-# The GNOME stack on this image — shims, pins, and why
+# GNOME desktop integration
 
-Deep-dive for the status-table row *Desktop / fresh install* in
-[README.md](../README.md#hardware-support-at-a-glance). The desktop is GNOME Mobile (Wayland,
-systemd) on the panel, hardware-accelerated via Panfrost. The stack is
-currently held together by an explicit, minimal set of shims and pins;
-this page is their inventory and removal conditions.
+The image runs GNOME Mobile on Wayland with systemd and Panfrost acceleration.
+A working development session does not prove fresh installation or the
+logout/login cycle; see [acceptance work](roadmap.md).
 
-## GNOME fresh-install convergence history (2026-08-19)
+## Provisioning and package compatibility
 
-A fresh install of this image could not start GNOME: the pmOS systemd
-repository is mid-way through its GNOME 50 migration, so the image mixes
-Alpine's gdm 48.0-r7 with pmOS's gnome-shell-mobile 999948.0-r4 and the
-pmOS accountsservice fork. An on-device session established the exact
-minimal fix set — GNOME up, clean reboot, zero failed units — and this
-repository now codifies all six pieces. Their delivery through a fresh
-published rootfs/install remains unverified.
-(Update 2026-08-29: the migration midpoint described here has moved on —
-a converged install runs the coherent GNOME-50 mobile set, gdm
-999950.2-r0 with gnome-session 999950.1-r0, with all three dc1
-extensions active. The "Device-local shims" section below is
-consequently historical on this unit; a fresh-rootfs confirmation is
-still the open check.)
+The installer supplies a libelogind-to-libsystemd compatibility symlink and
+musl search path through `apply_libelogind_shim`. Keep the redirect ahead of
+the real libelogind when required by GDM. Remove it only after validating the
+installed GDM's systemd session registration without it.
 
-1. **libelogind → libsystemd shim** (installer provisioning,
-   `apply_libelogind_shim`). Alpine's gdm links `libelogind.so.0`, and
-   real elogind 255.24's session parser fails on systemd cgroups — gdm
-   logs "Session never registered" and no session ever reaches the
-   display. `/usr/local/lib/libelogind.so.0` is a symlink to
-   `/lib/libsystemd.so.0`.
-2. **musl loader path** (same function).
-   `/etc/ld-musl-aarch64.path` lists `/usr/local/lib` before `/lib` and
-   `/usr/lib`; without it the dynamic linker's default search order
-   finds the real libelogind first and the shim never wins.
-3. **Wayland-only gdm** (installer provisioning, `apply_gdm_wayland_only`).
-   `WaylandEnable=true` + `XorgEnable=false` in `/etc/gdm/custom.conf`,
-   with the packaged autologin block preserved. Otherwise any session
-   failure falls back to an X11 greeter on an image that ships no Xorg
-   and no X11 session files — SIGABRT until start-limit-hit.
-4. **Accelerometer-driven orientation** (device package).
-   Static GNOME and Sway 180° transforms were removed: they overrode the
-   MC3416 orientation reported through `iio-sensor-proxy`. The device
-   package now also installs `gnome-settings-daemon-mobile`, which
-   supplies the desktop orientation consumer. A device polkit rule
-   permits the active GNOME session to claim the accelerometer; without
-   that, SensorProxy rejects the claim and reports orientation as
-   `undefined`. The panel's physical scanout correction is supplied by
-   the compositor's live sensor orientation, not a fixed monitor file.
-   The device orientation bridge runs as a persistent user service and
-   waits for SensorProxy and Mutter ownership during session startup instead
-   of recording a failed unit before the compositor appears. It reacquires
-   the Mutter proxy after a greeter/session compositor replacement, then
-   honors GNOME's orientation-lock setting so the Auto Rotate quick-setting
-   freezes the current transform without disabling the reliable sensor claim,
-   and on unlock immediately applies the current physical orientation. It
-   requests the compositor-owned rotation transition from the patched
-   Mutter-Mobile package, avoiding a visible hard snap during rotation.
-   Device r97 replaces the 250 ms polling loop with SensorProxy property,
-   Mutter monitor/owner, and orientation-lock notifications. Bursts coalesce
-   into one pending update, and only failures schedule a timed retry. Live
-   verification on 2026-09-12 reduced stationary-session `GetCurrentState`
-   traffic from 20 calls in five seconds to zero; lock/unlock caused exactly
-   one fresh query. Both session and greeter helpers were restarted
-   successfully. This removes recurring compositor work and the polling
-   delay; it is not a measured FPS or physical-rotation result.
-   See [hw/sensors.md](hw/sensors.md) for the sensor side.
-   Device r99 also gates the bridge on GNOME's `SessionIsActive` and
-   Mutter's `PowerSaveMode == 0`. Direct `ApplyMonitorsConfig` calls bypass
-   Mutter's native screen-off orientation inhibitor. Each view rebuild
-   retains the old onscreen buffers until a modeset is posted; rotations
-   in an inactive greeter or with the panel blanked can therefore accumulate
-   scanout allocations in the shared 256 MiB CMA pool. Exhaustion prevents
-   waking the display even though power-key events still arrive. The bridge
-   now waits for session activation/display wake and applies only the latest
-   sensor orientation. It subscribes to both visibility properties so this
-   catch-up does not depend on another physical rotation or a polling timer.
-5. **accountsservice pin** (rootfs build, `scripts/build-rootfs.sh`). The
-   pmOS fork `accountsservice-999923.13.9` ships a typelib referencing
-   `libaccountsservice.so.0` while the installed gdm/gnome-shell link
-   `.so.1`, so the shell's JS init throws. The build writes
-   `accountsservice<999` + `libaccountsservice<999` into `/etc/apk/world`,
-   which selects Alpine edge (26.27.3, the hardware-verified version) and
-   — because world constraints are sticky — survives on-device
-   `apk upgrade`. Temporary until the fork's typelib matches its library
-   soname.
-6. **Modem-less base policy** (device package). The generic GNOME image still
-   installs ModemManager and a WWAN NetworkManager policy, but the DC-1 has no
-   cellular modem. ModemManager therefore stays dormant, avoiding activation
-   of ABI-mismatched MediaTek plugins. An administrator attaching an external
-   modem can opt in with `touch /var/lib/dc1/enable-modemmanager` followed by
-   `systemctl start ModemManager`. The device's same-named NetworkManager
-   override preserves the WWAN route-table policy while removing the one key
-   unsupported by the installed NetworkManager.
+`apply_gdm_wayland_only` sets `WaylandEnable=true` and `XorgEnable=false`
+while preserving autologin configuration. The image has no Xorg fallback.
 
-The shims themselves are hardware-verified; their delivery through the
-installer and the rootfs build has not yet been exercised end-to-end on a
-device (tracked in [roadmap.md](roadmap.md) tier 2). Two known risks:
+The rootfs builder constrains `accountsservice<999` and
+`libaccountsservice<999` in `/etc/apk/world` to avoid the postmarketOS fork's
+library/typelib mismatch. Remove the constraints only after checking the
+library soname, typelib, GDM and shell together.
 
-- the gdm greeter path (the `gdm` user's own Wayland session) was
-  observed once aborting with "no session desktop files installed" during
-  the older migration state. Logout → greeter OSK → login, including shell
-  extension and orientation-bridge recovery, is still an explicit owed
-  hardware session on the converged GNOME-50 stack (the greeter OSK default
-  shipped in device r68 addresses the untypeable half; see
-  [hw/input.md](hw/input.md));
-- screen orientation after removing the static transforms still needs a
-  physical tilt test on hardware (runbook in [roadmap.md](roadmap.md)).
+ModemManager stays dormant because the tablet has no cellular modem. External
+modem users can opt in with `/var/lib/dc1/enable-modemmanager`. The device's
+NetworkManager override preserves WWAN routing policy while omitting an
+unsupported key.
 
-## Former device-local shims on the development unit (not in the image)
+## Orientation and session lifecycle
 
-Around the packaged set, the development device previously carried local shims
-(restored 2026-08-19 after a day-long outage), the decisive one being the
-libelogind redirect above: a 48-era gjs/mozjs/ICU shadow stack under
-`/usr/local/lib` (edge's gjs 1.88 segfaults the 948 mobile shell), a
-pinned gnome-session 48, a hand-supplied `org.gnome.Shell.target` user
-unit, Wayland-only gdm (no Xorg exists to fall back to), a gdm drop-in
-that waits for a DRM connector (gdm races mediatek-drm at boot; the
-card0/card1 order flips between boots and mutter's builtin-panel
-heuristic copes), and display-manager restart caps (a 1s-restart session
-crash-loop once starved the whole machine). Those local shims came off when
-the unit converged on the coherent GNOME-50 mobile set recorded above; the
-mid-migration versions remain here only as failure-history context.
+The device package supplies `gnome-settings-daemon-mobile`, a SensorProxy
+polkit rule and a persistent orientation bridge. The bridge:
 
-## Version-skew fixes shipped in the device package
+- reacts to sensor, Mutter and orientation-lock notifications;
+- reacquires Mutter after greeter/session replacement;
+- coalesces updates and retries failures;
+- honors rotation lock and applies the latest pose after unlocking;
+- applies transforms only while the GNOME session is active and the display
+  is awake, then catches up on activation/wake.
 
-- **Power menu regression (device r67, 2026-08-24):** gnome-session
-  999950.1 changed `CanShutdown` from boolean to a uint32 enum and the
-  48-based shell's proxy rejects the reply, emptying the power menu. The
-  `dc1-session-compat@denv.it` extension patches that one method with a
-  signature-agnostic GDBus call. Drop when gnome-shell-mobile rebases
-  onto GNOME ≥ 50. Details in [hw/input.md](hw/input.md).
-- **Greeter OSK (device r68, 2026-08-25):** `screen-keyboard-enabled=true`
-  via the gschema override so a post-logout greeter password prompt is
-  typeable on a tablet with no physical keyboard. Details in
-  [hw/input.md](hw/input.md).
-- **GPU frequency panel (device r82, default r83):** `dc1-gpu-settings`
-  is a libadwaita Preferences window in the Settings category so the
-  Mali-G57 min/max floor can be changed without sysfs. Default Super
-  smooth = 812 MHz; 700 MHz remains a Smooth preset. The helper persists
-  `/var/lib/dc1/gpu-freq.conf`. Details in
-  [hw/display.md](hw/display.md).
-  Device r97 reads only the current-frequency sysfs value in a background
-  worker for the half-second label refresh. The previous full-helper call
-  blocked the UI thread for about 40 ms median in the measured session.
-  Reads cannot overlap, stale results are discarded after a new selection,
-  and closing the window removes the poll. Full helper reads still populate
-  the controls at startup and after writes; frequency changes keep the
-  existing helper/polkit path. Five offline tests and a live GTK smoke test
-  verified that periodic label updates no longer launch the helper.
-- **Charging profile panel (device r91, owner controls r92):**
-  `dc1-charging-settings` is a libadwaita Preferences window in the Settings
-  category. It keeps
-  the negotiated PD ceiling separate from actual pack current, lists the
-  source's fixed/PPS offers, shows the MT6375 input/CC/CV limits, and calls
-  out a 5 V fallback with a reconnect instruction. It also selects the live
-  2.00/3.15 A charge-current target and exposes authenticated switches for
-  charging mode and automatic updates. Contract selection stays in kernel
-  TCPM, which already chooses the highest-power compatible PDO.
-  Details in [hw/power.md](hw/power.md).
-- **120 Hz compositing (device r84):** the `1200x1600@120` mode's kernel
-  vblank is 118.4 Hz with 0.31 ms of blanking, and KMS cannot rotate 90°,
-  so landscape is an extra GPU blit. Window drag misses that deadline
-  (mutter, not the CRTC; tiny-fast ~94 Hz, large-fast ~78 Hz). Schema
-  default enables mutter `kms-modifiers` for tiled Panfrost intermediates.
-  60 Hz stays preferred. Details in [hw/display.md](hw/display.md).
-- **PDF scrolling (device r95):** Chromium's built-in PDF renderer can consume
-  a full CPU core while scrolling on the DC-1. Chromium therefore downloads
-  PDFs for the default native Papers viewer instead of rendering them in a web
-  tab. This does not change the browser used for ordinary web pages.
-- **Lock screen behind the on-screen keyboard (device r101, 2026-09-14):** with
-  the OSK up on the lock screen, the unlock sheet vanished behind it entirely
-  — avatar, user name and password entry alike — exactly while the user was
-  typing into it. gnome-shell never lifts that sheet: `keyboard.js` holds no
-  unlock/`screenShield` reference at all, and `unlockDialog.js` only asks
-  whether a click landed inside the keyboard box. gnome-shell-mobile instead
-  expects the in-sheet PIN pad (`_pinUnlockKeyboard`, a child of
-  `_promptBox` below `_authPrompt`) to occupy that space, and hides the pad
-  whenever `Main.layoutManager.isPhone` is false, which drops the sheet onto
-  the panel's bottom edge. The DC-1 can never satisfy `_checkIsPhone()` — it
-  wants <500×<1000 logical px and 1200×1600 at the 1.25 scale is 960×1280 —
-  so the pad is always hidden and the sheet is always bottom-flush.
-  `dc1-safe-area` pads the lock dialog's main box by the OSK height while the
-  keyboard is visible. `keyboardBox` cannot supply that height
-  (`MonitorConstraint({primary: true})` makes it monitor-sized, not
-  keyboard-sized); `Main.keyboard.keyboardActor` can. The lift is padding on
-  the dialog's `St.BoxLayout` rather than a margin on the sheet, because
-  `Shell.Stack`'s custom `vfunc_allocate` makes no promise about child
-  margins while padding on a `St.BoxLayout` is what the same extension
-  already does on hardware. Device r101's first attempt (2026-09-14) resolved
-  the lift target as the dialog's first child, but gnome-shell-mobile's
-  unlock dialog adds `_backgroundGroup` first and the clock/prompt box later,
-  so r101 padded the background and the password field stayed under the
-  keys; r102 instead pads the parent of the dialog's `_stack`
-  (`_stack.get_parent()`), which contains the password layout in both
-  sessions tested. **Not yet hardware-verified:** the lift's geometry was
-  measured in the compositor framebuffer (compositor captures at 17:12/17:24
-  show the sheet at y=1224..1600 with the password entry at y=1531..1576, and
-  the 17:26 capture with the keyboard up shows it fully covered from y≈1160
-  down), but GNOME cannot load a new extension into a running unlock-dialog
-  session, so the fix itself owes an on-glass check after the next release
-  lands. `scripts/tests/test_dc1_safe_area_locksheet.js` pins the resolver
-  against the background-first dialog shape and fails on the r101 resolver.
+Keep that last gate: monitor reconfiguration while blanked can retain scanout
+buffers and exhaust the shared CMA pool. Do not restore static GNOME/Sway
+transforms that override sensor orientation. See [sensors](hw/sensors.md) for
+mounting and physical-pose acceptance.
+
+## Device controls and shell integration
+
+| Component | Purpose / constraint |
+| --- | --- |
+| `dc1-safe-area` | Insets UI from the bezel and rounded corners; lifts the unlock sheet above the OSK by padding the parent of `_stack`, not the background actor. Physical lock-screen acceptance remains pending. |
+| `dc1-session-compat` | Reads the shutdown capability through a signature-tolerant GDBus call. Recheck whether the installed shell/session pair still needs it before removal. |
+| Greeter schema override | Enables the on-screen keyboard so logout does not require a physical keyboard. |
+| GPU settings | Uses the helper/polkit path for min/max changes; periodic current-frequency reads run in a background worker. See [display](hw/display.md). |
+| Charging Profile | Shows PD and charger state, selects charge current, and controls charging mode/automatic updates. Contract selection remains in kernel TCPM. See [power](power.md). |
+| Mutter `kms-modifiers` | Allows tiled Panfrost intermediates. 60 Hz remains preferred; landscape requires a GPU blit. |
+| Native PDF viewer | Chromium downloads PDFs for Papers to avoid costly browser rendering. |
+
+## Acceptance
+
+Verify a fresh published-rootfs install through provisioning, first login and
+first update. Separately test logout to the Wayland greeter, OSK login,
+extension recovery, rotation in all four poses, and lock-screen typing with
+the keyboard visible. Use a working recovery channel before ending the owner
+session. Record the tested artifact versions in [verification](verification.md).

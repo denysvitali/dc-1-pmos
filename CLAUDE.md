@@ -1,639 +1,209 @@
-# dc-1-pmos
+# Working on dc-1-pmos
 
-Public repository for running postmarketOS / Alpine Linux on the Daylight DC-1
-(`jagar`, MediaTek MT8781/MT6789). It has two coupled purposes:
+This public repository builds and documents postmarketOS / Alpine Linux for
+Daylight DC-1 (`jagar`, MediaTek MT8781/MT6789). The supported installation
+boots `installer-boot.img` from `boot_a`, provisions an account on-device,
+then writes `userdata` and the system boot image. The USB host installer is
+the fallback. Read [docs/README.md](docs/README.md) for the documentation map.
 
-1. Document a safe, reproducible installation and operating path.
-2. Build the kernel package, device package, desktop compositor package,
-   root filesystem, boot images, and installer from pinned source on public
-   GitHub runners.
+`AGENTS.md` is a tracked symlink to this file. Edit `CLAUDE.md`, preserve the
+symlink, and keep these instructions about current behavior and constraints.
+Implementation details belong in the relevant guide, not a running diary here.
 
-The supported end-user flow is: flash `installer-boot.img` to `boot_a`, boot
-the installation-mode initramfs, provide an account and optional Wi-Fi
-credentials, then let the installer write `userdata` and the real boot image.
-The on-device path is primary; `installer/host/dc1-install.sh` is the USB
-network fallback. Build artifacts contain no user-provided credentials.
+## Start and finish a task
 
-## Session and machine safety
+1. Check `hostname` and `git status`. Preserve existing worktree changes.
+2. Read the relevant guide and implementation before editing. Work directly
+   on `main`; keep changes focused and stage only the work you reviewed.
+3. Run the checks appropriate to the change. Review the complete staged diff
+   and `git diff --cached --check`; commit and push `main` when done.
+4. After pushing, inspect the actual GitHub Actions run. Report its observed
+   state; a green build does not prove a hardware boot.
 
-Start by checking `hostname` and `git status`. If the hostname is `dc1`, this
-is the DC-1 itself, not a disposable workstation or CI runner:
+Never use `reset --hard`, `checkout --`, or other destructive Git commands
+without explicit approval. Keep generated caches, firmware, APKs, images and
+raw device captures out of Git. Check status after builds.
 
-- The system is Alpine/postmarketOS on native aarch64; builds do not need qemu.
-- There is no system-wide `ssh` client. The user-mode client is
-  `/home/dc1/.local/alpine-root/usr/bin/ssh`; GitHub access uses the per-repo
-  aliases in `~/.ssh/config`: `github-dc1-pmos`, `github-dc1-linux`, and
-  `github-dc1-linux-kernel`.
-- `sudo` needs an interactive password. Do not design a command that depends
-  on unattended sudo unless the caller has explicitly arranged it.
-- Do not reboot, kill services, fill the filesystem, or manipulate partitions
-  casually. Losing the running kernel can remove the only recovery channel.
+If hostname is `dc1`, you are on the live tablet:
 
-Preserve existing worktree changes. This repository's normal working agreement
-is to work directly on `main`, keep diffs focused, commit, and push `main` when
-the requested work is complete. Never use destructive Git commands such as
-`reset --hard` or `checkout --` without explicit approval.
+- Alpine/postmarketOS is native aarch64; no qemu is needed.
+- Check `command -v ssh` rather than assuming a historical user-root path.
+  Git uses the `github-dc1-pmos`, `github-dc1-linux`, and
+  `github-dc1-linux-kernel` aliases in `~/.ssh/config`.
+- `sudo` needs an interactive password; do not assume unattended access.
+- Reboots, service shutdowns, partition writes and large builds can remove
+  the only recovery channel. Do not perform them casually.
 
-`AGENTS.md` is a tracked symlink to this file. Edit `CLAUDE.md`; do not replace
-the symlink with a second independent instruction file.
+## Public data and trust
 
-## Public-repository rules
-
-Everything committed here is world-readable. Never commit or publish:
-
-- Wi-Fi credentials, `authorized_keys`, private keys, password hashes,
-  device serials, factory partition dumps, recovery logs containing internal
-  state, or proprietary Android blobs.
-- A same-named stock Android Wi-Fi/Bluetooth blob. MT7902 firmware and
-  `regulatory.db` must come from upstream `linux-firmware` and
-  `wireless-regdb`, fetched at build time and checked by exact size and
-  SHA-256. Stock files can pass the old firmware handshake and still fail
-  mainline mt76 UNI commands.
-
-The committed `boot/boot-signature.bin` is an explicit, vendor-derived 4096
-byte AVB0 boot-signature page with recorded provenance; it is not permission to
-add other vendor partitions or blobs. Preserve its hash and provenance if the
-boot-image code changes.
-
-Public development is scoped to `denysvitali/dc-1-pmos` and
+Work is scoped to `denysvitali/dc-1-pmos` and
 `denysvitali/dc-1-linux-kernel`. Private repositories and local lab material
-are out of scope. Do not import private documentation, hardware evidence,
-recovery logs, handoff notes, or internal state into either public repository.
+are not inputs to public changes.
 
-The CI-only `DC1_APK_PRIVATE_KEY` signs the published `APKINDEX.tar.gz`. It
-must exist only in the GitHub secret/environment and temporary files created by
-the signing script. The public key is intentionally committed at
-`pmaports/device/testing/device-daylight-jagar/dc1-apk.rsa.pub`.
+Never publish credentials, `authorized_keys`, private keys, password hashes,
+device serials, factory dumps, recovery logs containing internal state, or
+proprietary Android blobs. Ignored files are not a security boundary.
 
-## Pinned sources and package overlays
+MT7902 firmware and `regulatory.db` come from upstream `linux-firmware` and
+`wireless-regdb` at build time, checked by exact size and SHA-256. A same-named
+stock blob is not a substitute. Preserve the hash and provenance of the
+explicit exception, `boot/boot-signature.bin` (4096-byte vendor-derived AVB0
+page); it does not authorize adding other vendor data.
 
-`scripts/versions.env` is the source manifest. It pins `PMAPORTS_COMMIT`,
-`PMBOOTSTRAP_COMMIT`, `KERNEL_COMMIT`, and `SOURCE_DATE_EPOCH`. Do not replace
-these with floating branches when reproducing a build.
+`DC1_APK_PRIVATE_KEY` belongs only in CI secrets and temporary signing files.
+The committed `dc1-apk.rsa.pub` is public. Repository repair must refuse to
+replace a differing existing key or repository list silently.
 
-- Kernel source: `https://github.com/denysvitali/dc-1-linux-kernel`, branch
-  `jagar`, at `KERNEL_COMMIT`.
-- pmaports and pmbootstrap: upstream postmarketOS GitLab checkouts at their
-  pinned commits.
-- Local pmaports overlay: three recipes currently exist under
-  `pmaports/device/testing/`:
-  `device-daylight-jagar`,
-  `linux-postmarketos-mediatek-mt6789`, and `mutter-mobile`.
-- `scripts/prepare.sh` copies the first two into upstream
-  `device/testing/`, but places `mutter-mobile` in the upstream
-  `extra-repos/systemd/mutter-mobile` location expected by pmbootstrap. Do
-  not assume all three are ordinary device packages.
+## Sources, packages and builds
 
-The packages should remain conventional and upstreamable. Keep device-specific
-installation policy in `installer/` or the build scripts, not in an APKBUILD
-merely because it is convenient. When a package build recipe or its effective
-inputs change, bump that recipe's `pkgrel`; pmbootstrap/CI deliberately reuses
-an unchanged `pkgver-pkgrel`, and the cached package can otherwise be silently
-reused. `scripts/verify.sh` checks the overlay, checksums, pins, and safety
-properties.
+`scripts/versions.env` pins pmaports, pmbootstrap, kernel and
+`SOURCE_DATE_EPOCH`. Reproduce those commits, never floating branches. Kernel
+source is the public kernel repository's `jagar` branch at `KERNEL_COMMIT`.
 
-The kernel recipe also emits `linux-postmarketos-mediatek-mt6789-modules`.
-The main APK depends on that exact version; the subpackage owns the whole
-`/lib/modules` tree and kmod indexes. `usb-host.config` pins optional dock
-drivers to `=m`, with controller/gadget/basic HID/storage built in. Preserve
-both y and m checks after Kconfig. Export, installed-version parity, signing
-and local-update rollback must cover all four APKs. The installer stages only
-its explicit legacy gadget-module allowlist, never the whole module tree.
-See `docs/usb-docking.md` for the acceptance boundary.
+Three overlays produce four APKs:
 
-The kernel compiler boundary is deliberate and must not drift without a
-measured reason:
+| Recipe under `pmaports/device/testing/` | Staging / output |
+| --- | --- |
+| `device-daylight-jagar` | Upstream `device/testing/`; device APK |
+| `linux-postmarketos-mediatek-mt6789` | Upstream `device/testing/`; kernel and modules APKs |
+| `mutter-mobile` | Upstream `extra-repos/systemd/mutter-mobile`; compositor APK |
 
-- Kernel C and host LLVM tools use clang/LLVM 20 with
-  `LLVM=/usr/lib/llvm20/bin/`, `LD=/usr/bin/ld.lld`, and
-  `HOSTLD=/usr/bin/ld.lld`.
-- Kernel and host compiler commands route explicitly through
-  `CC="ccache clang-20"` and `HOSTCC="ccache clang-20"`; a PATH-only ccache
-  setup misses clang on Alpine.
-- The DTB pass uses `HOSTCC=gcc`, serially, because the pinned source's
-  `fdtoverlay` is unreliable with clang 20. This does not change the kernel
-  compiler boundary.
-- The APKBUILD sets `CCACHE_DIR=/home/pmos/.ccache` and fails if ccache sees
-  zero compiles. Keep that positive control.
+- Bump a recipe's `pkgrel` whenever its recipe or effective inputs change.
+  CI reuses unchanged versions; an existing published APK filename must
+  retain identical bytes.
+- Keep recipes conventional. Use POSIX `sh` unless a script requires another
+  shell; retain `set -eu` and fail-closed build validation. Installation policy belongs in `installer/`
+  or build scripts.
+- The modules APK owns all of `/lib/modules`, including kmod indexes; the
+  kernel APK depends on its exact version. Export, signing, installed-version
+  parity and rollback cover all four APKs.
+- Keep `usb-host.config` optional dock drivers modular and essential
+  controller/gadget/HID/storage drivers built in. Check both `y` and `m`
+  after Kconfig. The installer stages only its gadget-module allowlist.
+- Kernel C and host tools use LLVM 20: `LLVM=/usr/lib/llvm20/bin/`,
+  `LD=/usr/bin/ld.lld`, `HOSTLD=/usr/bin/ld.lld`,
+  `CC="ccache clang-20"`, `HOSTCC="ccache clang-20"`. DTB generation is
+  serial with `HOSTCC=gcc`. Keep `CCACHE_DIR=/home/pmos/.ccache` and the
+  positive check that ccache recorded compiles.
+- Preserve the built-in settings from `sdcard.config` and `latency.config`,
+  especially `CONFIG_HIGH_RES_TIMERS=y`. Ship the resolved kernel config.
 
-## Hardware and boot invariants
+The rootfs builder is non-deploying: `pmbootstrap install --no-image
+--no-sshd --no-firewall --no-recommends`. Builders write regular files;
+never use fastboot, SSH/SCP or block-device targets in the build path.
 
-These facts cost boot cycles to establish. Treat them as load-bearing unless a
-new hardware measurement and documentation update supersede them.
+See [building](docs/building.md) for commands and artifact inventory,
+[releases](docs/releases.md) for publication, and
+[kernel development](docs/kernel-development.md) for local builds and rollback.
+Local kernel updates preserve the running stub, DTB and ramdisk; DT/initramfs
+changes require the full image workflow. Root-only rollback records stay
+outside Git in `/var/lib/dc1/local-kernel`.
 
-### Partitions, slots, and authentication
+## Boot and partition boundaries
 
-- The device boots through MediaTek LK with A/B slots and exposes fastboot
-  from LK. There is no general recovery channel without a running kernel.
-  The authenticated preloader does not accept an arbitrary download agent for
-  storage writes. A vendor-signed agent and auth blob exist only for the
-  narrowly documented `misc` BCB recovery path and must never be committed.
-- Normal installation may write `boot_a`, `userdata`, and the required A/B
-  boot-control data in `misc`. Never tell users to write `preloader`, `lk`,
-  `dtbo`, `vendor_boot`, or UFS boot LUNs in the normal path.
-- `lk` and `dtbo` are authenticated. `boot` and `vendor_boot` are not, but an
-  unsigned `dtbo` can kill a slot before Linux starts. Do not experiment with
-  signed partitions on hardware.
-- The persistent root is an ext4 filesystem labelled exactly `jagar-root` on
-  `userdata`. The system initramfs finds it by label and otherwise enters the
-  rescue path. `deviceinfo_flash_method="none"` is intentional: generic
-  `pmbootstrap flasher` deployment is not valid for this device.
+- Initial installation writes only `boot_a`, `userdata`, and required A/B
+  boot-control data in `misc`. Installed updates use the inactive boot slot.
+  Never introduce normal writes to `preloader`, `lk`, `dtbo`, `vendor_boot`
+  or UFS boot LUNs. `lk` and `dtbo` are authenticated.
+- Persistent root is ext4 labelled exactly `jagar-root` on `userdata`.
+  Missing root enters rescue. `deviceinfo_flash_method="none"` is intentional;
+  generic pmbootstrap flashing is not supported.
+- LK supplies its signed DT plus signed overlay, not `vendor_boot`'s DTB.
+  Both boot images must use `boot/dtbswap` to deliver our mainline DT.
+  Require `KERNEL_DTB`, assert both payloads, and preserve the stub's fallback
+  to LK's original FDT. No plain boot-image or vendor_boot deployment path.
+- Boot images require header v4, gzip kernel, legacy-frame LZ4 ramdisk and a
+  nonzero 4096-byte AVB0 signature page. `boot/repack-boot.sh` owns packing
+  invariants; `boot/mkboot` verifies byte-identical round trips.
+- The kernel APK, rootfs kernel and both boot images must contain the same
+  kernel. Recheck this and final manifests when changing image assembly.
+- LK constructs the command line; the header cmdline is not a reliable
+  diagnostic or slot marker. Use the LK ring and persisted failure logs as
+  described in [debugging](docs/debugging.md). Do not rely on pstore.
 
-### Device-tree delivery
+## Hardware constraints
 
-The kernel DT does **not** come from `vendor_boot`. LK constructs the runtime
-tree from its signed `lk_main_dtb` inside `lk`, merged with signed `dtbo`.
-The separate DTB in `vendor_boot` never reaches Linux; writing
-`vendor_boot` is a no-op for DT delivery.
+Read the relevant [subsystem reference](docs/README.md#hardware-references)
+before changing drivers, DTS, power policy or desktop integration.
 
-The hardware-proven mainline route is `boot/dtbswap`:
+| Area | Requirements to preserve |
+| --- | --- |
+| USB | `dr_mode = "otg"`; keep `g1` bound in host mode. Never remove configfs gadget objects to switch roles. MT6375 TCPM owns VBUS; retain jagar's host-only `mediatek,force-vbus-valid` override. PIO-only MUSB must not advertise `HCD_DMA`. Source PDO stays 5 V/500 mA pending electrical/thermal validation. |
+| Display | Logs and frame IRQs do not prove lit glass. Verify TE GPIO83 or DCS `0x0a` (`0x9c`); a timed-out DCS read can prevent re-enable until reboot. Clear `DSI_SW_CTL_EN` on all five lanes, including D3 at `0x0544`. Keep full panel timings and the 60 Hz default. |
+| Desktop geometry | Keep at least 12 device px at edges and about 40 px in corners. Lock-sheet OSK padding targets the parent of the unlock dialog's `_stack`, never its background-first child. |
+| GPU | `dc1-gpu-freq` is the sole min/max writer; keep thermal cooling and autosuspend. Default floor is 812 MHz with 40 ms poll. Measure continuous and idle-gap p95/max using `tools/performance/`; throughput alone is not smoothness proof. |
+| Battery | BQ78Z100 stays disabled until live ACK/protocol measurement. Keep calibrated `mt6358-fg` fallback and single-use clean-shutdown anchor (maximum ten minutes old). |
+| Charging | Keep RT9471 disabled and active-low GPIO151 CE high until routing, current sharing, thermals and pack-temperature enforcement are established. Do not enable a second charger blindly. |
+| Sensors | AP and SCP must not own the same pins. MC3416 uses AP i2c6; the unidentified i2c1 `0x49` part stays unbound. If DTS gains panel `rotation = <180>`, remove the matching accelerometer mount-matrix compensation. |
+| Audio | Keep `dc1-audio` and UCM mixer sequences in sync. Speakers use LoudSPK headphone routes and `Ext_Speaker_Amp`; DMIC capture uses UL1/device 9, `Mic Type Mux=DMIC`, `MTKAIF_DMIC=Off`. No headset/analog-mic paths. |
+| Audio services | Keep `55-dc1-audio.conf` and `pipewire-pulse`. Recheck the WirePlumber nil-name guard at upgrades; retain the idempotent fix/trigger rather than forking a versioned ALSA script. |
+| Suspend | Keep sleep opt-in until current-build display resume and a wake path are proven. A watchdog is not a timed sleep recovery path. |
 
-1. LK starts the kernel slot with its original FDT address in arm64 `x0`.
-2. The freestanding stub in `boot/dtbswap` receives that handoff and jumps to
-   `[stub | our DTB | real kernel Image]` with our DTB instead.
-3. Its fail-safe paths return LK's original FDT, so a bad swap should fall
-   back to stock DT behavior.
+Preserve script/event support (`BINFMT_SCRIPT`, `EPOLL`, `SIGNALFD`, `TIMERFD`,
+`EVENTFD`), built-in FUSE, Landlock/BPF LSM dependencies, securityfs, kernel
+BTF, uinput/uhid, and Bluetooth RFCOMM/BNEP. Keep unprivileged BPF disabled
+and the LocalSearch musl `LD_LIBRARY_PATH` drop-in for confined extractors.
 
-Both `installer-boot.img` and `jagar-boot.img` are always built with this
-payload — `installer/build.sh` requires `KERNEL_DTB` whenever it builds boot
-images, there is no plain/stock-DT image path, and CI plus the host
-installer assert the payload on both images. Installation mode
-originally shipped on the stock DT, but hardware evidence (issue #1,
-2026-08-24) showed a unit where the stock-DT installer black-screens with no
-USB gadget while a dtbswap installer works; the initramfs GCE gate accepts
-both DT node names (`10228000.gce` stock, `10228000.mailbox` mainline), so
-the installer image carries the mainline tree too. The normal install still
-flashes only `jagar-boot.img` after the rootfs is written. Nothing ships or
-writes `jagar-vendor_boot` images: LK
-ignores vendor_boot's DTB (see the invariant above), so a vendor_boot image
-cannot deliver a device tree, and every flash path structurally refuses a
-plain (non-dtbswap) `jagar-boot.img`.
+### Headless charging and updates
 
-Keep boot-image documentation aligned with `boot/dtbswap/README.md` and
-`docs/installation.md`. Do not introduce a vendor_boot deployment path.
+- Charging mode requires VBUS, completed first-boot provisioning, no opt-out,
+  and either authoritative charger boot reason or a fresh clean-poweroff flag.
+- Read the last `BOOT_REASON` from the fresh LK ring only when its handoff
+  tail marker is present. Reason 1 votes charging; reasons 3/4/5 force normal
+  boot. Other/unreadable reasons use the flag fallback. Do not modify dtbswap
+  to carry this information.
+- Generators never consume state. Consume the flag once per boot; expire it
+  after seven days. Reboots must not leave a clean-poweroff flag.
+- Keep the dedicated charging-mode power-key reader: global logind policy
+  ignores this key. Preserve `/var/lib/dc1/no-charging-mode` opt-out.
+- Network loss never triggers an automatic reboot. Keep the hardware watchdog
+  and rescue lease, and retirement of legacy reachability watchdogs.
+- Automatic updates and parity checks cover all four overlays. Respect
+  `/var/lib/dc1/no-auto-update`. Upstream versions must strictly lose to ours;
+  bump `pkgrel` rather than bypassing the comparison gates.
 
-### USB-C data role
+## CI and release contract
 
-The single Type-C port is power-role dual and data-role dual, but tries sink
-first: a PC keeps the installer/installed ACM+ECM gadget path, while a
-charging hub can DR_SWAP MUSB to host and TCPM can request the MT6375 OTG
-source. The source PDO is intentionally limited to 5 V/500 mA; functional
-source-role operation was verified on 2026-09-18, while external VBUS-current
-margin and thermal validation remain pending. The shared DTB must keep `dr_mode = "otg"`; reverting it to
-`peripheral` removes the role switch. Keep the `g1` gadget driver bound in
-host mode — the kernel disconnects D+ while hosting and restores it on return
-to device mode. Never unbind it or remove configfs gadget objects to change
-roles; `musb_gadget_stop()` kills the host engine and configfs removal can
-wedge in D state.
+`.github/workflows/build.yml` runs on every push to `main`, PR and dispatch,
+without path filters. Verification is on x86 Ubuntu; builds are native arm64.
+Preserve package/ccache reuse, cache ownership, local APK public-key restoration
+into `config_apk_keys`, and final checksums.
 
-MT6375 TCPM is the VBUS authority for both the charging-hub sink-host case and
-the conservative source-role path. The
-T-PHY's independent UTMI VBUS comparator remains at SessEnd even with a valid
-PD contract, which makes MUSB raise `VBUS_ERROR` and prevents enumeration.
-Keep jagar's opt-in `mediatek,force-vbus-valid` T-PHY property: it overrides
-VBUSVALID/AVALID only in host mode and clears the override in device/OTG mode.
-The jagar kernel is built with `CONFIG_MUSB_PIO_ONLY=y`; the MUSB host driver
-must not advertise `HCD_DMA` in that configuration. The device has 8 GiB of
-RAM, the MUSB child has a 32-bit DMA mask, and LK supplies
-`swiotlb=noforce`. A false DMA capability makes usbcore needlessly map hub
-status buffers and can reject the hub interrupt URB with `-EAGAIN`, leaving
-later port changes invisible even though the initial hub scan succeeds.
-The live register A/B on 2026-08-28 made the five-port USB 2.0 hub enumerate
-at 480 Mbit/s while the Type-C power role stayed sink. That Lenovo 40B0
-Thunderbolt dock exposed only its internal MCU and Billboard devices; its
-otherwise powered downstream ports never asserted connection, including after
-port-power and full-hub resets. Do not treat that session as keyboard/mouse
-proof; close downstream enumeration with an ordinary USB 2.0-capable charging
-hub.
+PRs receive artifacts without the APK index and never receive signing secrets.
+Publishing must fail without `DC1_APK_PRIVATE_KEY`. Retain immutable numbered
+builds, prevent older runs moving `latest` backwards, and embed release tags
+in installer images. See [releases](docs/releases.md) for dispatch/rerun rules.
 
-### Boot image shape and diagnostics
+Export provenance is rootfs-only (`flash_method=none`, no boot image).
+Release assembly records `flash_method=dc1-installer`, boot images, complete
+installer deployability and the full commit. Keep `hardware_verified=false`
+until the exact published artifact set completes hardware acceptance.
 
-- Android boot header v4, gzip kernel, legacy-frame LZ4 ramdisk, and a
-  non-zero 4096-byte AVB0 signature page are required. `boot/repack-boot.sh`
-  owns the pipeline invariants; `boot/mkboot` is the Go parser/packer and
-  byte-identical verifier.
-- LK builds the complete kernel command line itself. The boot-image header's
-  `cmdline` field is not a reliable slot marker or diagnostic channel.
-- LK's current-boot log is readable because `CONFIG_STRICT_DEVMEM` is off:
-
-      dd if=/dev/mem bs=4096 skip=$((0x7ffbf000/4096)) count=64
-
-  This ring is reset before LK falls back, so it normally contains the slot
-  that succeeded. A failed slot's persisted log is in `expdb`. Prefer these
-  logs over inferring failure from silence; pstore is not a reliable channel
-  for this port.
-
-### Kernel configuration and hardware notes
-
-Keep `CONFIG_BINFMT_SCRIPT`, `CONFIG_EPOLL`, `CONFIG_SIGNALFD`,
-`CONFIG_TIMERFD`, and `CONFIG_EVENTFD`; the udhcpc hook, installer, and BlueZ
-depend on them and failures can be silent.
-Keep built-in FUSE, Landlock plus the BPF LSM dependency chain (including
-securityfs and kernel BTF), uinput/uhid, and Bluetooth RFCOMM/BNEP. The GNOME
-document portal, Tracker sandbox, systemd namespace confinement, remote-input
-path, and BlueZ profiles otherwise fail independently after an apparently
-successful boot. Alpine's usr-merged musl loader also needs the packaged
-LocalSearch `LD_LIBRARY_PATH` drop-in: removing it makes every Landlock-confined
-extractor exit 127. Unprivileged BPF must remain disabled by default.
-
-The pack BQ78Z100 at i2c7 `0x55` does not ACK while the RT9471 at `0x53` on
-the same bus does. Keep its production DTS node disabled: binding bq27xxx
-only creates a phantom power supply, `-ENXIO` log spam, and a thermal zone
-which disables itself. `mt6358-fg` is the calibrated battery fallback.
-Re-enable the pack gauge only after a live ACK and protocol measurement.
-The fallback's software charge anchor is restored by `dc1-battery-state`
-only from a valid, single-use clean-shutdown record no more than ten minutes
-old; every other boot keeps the driver's voltage-seed fail-safe.
-
-The RT9471 is the factory secondary path in a dual-charger topology, but it
-is not a free fast-charge switch. Keep `CONFIG_CHARGER_RT9471` unset and its
-active-low GPIO151 CE parked high until a live session establishes its
-VBUS/BAT/SYS routing, factory current-sharing policy, combined thermals, and
-pack-temperature enforcement. The upstream driver's probe asserts both CE
-and `CHG_EN`; enabling it blind could parallel two nominal 3.15 A chargers
-while the BQ78Z100 protection/temperature monitor is unavailable.
-
-The sensor buses are SCP-connected but reachable from the AP when the pins are
-re-muxed; the SCP node is enabled with only its mailbox driver bound and the
-core stays halted (wake requests time out), so no firmware owns the pins:
-
-- GPIO142/143, AP i2c6 at `0x1101a000`, exposes the MCube MC3416 at `0x4c`
-  (`mcube,mc3416`, `drivers/iio/accel/mc3230.c`).
-- GPIO132/133, AP i2c1 at `0x11e01000`, exposes an ambient-light/proximity part
-  at `0x49`. The AP now owns that bus for controlled bring-up; the sensor stays
-  unbound because the MN29 register protocol is still unidentified.
-
-Do not add an AP sensor node while also adding an SCP/sensorhub owner for the
-same pins. There is still no gyro or magnetometer; the hall switch is directly
-AP-wired and declared in the DTS since kernel `3d3de59a5` (live as an input
-device). The panel scanout is 180 degrees from the
-glass. If a future DTS `rotation = <180>` property is added, remove the same
-180-degree compensation from the accelerometer `mount-matrix` in that change
-to avoid double rotation.
-
-GPU min_freq is the first-frame smoothness knob (`simple_ondemand` always
-wakes at the floor). Do not hardcode it in udev: `dc1-gpu-freq` is the
-single writer, GNOME Settings → GPU is the experiment UI, and the last
-choice persists in `/var/lib/dc1/gpu-freq.conf` — min/max only, the poll is
-rewritten from the helper's `DEFAULT_POLL` on every apply. Shipped default
-is the Super smooth preset at 812 MHz with a 40 ms poll; Smooth 700 MHz,
-Balanced 545 MHz, and Power saver 390 MHz remain selectable. Thermal
-devfreq cooling still caps from the top, and panfrost autosuspend keeps
-the floor from costing idle power.
-
-Keep `CONFIG_HIGH_RES_TIMERS=y` from kernel r57's `latency.config`. The
-2026-09-12 trace found r56's GPU regulator/power-domain wake steps quantized
-to 4 ms because high-resolution timers were disabled (HZ=250), accumulating
-~100 ms stalls at all tested floors, including 1.1 GHz. Live timer resolution
-was 4,000,000 ns. The fix preserves frequencies, HZ, electrical delays and
-autosuspend. Post-boot r57 tests at a 700 MHz floor measured 100 ms idle-gap
-p95 of 8.11–8.20 ms and maxima of 8.37–9.89 ms, with 1 ns reported timer
-resolution. These are offscreen GPU measurements, not compositor FPS proof.
-Compare idle-gap and continuous p95/maximum timing with `tools/performance/`,
-not just throughput, before claiming a smoothness fix; see `docs/hw/display.md`.
-
-The `1200x1600@120` mode is not free smoothness. Live CRTC vblank is
-118.4 Hz with 62 lines / 0.31 ms of blanking (measured 2026-08-27);
-KMS OVL planes cannot rotate 90°, so landscape is a GPU offscreen blit
-and pinning Mali at 1.1 GHz does not turn that path into 120 FPS.
-Window drag is worse: the CRTC keeps 118.4 Hz with missed_seq=0, and
-mutter misses the deadline (~94 Hz tiny-fast, ~78 Hz large-fast at
-812 MHz). Tiny-fast is compositor damage plus the landscape blit, not
-GPU clock: 60 Hz still misses (~53 / ~43 Hz) with gnome-shell at ~20%
-CPU. The shipped default stays 60 Hz. Device r84 defaults mutter
-`kms-modifiers` on so Panfrost can use tiled intermediates for the blit.
-
-Audio invariants (measured 2026-08-17..22):
-
-- Speakers: RT9101 amp behind the codec headphone buffers
-  (`HPL`/`HPR Mux` = `LoudSPK Playback`), enabled by the machine driver's
-  `Ext_Speaker_Amp` widget (VIBR rail + GPIO158/159). The known-good mixer
-  sequence lives in `dc1-audio` and is mirrored by the UCM verb; keep the
-  two in sync.
-- Microphones: two two-wire digital DMICs on AIN0/AIN2. Capture front end
-  is UL1 (ALSA device 9, `Capture_1`). `Mic Type Mux` must stay `DMIC`
-  (any other value records digital silence) and `MTKAIF_DMIC` must stay
-  `Off` — the codec delivers PCM over MTKAIF, and forcing raw-DMIC
-  interpretation does not change or improve capture. There is no headset
-  jack, no analog mic, and no JackControl; do not model ACC/DCC/PGA input
-  paths.
-- GNOME audio needs both: the `55-dc1-audio.conf` WirePlumber fragment
-  (Alpine's `pulseaudio-wireplumber` disables `hardware.audio`, which
-  stops ALSA enumeration entirely) and the `pipewire-pulse` package
-  (the image's PulseAudio backend never starts under systemd, so without
-  it there is no server at `$XDG_RUNTIME_DIR/pulse/native` and
-  gnome-shell/g-c-c get connection refused).
-- WirePlumber 0.5.15 `scripts/monitors/alsa.lua` concatenated a nil
-  `node.name` when adapter bind fails (transient EBUSY on `hw:0,0`),
-  which kills the ALSA monitor and leaves GNOME on Dummy Output. Do
-  not fork that versioned script. `dc1-fix-wireplumber-alsa` reapplies
-  a one-line `tostring()` guard from post-install/post-upgrade and from
-  the apk trigger on the file, so a wireplumber upgrade cannot restore
-  the crash. Alpine's current 0.5.16 ships those call sites guarded and
-  was verified guarded on-device 2026-08-29 — the fix script no-ops on
-  it; re-check its pattern at every WirePlumber bump rather than
-  assuming the guard is obsolete.
-
-Display/DSI invariants (measured 2026-08-24):
-
-- **Kernel logs do not prove the panel is lit.** Short DCS writes complete
-  host-side without a panel ACK, so the whole pipeline can report a clean
-  power-on -- `production power sequence complete`, `first DSI frame
-  complete`, frame-done IRQs -- while the glass is uniformly white. White
-  is the resting state of this normally-white LCD with the backlight on
-  and no drive.
-- The only trustworthy liveness signals are the TE line on GPIO83
-  (`gpiomon -c gpiochip0 83`; ~200 edges/2 s when the panel TCON runs, 0
-  when it does not — root-only, `/dev/gpiochip0` is `crw-------`) and a
-  DCS read of `0x0a`, where `0x9c` is
-  booster|sleep-out|normal|display-on. Verify display work against those,
-  never against dmesg.
-- A DCS read that times out latches the DSI handoff state machine into its
-  failed phase, and the pipeline then refuses every re-enable until
-  reboot. Only probe a state you are willing to lose.
-- `DSI_SW_CTL_EN` in MIPI-TX must be **clear** while the link is running:
-  it parks a lane under software control and disconnects its pad from the
-  DSI controller. All five lanes matter -- D0/D1/D2/CK and the real D3
-  block at `0x0544`. LK leaves the PLL running, so
-  `mtk_mipi_tx_pll_prepare()` early-returns on boot and its cold path is
-  exercised only by a DPMS off/on cycle; a bug living there is invisible
-  until something relights the panel.
-- The bezel overlaps the outer ~10 device px of the 1200x1600 panel on
-  every edge, and the lit area's corners are rounded (~30-40 px radius);
-  measured 2026-08-25 with on-glass calibration rulers. The full mode is
-  correct -- do not shrink the DSI timings to compensate. Edge-flush UI is
-  handled by the `dc1-safe-area` shell extension in the device package;
-  other shipped UI should keep a >=12 device px margin (~40 px in
-  corners). That extension also lifts the lock screen's unlock sheet clear
-  of the on-screen keyboard by padding the parent of the unlock dialog's
-  `_stack` (never the dialog's first child -- that is the background actor)
-  by the OSK height while the keyboard is visible, which otherwise covers
-  the sheet outright: the mobile shell puts the PIN pad below the password
-  prompt inside the sheet, but hides the pad unless
-  `Main.layoutManager.isPhone`, and the DC-1 can never
-  satisfy that test at any sane display scale.
-
-## Repository map
-
-- `pmaports/device/testing/` — the three local APKBUILD overlays and their
-  package files. The device package carries the charging-mode units and
-  scripts (see Charging mode under Installed-device convergence). The
-  mutter overlay is staged into the upstream systemd extra
-  repo by `scripts/prepare.sh`.
-- `scripts/` — pinned checkout preparation, pmbootstrap rootfs/package build,
-  artifact export, deterministic ext4 creation, rootfs archive creation,
-  signed APK index creation, verification, and offline tests.
-- `installer/build.sh` — creates both initramfs images and, when given
-  `KERNEL_IMAGE` plus the mandatory `KERNEL_DTB`, the two dtbswap Android
-  boot images. It also downloads and verifies
-  public upstream firmware and pinned Alpine runtime packages into a local,
-  gitignored cache.
-- `installer/gotools/` — the CGO-free multi-call Go userland (`dc1tools`),
-  used by installer PID 1 and the system-initramfs helpers.
-- `installer/src/` — C entry points, POSIX initramfs scripts, system-init
-  sources, vendored UAPI headers, and the touch/network/write paths.
-- `installer/host/` — host-side USB/fastboot fallback installer.
-- `installer/tests/` — offline shell tests and syntax gate for installer,
-  host, and initramfs scripts.
-- `boot/dtbswap/` — freestanding arm64 DT handoff stub and packer.
-- `boot/mkboot/` — Go Android boot v3/v4 tooling with a
-  byte-identical round-trip verifier.
-- `boot/repack-boot.sh` — minimal production boot-image packer.
-- `docs/README.md` — documentation index and source map; `docs/building.md`
-  explains build requirements, pinned inputs, and the export/release boundary.
-- `docs/` — installation, debugging (`docs/debugging.md`), and the narrowly
-  scoped preloader-recovery procedure. `README.md` contains the compact verdict
-  table; `docs/hardware.md` records the boot/update architecture and sourced
-  board specification; the per-subsystem
-  measurement records live in `docs/hw/` (`display`, `input`, `audio`,
-  `wireless`, `usb`, `power`, `suspend`, `thermal`, `sensors`, `storage`)
-  and `docs/gnome.md` (desktop stack). `docs/roadmap.md` is the
-  definition-of-done with hardware-session runbooks, `docs/verification.md`
-  the verified-at ledger, `docs/security.md` the debug-channel exposure
-  matrix, and `docs/power.md` the user-facing battery/charging guide.
-  `README.md` is the user-facing quickstart and safety warning.
-- `tools/i2cbb/` — hardware probe utility retained for controlled
-  re-measurement; it is not a normal build dependency.
-- `.github/workflows/build.yml` — the complete verify/build/release contract.
-- `.github/workflows/claude-review.yml` and `claude-review-comment.yml` —
-  privilege-separated Claude Code PR review (untrusted reviewer job, trusted
-  comment poster); see the CI contract section.
-
-## Build flow and artifact contract
-
-For native kernel-only development, `scripts/kernel-local.sh build` retains
-the pmbootstrap toolchain chroot and compiler cache. `install` installs the
-verified local APK and deploys it through the existing A/B helper;
-`build-install --reboot` combines the steps. See `docs/kernel-development.md`.
-The local updater preserves the running slot's stub, DTB and ramdisk, so
-device-tree/initramfs changes still require the full image workflow. Root-only
-rollback images and transaction records live in `/var/lib/dc1/local-kernel`
-and must never enter Git. A boot-time confirmation service checks the new
-build or restores the old matching package after fallback.
-
-The kernel overlay applies `sdcard.config` and `latency.config` to its pinned
-base defconfig and requires their storage and high-resolution timer settings
-to resolve built-in.
-The resolved configuration is included in the kernel APK. The source archive
-prefetcher handles the archive separately from this local config input.
-
-`scripts/prepare.sh WORK` fetches only the pinned pmaports and pmbootstrap
-commits, validates the overlay scope, copies the three recipes, and writes
-`WORK/SOURCES`. `scripts/build-rootfs.sh [--validate-only]
-[--verify-sources] WORK OUTPUT` prepares those sources, builds four
-aarch64 packages from those three recipes, installs a non-deploying pmbootstrap
-rootfs, shuts down the chroot, and calls `scripts/export-artifacts.sh`.
-
-The rootfs builder must stay non-deploying: it uses `pmbootstrap install
---no-image --no-sshd --no-firewall --no-recommends`, never fastboot, ssh, scp,
-or a block-device target. The build-time `dc1`/placeholder account state is
-not a user secret; the installer provisions the real account and password.
-
-The exporter produces a tar archive, a `jagar-root` ext4 image compressed as
-zstd, exact-version copies of all four APKs, the kernel and DTB inputs under
-`boot/`, `FILES.tsv`, the installed package/checksum inventory `PACKAGES.tsv`,
-`SOURCES`, `PROVENANCE`, and `SHA256SUMS`. Its
-`PROVENANCE` intentionally records `flash_method=none`,
-`boot_image_included=false`, `deployable=rootfs-image-only`, and
-`hardware_verified=false`; the CI release assembly adds the boot images later.
-
-The final published release directory contains:
-
-- `installer-boot.img` and `jagar-boot.img`;
-- `jagar-rootfs.ext4.zst` and `jagar-rootfs.tar.gz`;
-- the four exact-version APKs (kernel, kernel modules, device, Mutter);
-- `dc1-install.sh`, `dc1-repair-apk.sh`, `dc1-apk.rsa.pub`,
-  `PROVENANCE`, `SOURCES`, `FILES.tsv`, `PACKAGES.tsv`,
-  signed `APKINDEX.tar.gz`, and one final `SHA256SUMS` covering all files.
-
-Release assembly changes the exporter's rootfs-only provenance to
-`flash_method=dc1-installer`, `boot_image_included=true`, and
-`deployable=complete-installer-release`, and records the full release commit.
-It must prove that the kernel APK, rootfs `Image.gz`, and both dtbswap boot
-images contain the same kernel. A rolling release may not replace the bytes of
-an existing APK filename; bump that recipe's `pkgrel` instead.
-
-Do not claim that a green CI run proves booting. Releases deliberately say
-`hardware_verified=false` until a separate hardware test has been performed.
-
-### Installed-device convergence
-
-Installed devices converge on the release without reflashing, and CI keeps
-that path honest:
-
-- `dc1-update.timer` (device package) runs `apk update`/`apk upgrade`
-  after boot and weekly; its parity report compares the four overlay
-  packages against the published `APKINDEX.tar.gz`. Opt-out is
-  `/var/lib/dc1/no-auto-update`.
-- `installer/host/dc1-repair-apk.sh` repairs pre-key installs
-  (device package pkgrel < 45): it fetches `dc1-apk.rsa.pub` from the
-  release and verifies it against that release's `SHA256SUMS`, installs it,
-  writes `/etc/apk/repositories.d/dc1-pmos.list` only if absent, restores
-  Alpine key links, then upgrades. It must never silently replace an
-  existing differing key or repo list — both are trust decisions.
-- Gate A (`scripts/export-artifacts.sh`) fails if the rootfs's installed
-  versions of the four overlay packages differ from the shipped APKs, and
-  records them in `PROVENANCE` as `package_*` lines. Gate B
-  (`scripts/build-rootfs.sh`) fails if any upstream postmarketOS mirror
-  serves one of the four packages at a version that does not strictly lose
-  to ours — bump pkgrel rather than bypassing it. Version ordering for both
-  comes from `scripts/apk_version_compare.py`, which matches apk-tools 3.x
-  exactly (validated against on-device `apk version -t`).
-
-### Charging mode (device pkgrel >= 79)
-
-Plugging USB power into a cleanly-powered-off device boots the headless
-`dc1-charging.target` instead of the desktop: panel/network/desktop stay
-off while charging proceeds autonomously in hardware/kernel (MT6375 CC/CV
-to 4350 mV; kernel raises AICR to 1.5 A and ICHG to 3.15 A once VBUS appears;
-PD contracts settle in-kernel). Constraints future changes must preserve:
-
-- Detection is firmware-first: LK writes a fresh console ring each boot
-  at physical `0x7ffbf000` (256 KiB, DT node `log-store@7ffbf000`,
-  root-readable via `/dev/mem` — `CONFIG_STRICT_DEVMEM` is off). The
-  `dc1-charging-generator` takes the LAST `BOOT_REASON: <n>` line (MTK
-  enum: 0 power key, 1 USB charger, 2 RTC, 3 watchdog, 4/5 warm-reboot
-  bypass, 8 kpanic), voting only when the tail marker `jump to linux
-  kernel 64Bit` shows the ring reached the handoff — stale/partial rings
-  don't vote. Reason 1 + VBUS enters charging mode authoritatively;
-  reasons 3/4/5 NEVER enter it even with a fresh flag — a docked warm
-  reboot must reach the desktop, and that asymmetry is what makes the
-  power-key exit work. Reasons 0/2/8/unknown/unreadable fall back to the
-  flag path.
-- Flag lifecycle: `dc1-poweroff-flag.service` writes
-  `/var/lib/dc1/poweroff-clean` (epoch timestamp) via ExecStop on every
-  shutdown without reboot markers (`/run/systemd/reboot`/`kexec` absent);
-  reboots never leave the flag. It is consumed on every boot, expires
-  after 7 days, and only decides when the boot-reason readout cannot.
-  Generators never mutate this state (they re-run on daemon-reload).
-- All four gates must hold: `/var/lib/dc1/no-charging-mode` absent; VBUS
-  present (`/sys/class/power_supply/mt6375-charger/online` = 1 — charger
-  drivers are built-in, so sysfs exists before generators run);
-  `/var/lib/dc1/first-boot-apps-done` present (an unprovisioned system
-  ALWAYS boots to the desktop — a fresh install rebooting with the flash
-  cable attached would otherwise wake as dark glass); and reason==1 or a
-  fresh clean-poweroff flag.
-- Network reachability must not trigger automatic reboots. The old service
-  and post-switch-root deadman were removed; device r98 uses a unit condition
-  and tmpfiles markers to retire copies from older boot images, including
-  headless boots. Keep the hardware watchdog and rescue-path lease intact.
-- The power key needs its own evdev reader (`/usr/sbin/dc1-pwrkey`):
-  logind ignores the power key globally on this device
-  (`/etc/systemd/logind.conf.d/10-dc1-power.conf`), and `/etc` drop-ins
-  outrank `/run`, so a volatile logind override is impossible.
-- Opt-out is `touch /var/lib/dc1/no-charging-mode`; journal tag
-  `dc1-charging`. The ring mechanism is verified live (a real boot
-  printed `BOOT_REASON: 4` + WDT bypass; five expdb cold power-key boots
-  show 0), but the charger==1 mapping owes one calibration session
-  (power off, plug USB, confirm the ring shows 1; optionally pin MT6358
-  CHRIN via debugfs regmap) — NOT hardware-verified until then. Do not
-  plumb the boot reason through dtbswap: stub changes are the
-  highest-risk class here.
-
-## CI contract
-
-`.github/workflows/build.yml` runs without path filters:
-
-- `verify` on `ubuntu-24.04` (x86) runs `scripts/verify.sh`, all offline
-  installer tests, installer/device C smoke builds, `boot/mkboot` Go build/vet/
-  tests, and `installer/gotools` build/vet/tests plus an arm64 build.
-- `build` on `ubuntu-24.04-arm` runs natively, restores pmbootstrap source,
-  package, and ccache caches, builds the pinned rootfs, builds `dtbswap`,
-  creates both boot images, and assembles the artifact. Publishing events sign
-  its APK index and verify the final manifest; pull requests omit the index.
-
-The workflow runs for pushes to `main`, pull requests, and manual dispatch.
-Pull requests upload a workflow artifact without `APKINDEX.tar.gz`: untrusted
-PR code never receives or executes with `DC1_APK_PRIVATE_KEY`. A successful push to the
-default branch publishes a retained `build-<github.run_number>` prerelease,
-then refreshes `latest`. Runs queue with `queue: max` and are not canceled by
-newer pushes. Published numbered assets are never replaced; reruns keep their
-number and must match the existing manifest. Older runs cannot roll `latest`
-backwards. Manual dispatch without a tag also uses a build number; a manual
-`pmos-v*` tag publishes a retained prerelease without updating `latest`.
-Installer images embed their release tag so their payload downloads remain
-consistent when `latest` moves. See `docs/releases.md`.
-Keep the `DC1_APK_PRIVATE_KEY` secret available
-to publishing events; they must fail rather than publish an unsigned APK index.
-
-No workflow step may quietly turn a docs-only change into a skipped build. The
-cache is part of correctness: unchanged `pkgver-pkgrel` packages must remain
-byte-identical so the package and matching boot image do not drift across
-runs. `config_abuild` carries the cached local signing key; on restore,
-`scripts/restore-local-apk-key.sh` must copy its public half into pmbootstrap's
-derived `config_apk_keys` before package/rootfs work begins. Preserve that
-handoff, the cache ownership handling, and the final SHA256 check.
-
-`claude-review.yml` plus `claude-review-comment.yml` give every pull request
-an automated Claude Code review. The split is a security boundary and must
-stay: the `pull_request` review job treats all PR content as untrusted, so it
-runs with `contents: read` only, `persist-credentials: false`, no secrets
-(OpenCode Zen's free `x-preview-f-free` model is keyless through a
-loopback-only llm-proxy container), and a read-only Claude toolset
-(Read/Grep/Glob; no Bash, writes, or web tools), producing only an artifact.
-The trusted `workflow_run` poster is the only holder of
-`pull-requests: write`; it re-validates the artifact's PR number against the
-reviewed head SHA and posts the review body strictly as data. Do not move
-write permissions or secrets into the review job, and do not switch it to
+Preserve the split Claude review workflows: untrusted PR review has read-only
+permissions, no secrets, no persisted credentials and a read-only toolset;
+the trusted `workflow_run` poster validates PR/head SHA and treats the body
+as data. Never move secrets/write permissions into PR review or switch to
 `pull_request_target`.
 
-## Required validation
+## Validation and documentation
 
-Before handing off a change, run the narrowest relevant checks and then the
-full offline gates when practical:
+Run narrow checks first, then relevant offline gates when practical:
 
 ```sh
 sh -n scripts/*.sh installer/build.sh installer/src/*.sh \
   installer/src/system/*.sh installer/host/*.sh installer/tests/*.sh
 sh scripts/verify.sh
 sh installer/tests/run-tests.sh
-
 (cd boot/mkboot && go build ./... && go vet ./... && go test ./...)
-(cd installer/gotools && CGO_ENABLED=0 go build ./... && \
-  go vet ./... && go test ./...)
+(cd installer/gotools && CGO_ENABLED=0 go build ./... && go vet ./... && go test ./...)
 make -C boot/dtbswap
 ```
 
-`installer/tests/run-tests.sh` is the authoritative installer syntax/test
-runner and includes the host scripts. `scripts/verify.sh` runs the packaging,
-source/checksum, rootfs archive, ext4, and artifact-export gates. Workflow
-YAML should pass `actionlint` when available; otherwise at minimum parse it
-with a YAML parser. After pushing, inspect the actual GitHub Actions run and
-do not report it green without checking its result.
+Use `actionlint` for workflow changes, or at least parse YAML. Documentation
+edits need link/anchor and command checks, not a hardware boot.
 
-## Change discipline
-
-- Use POSIX `sh` for scripts unless a file explicitly requires another shell;
-  retain `set -eu` and fail-closed validation in build paths.
-- Keep generated caches, downloaded firmware, Alpine APKs, and temporary
-  images out of Git. Check `git status` after every build.
-- Keep installer deployment code separate from package recipes and build
-  exporters. Builders must write regular output files only, never select slots
-  or write partitions.
-- When changing a boot image, re-check the v4 header, gzip kernel, legacy LZ4
-  ramdisk, signature page, DT swap payload, and exact artifact hashes. Treat a
-  hardware boot as expensive and preserve the known fallback path.
-- Update this file when package count, runner/toolchain, release contents,
-  partition behavior, or measured hardware invariants change. Keep the
-  instruction file operational and evidence-based; do not copy private lab
-  history into this public repository.
+Keep README focused on users, guides on procedures, subsystem references on
+current constraints, and the roadmap on open acceptance work. Keep only
+measurement dates/versions needed to bound a claim; Git retains the development
+history. Remove superseded narratives and completed task lists. Update these
+instructions when build, release, partition or hardware contracts change.

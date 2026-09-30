@@ -1,114 +1,42 @@
-# Thermal — measurement record
+# Thermal and cooling
 
-Deep-dive for the status-table row *Thermal* in
-[README.md](../../README.md#hardware-support-at-a-glance). Newest facts last.
+The mainline tree exposes 13 LVTS zones and two board NTC zones, with CPU and
+GPU cooling. Battery-temperature charge-current control remains unavailable;
+see [power](power.md).
 
-## Bring-up state (pkgrel=27 boot, 2026-08-22)
+## Policy
 
-**Trips, cooling maps and CPU DVFS all exist now** — kernel
-`0f6e730c92d6` (LVTS trips + cooling maps), `ffc87512c0e2` (cpufreq-hw
-MT6789 variant) and defconfig `504c45c64ba0`, all 2026-08-20 and all in
-the pinned pkgrel=27 build running on 2026-08-22: live, nine of the
-thirteen LVTS zones carry passive 85000/hyst 2000 plus critical 113500
-trips (`lvts-ts3-1/-ts3-2/-ts3-3/-ts4-0` critical-only), three cooling
-devices are registered (`cpufreq-cpu0`, `cpufreq-cpu6`, and a GPU devfreq
-cooler bound through the ts3-0 map), and DVFS is up
-(`scaling_driver=mtk-cpufreq-hw`, schedutil; policy0 = cpu0-5 at
-500-2000 MHz, policy6 = cpu6-7 at 725-2200 MHz; every zone runs
-`step_wise` — `power_allocator` is registered (dmesg governor-registration
-line) but selected nowhere; this kernel exposes no `available_policies`
-file, so the governor list is only visible in dmesg; an earlier revision
-claimed power-allocator was active,
-which re-measurement contradicts). Dynamic re-check on the same pkgrel=27
-boot (2026-08-22): eight spinning cores pin both clusters at their
-ceilings — 2000/2200 MHz on every core, hottest LVTS zone climbing
-41.7→57.5 °C over four seconds, no trip crossed — and releasing load
-drops the big cluster to its 725 MHz floor within seconds. The GPU
-devfreq sweeps between its 390 MHz floor and 1.1 GHz ceiling under nothing
-more than compositor load (`simple_ondemand`; seven distinct OPPs sampled
-live). The missing devfreq `trans_stat` is deliberate: with 36 OPPs the
-transition table exceeds PAGE_SIZE and the kernel disables it (`devfreq
-transition table exceeds PAGE_SIZE. Disabling`, dmesg) — the file exists
-but only produces the read error, which is not a scaling failure.
+| Zone | Trips / behavior |
+| --- | --- |
+| Nine LVTS zones with passive cooling | Passive 85 °C / 2 °C hysteresis; hot 105 °C / 8 °C hysteresis; critical 113.5 °C |
+| Other four LVTS zones | Hot 105 °C / 8 °C hysteresis; critical 113.5 °C; hardware threshold IRQ supplies evaluation where polling is disabled |
+| `ap_ntc`, `ltepa_ntc` | Two-second polling; hot 85 °C / 5 °C hysteresis; critical 110 °C / 2 °C hysteresis |
 
-The DVFS design is deliberately regulator-free: MCUPM firmware owns the
-MT6366 vproc/vsram_proc rails and publishes the LUT/energy-model tables,
-and the kernel writes perf-state indexes only — the classic
-mediatek-cpufreq OPP/voltage route must not be attempted (no upstream
-mt6789 entry exists, and the vendor voltage tables live inside MCUPM
-firmware).
+Hot trips notify; they do not themselves throttle. Zones use `step_wise`.
+Critical NTC readings have no debounce and can initiate immediate ordered
+poweroff. All LVTS hot trips and NTC pairs were checked on hardware at kernel
+r28 (2026-08-23); r50 (2026-08-28) confirmed 15 real zones after disabling
+the non-answering BQ78Z100.
 
-## Trips landed 2026-08-22 (kernel `a2c27ab3bff1`, linux pkgrel=28)
+LVTS calibration uses fuse base `0x1a4`. Manual RCK takeover is unsupported
+until separately validated. Occasional empty LVTS reads have recovered on the
+next read; investigate persistent failures or missing zones/trips/cooling
+rather than treating one empty sample as proof of failed thermal control.
 
-Every LVTS zone gains a 105000/hyst 8000 `hot` trip inserted before its
-existing critical in `mt6789.dtsi` (hot is notification-only —
-netlink/uevent; the dtsi change also applies to the emerald board that
-shares it), and the two board NTC zones gain their first-ever actuation
-capability: polling-delay/-passive raised 0→2000 ms plus `hot`
-85000/hyst 5000 and `critical` 110000/hyst 2000 each
-(`generic-adc-thermal` has no IRQ path, so at polling 0 they could never
-evaluate any trip). Values follow the vendor policy extracted read-only
-from this device's authenticated partitions: stock DT carries no CPU
-trips at all (stock throttling is userspace-driven), one GPU passive
-stage with a devfreq map, and criticals at exactly 113500 everywhere —
-all preserved untouched. Validated by preprocessing + compiling the board
-DTS (exit 0; five pre-existing warnings, none thermal). Two honest
-risks: the NTC critical has no debounce — a single garbage ADC sample
-converting to ≥110 °C starts an immediate ordered poweroff
-(`CONFIG_THERMAL_EMERGENCY_POWEROFF_DELAY_MS=0`) — and the four
-polling-0 LVTS zones rely solely on the LVTS hardware threshold IRQ.
+## CPU and GPU scaling
 
-**All 13 LVTS hot trips plus the NTC pairs verified present on hardware
-2026-08-23** (the earlier 4/13 reading was checker error, not a kernel
-gap), on the same boot that verified the audio race fix and microSD.
+CPU DVFS uses `mtk-cpufreq-hw`: MCUPM owns the voltage rails and supplies the
+LUT/energy model; Linux writes performance-state indexes. Do not substitute
+the classic mediatek-cpufreq voltage/OPP path. CPU0–5 span 500–2000 MHz;
+CPU6–7 span 725–2200 MHz. CPU and GPU cooling remain authoritative.
 
-## Kept history
+A kernel `7cc767cd0cff` check (2026-09-12) found schedutil with a 1 µs rate
+limit; separate two-second CPU0/CPU6 loads reached 2000/2200 MHz throughout
+the samples. This proves clock ramping, not sustained thermal performance or
+optimal compositor scheduling. Power Profiles used a placeholder driver;
+no performance profile was exposed.
 
-- CPU performance re-check 2026-09-12, kernel `7cc767cd0cff`: both clusters
-  use schedutil with a 1 µs rate limit and retain their 2000/2200 MHz
-  ceilings. Separate two-second SHA-256 loads confined to CPU0 and CPU6
-  reached the respective ceilings in every sampled read (226 / 389
-  observations). Only the test process's affinity changed. The compositor
-  allows CPUs 0–7; its cgroup ancestry exposed no `cpu.max` restriction.
-  `powerprofilesctl list` reported balanced/power-saver with a **placeholder**
-  platform driver and no performance profile. This verifies clock ramping,
-  not optimal compositor scheduling or sustained thermal performance.
-  GPU/CPU cooling-state snapshots were zero. CPU policy remains unchanged;
-  [GPU wake latency](display.md#intermittent-rendering-and-gpu-wake-latency-2026-09-12)
-  is the newly observed responsiveness issue.
-
-- **Pre-r28 baseline recorded 2026-08-22** for side-by-side comparison:
-  16 zones (13 LVTS + `ap_ntc`/`ltepa_ntc` + self-disabled `bq78z100-0`,
-  which failed reads at boot and was disabled by the core); nine LVTS
-  zones passive 85000/h2000 + critical 113500/h2000, four critical-only,
-  and **both NTC zones with zero trips — the exact pre-28 signature**,
-  confirming the running build predates the trip diff regardless of
-  uname's misleading `#28` build counter; all zones `step_wise`; all
-  three cooling devices at cur_state 0; hottest idle zone 38.9 °C. NTC
-  zones return live values but refresh sparsely at stable ambient
-  (`ltepa_ntc` static across 14 s) — post-boot, expect
-  occasional-identical consecutive reads even with 2 s polling.
-- LVTS reading verified 2026-08-19 (fuse calibration base `0x1a4` versus
-  the vendor DT's misaligned `0x1b4`; no manual RCK needed, and the
-  driver still refuses manual-RCK paths with `-EOPNOTSUPP` until that
-  takeover is separately accepted).
-- The NTC zones used to fail registration with `-EODEV` until kernel
-  `981870b` moved the shadowing dtsi `thermal-zones` block from `/soc` to
-  the root node.
-- The board NTC thermal zones and the hall switch were the only two
-  bound devices that genuinely disappeared on the switch from stock DT
-  to the mainline DT (audited 2026-08-17 against every bound driver);
-  both were re-added to the mainline DTS before the switch — NTC zones
-  here, hall switch in [sensors.md](sensors.md).
-- Occasional empty LVTS reads remain uninvestigated (reproduced
-  2026-08-22: one empty poll of lvts-ts2-3 that recovered on the next
-  read). This is a low-priority known wart rather than a thermal-verdict gate:
-  it has not coincided with a missing zone, trip, cooling device, or sustained
-  read failure. Escalate it only if one of those associations appears.
-- Kernel r50 disables the non-answering `bq78z100-0` DT node, removing its
-  self-disabled thermal zone and phantom power_supply. The 2026-08-28 r50
-  boot verified exactly 15 real LVTS/NTC zones and no BQ dmesg signature —
-  see [power.md](power.md).
-- There is **no in-kernel battery-temperature throttling of charge
-  current** — only the chip-side JEITA-ish behavior plus the 110/113.5 °C
-  critical shutdowns (see [power.md](power.md)).
+Panfrost uses `simple_ondemand`, with thermal devfreq cooling. The GPU's
+36-OPP transition table exceeds PAGE_SIZE, so an unreadable `trans_stat` is
+not proof of failed scaling. GPU floor control belongs to `dc1-gpu-freq`;
+see [display](display.md) for defaults and latency measurement.
