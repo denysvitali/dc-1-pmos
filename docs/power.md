@@ -75,20 +75,19 @@ disable that gauge node, so it cannot register.
 
 ## Battery life today
 
-Automatic suspend remains disabled. Kernel r63 passed device/platform tests
-and a real s2idle cycle after fixes to display memory routing and FIFO policy.
-The power key woke Linux after about 20 minutes, with panel TE restored and
-Wi-Fi reconnecting after its known resume error. The owner confirmed the
-image returned, but touch required restarting the login screen after the
-login manager restarted during resume. The controller itself was delivering
-valid touch events. Long-cycle service failures and uninterrupted desktop
-input still need fixing, so sleep targets stay masked. Battery-current
-savings have not been measured. See the
+Automatic suspend remains disabled. The installed r65 kernel passed two
+systemd-managed s2idle cycles with automatic PMIC RTC wake. The longer cycle
+recorded 237.2 seconds asleep with timekeeping frozen, no logind/journald/GDM
+restart and retained GNOME input access. Panel TE and the display memory path
+recovered. Physical display/touch confirmation on this build is still needed.
+Wi-Fi reconnects after its known resume error. Hardware deep sleep and
+battery-current savings have not been established. See the
 [suspend record](hw/suspend.md) and [roadmap](roadmap.md).
 
-A temporary PMIC RTC module fired an alarm while awake on 2026-09-25, but it
-is not packaged and RTC wake from real sleep remains unverified. It cannot
-provide a timed recovery backstop for further tests.
+The packaged PMIC RTC now provides timed wake for controlled tests. The
+external RTC retains timekeeping; its faulty alarm route stays disabled.
+Identify the PMIC RTC and verify its clock, alarm and wake-enable state before
+testing. Restore the sleep masks and clear the alarm afterwards.
 
 The device package now contains an opt-in `dc1-sleep-on-blank` service. Once
 enabled, it requests suspend after the DRM screen and both frontlights have

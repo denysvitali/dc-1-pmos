@@ -7,21 +7,18 @@ Current constraints and measurements for the *Suspend/sleep* row in
 
 ## Current status
 
-The installed kernel r64 (`#65-postmarketos-mediatek-mt6789`, 7.2.0-rc5)
-booted and passed automatic-return device and platform resume tests on
-2026-10-01. Display routing and FIFO policy restore correctly after power
-loss. Its shallow WFI cpuidle driver is registered on all eight CPUs; a long
-systemd-managed cycle is still required to qualify timekeeping and desktop
-input across sleep.
-
-The previous r63 build completed a real s2idle cycle with PMIC power-key
-wake and a restored image, but a login-manager restart left GNOME without
-input until the greeter was restarted. Automatic sleep remains unqualified.
+The installed kernel r65 (`#66-postmarketos-mediatek-mt6789`, 7.2.0-rc5)
+passed automatic-return display tests and two systemd-managed s2idle cycles
+on 2026-10-02. The packaged MT6358 RTC alarm woke both cycles automatically.
+The longer cycle recorded 237.2 seconds asleep with timekeeping frozen,
+unchanged logind/journald/GDM processes and retained GNOME input access.
+Physical display/touch confirmation on this build remains outstanding.
 
 Only `[s2idle]` is exposed in `/sys/power/mem_sleep`; hardware `deep` suspend
-is unavailable. `sleep.target` and `suspend.target` remain masked, and
-`/var/lib/dc1/enable-auto-suspend` remains absent. Wi-Fi still reports resume
-`-EIO`, then recovers. There is no packaged RTC alarm backstop.
+is unavailable. Battery-current savings have not been measured. Automatic
+sleep remains opt-in: `sleep.target` and `suspend.target` are masked and
+`/var/lib/dc1/enable-auto-suspend` is absent. Wi-Fi still reports resume
+`-EIO`, then recovers.
 
 ## Display restoration
 
@@ -33,122 +30,87 @@ Display-domain power loss reset two parts of the active DMA path:
   with checked readback. Active OVL0 holds LARB0 and SMI common; OVL2L/LARB1
   remain suspended because they are unused in the production path.
 - OVL request limits, urgent requests and buffer thresholds reverted to
-  reset values. The output-clamp bit also cleared. Routing restoration alone
-  in r62 still produced first-frame status `0x4203` and quarantine. Kernel
-  `2e706d50b9c8` caches this policy only after a successful first-frame check,
-  then restores it with checked readback before later pipeline starts.
+  reset values. The output-clamp bit also cleared. Kernel `2e706d50b9c8`
+  caches this policy only after a successful first-frame check, then restores
+  it with checked readback before later pipeline starts.
 
 The observed request limits changed from `0xf1ff5555` to `0x41ffbbbb`, urgent
 requests from `0x5555` to `0x20305555`, low thresholds from zero to `0x30020`,
 and high thresholds from `0x80000000` to `0x40000`. FIFO controls and
 second-stage GMC settings did not change. The fixes preserve the translated
-DMA path and all first-frame underflow/quarantine checks. They are kernel-only
-updates: the source pin, running DT, dtbswap stub and initramfs are preserved.
+DMA path and all first-frame underflow/quarantine checks. These are
+kernel-only updates; the running DT, dtbswap stub and initramfs are preserved.
 
-## Current-build stage validation (2026-10-01)
+## Timekeeping and desktop input
 
-The r64 kernel and matching modules were built natively with LLVM 20. The
-packaged config retains high-resolution timers and the periodic awake tick
-policy. Local installation verified package/image parity and the complete
-64 MiB inactive-slot readback; the #65 boot confirmed the candidate slot,
-installed package/modules identities and SD filesystems while retaining the
-successful r63 fallback. The registered `jagar_wfi` driver exposes `WFI-S2`
-on all eight online CPUs. These are local-development results, not acceptance
-of an exact published release artifact set.
+A previous 20-minute r63 cycle woke with the power key and restored the image,
+but journald's three-minute watchdog expired and logind restarted. GNOME lost
+its input descriptors and could not reopen them until GDM was restarted at
+the greeter. The touchscreen controller was still delivering valid events.
+Restarting GDM in a logged-in session would discard that session.
 
-With the panel on at 60 Hz, USB power connected and local recovery available:
+With `CONFIG_CPU_IDLE` unset, `cpuidle_idle_call()` used `default_idle_call()`
+before the s2idle path that freezes the tick. `CLOCK_MONOTONIC` continued
+through sleep while userspace was frozen. Systemd 262's
+[service watchdog uses CLOCK_MONOTONIC](https://github.com/systemd/systemd/blob/v262/src/core/service.c).
 
-| Stage | Return time | First frame | TE after resume |
+The board-gated `jagar_wfi` driver now registers architectural
+`cpu_do_idle()` WFI on all eight CPUs, preserving interrupt masking. Its
+second state, `WFI-S2`, supplies `enter_s2idle` so the cpuidle core can freeze
+the tick and timekeeping; state zero is excluded from s2idle selection.
+`suspend.config` requires `CONFIG_CPU_IDLE=y` and
+`CONFIG_ARM_JAGAR_CPUIDLE=y`. No new PSCI state or device-tree change is
+needed. High-resolution timers, the periodic awake tick and service watchdogs
+are retained.
+
+## Current-build validation (2026-10-02)
+
+The r65 kernel and matching modules were built natively with LLVM 20. The
+packaged config includes the WFI driver and `CONFIG_RTC_DRV_MT6397=m`.
+Installation verified kernel/package parity and the complete 64 MiB inactive
+slot readback. The candidate boot confirmed slot a, keeping the successful
+r64 slot b as fallback. These are local-development results; they do not
+qualify an exact published release artifact set.
+
+With USB power connected and the panel on at 60 Hz, automatic-return tests
+passed `devices` once and `platform` three times. Return times were
+11.15–11.26 seconds. All four preserved active LARB0 physical routing, all
+ten OVL request/buffer policy registers and the output-clamp bit. First-frame
+status was `0x4003`, with no underflow or quarantine, and TE was 59.18 Hz.
+
+The PMIC RTC registered automatically as `rtc1`, while the built-in S35390A
+remained `rtc0` and the boot-time clock source. The PMIC clock was synchronized
+to the system clock before testing. A 20-second awake alarm produced one RTC
+alarm interrupt (`RTC_AF`) and disarmed correctly. Then a one-shot helper
+armed and read back each alarm, temporarily lifted the sleep masks and
+requested `systemctl suspend`:
+
+| Alarm delay | Recorded sleep | Monotonic elapsed | Boottime elapsed |
 | --- | --- | --- | --- |
-| `devices` | 11.11 s | `0x4003`, no underflow | 59.18 Hz |
-| `platform`, cycle 1 | 11.23 s | `0x4003`, no underflow | 59.18 Hz |
-| `platform`, cycle 2 | 11.17 s | `0x4003`, no underflow | 59.18 Hz |
-| `platform`, cycle 3 | 11.23 s | `0x4003`, no underflow | 59.18 Hz |
+| 30 s | 26.608 s | 15.455 s | 42.063 s |
+| 240 s | 237.205 s | 15.639 s | 252.844 s |
 
-All cycles preserved active LARB0 physical routing, all ten OVL request/buffer
-policy registers and the output-clamp bit. No first-frame failure or quarantine
-was logged. TE alone is insufficient: it also continued after the unfixed
-pipeline quarantined itself. The restored registers and successful first-frame
-integrity checks establish memory-path restoration separately from
-panel-controller liveness.
-A human redraw/relight check remains outstanding.
+Elapsed values include suspend preparation, device resume and an eight-second
+post-resume observation. Sleep is the increase in `CLOCK_BOOTTIME` minus the
+increase in `CLOCK_MONOTONIC`. Kernel printk timestamps therefore no longer
+measure the time asleep.
 
-Each cycle logged the known mt7921s resume `-EIO`; NetworkManager was connected
-after testing. `suspend_stats` read success=4/fail=0 and failed_resume=4. These
-counters include debug test cycles, not real sleep acceptance. The selector was
-restored to `none`, temporary PM diagnostics were restored, and the one-shot
-test service/timer was removed. These stage tests did not exercise real sleep.
+Both cycles received exactly one RTC alarm interrupt and logged wake from
+MT6358 parent IRQ 152. Power-key IRQ counts did not change. Every CPU's
+`WFI-S2` s2idle usage counter increased. Logind, journald and GDM retained
+their PIDs with zero restarts; GNOME retained the same process and all five
+input-device descriptors. No display quarantine or first-frame failure was
+logged; first-frame status was `0x4003`. After the long cycle, TE was 59.18 Hz
+and OVL policy/physical LARB0 routing still matched the stage-test baseline.
+These checks establish service/input access and display-path restoration;
+human relight, redraw and touch checks remain necessary.
 
-## Full cycle with physical wake (2026-10-01)
-
-With r63/#64, USB power connected and the owner beside the tablet, a one-shot
-test wrote `mem` to `/sys/power/state` with `pm_test=none`. No sleep target
-was unmasked and no automatic-sleep marker was created. The owner reported
-the tablet sleeping and then pressed the power key.
-
-The kernel completed noirq suspend, remained in that path for 1229.66 seconds
-(about 20 minutes), and logged `Triggering wakeup from IRQ 152`. This is the
-MT6358 PMIC parent interrupt; power-key press/release IRQ counts both
-increased by one, while the hall and USB interrupt counts stayed unchanged.
-The call returned successfully without a reboot, and the device-resume phase
-took 4.33 seconds.
-
-OVL's first frame completed with status `0x4003`; no underflow or quarantine
-was logged. TE returned at 59.18 Hz, active LARB0 retained physical routing,
-and OVL request limits/urgent requests remained `0xf1ff5555`/`0x5555`.
-The known mt7921s resume `-EIO` triggered firmware recovery; NetworkManager
-was connected after return. The success counter advanced from four to five,
-with no suspend failure and one additional Wi-Fi resume failure.
-
-`CLOCK_MONOTONIC` continued through this s2idle path, so subtracting it from
-`CLOCK_BOOTTIME` did not measure time asleep. The interval above uses the
-kernel's noirq-complete and wake-IRQ timestamps. It establishes physical wake,
-not battery-current savings. Temporary PM diagnostics were restored and the
-transient test unit exited.
-
-### Desktop input failure after the long cycle
-
-The owner confirmed that the display returned but the login screen ignored
-touch. A non-grabbing libinput capture then recorded 123 touch-downs, 5096
-motions and 119 touch-ups without errors. The controller was running, its
-reset GPIO was high, and the IRQ/I2C event path was active; no touchscreen
-driver reset or rebind was needed.
-
-At resume, journald reported a three-minute software-watchdog timeout and
-logind aborted with `SIGABRT`, then restarted. GNOME lost access to all five
-input devices and its attempts to reopen them failed with `DeviceIsTaken`.
-Restarting GDM at the greeter, with no logged-in user desktop, restored input
-device access. The owner then confirmed touch worked and a user desktop was
-active. This recovery does not qualify uninterrupted desktop input across
-sleep; restarting GDM in a logged-in session would discard that session.
-
-The r63 config has `CONFIG_CPU_IDLE` and `CONFIG_NO_HZ` unset. With no
-cpuidle device, `cpuidle_idle_call()` takes `default_idle_call()` before the
-s2idle path that calls `tick_freeze()` and suspends timekeeping. This agrees
-with the observed monotonic clock continuing during sleep. Systemd 262's
-[service watchdog uses CLOCK_MONOTONIC](https://github.com/systemd/systemd/blob/v262/src/core/service.c),
-so expiry across the long frozen interval is a likely cause of these service
-failures. The direct-sysfs test also bypassed systemd's sleep orchestration.
-Resolve the clock/watchdog interaction and verify a systemd-managed long
-cycle before enabling automatic sleep; do not disable watchdog protection as
-a substitute. No kernel input-driver change was made for this incident.
-
-### Shallow WFI timekeeping fix
-
-The r64 recipe enables `CONFIG_CPU_IDLE` and `CONFIG_ARM_JAGAR_CPUIDLE`
-through `suspend.config`. The board-gated `jagar_wfi` driver registers the
-existing arm64 `cpu_do_idle()` WFI operation, preserving interrupt masking.
-Its second state, `WFI-S2`, supplies `enter_s2idle` so the cpuidle core can
-freeze the tick and timekeeping. State zero is excluded from the core's
-s2idle selection, so both states perform the same architectural WFI.
-
-This requires no new PSCI power state or device-tree change. The periodic
-awake tick policy, high-resolution timers and service watchdogs are retained.
-Only s2idle is provided; registering CPU idle does not establish hardware
-deep sleep or measured battery savings. Qualification requires a long
-systemd-managed cycle with a frozen monotonic clock, unchanged logind and
-journald processes, retained GNOME input access, and physical display/touch
-confirmation. Until that passes, keep automatic sleep off.
+The known mt7921s resume `-EIO` occurred in each test; NetworkManager was
+connected after both real cycles. Final `suspend_stats` showed success=6,
+fail=0 and failed_resume=6, including the four debug cycles. Alarms were
+cleared, the sleep masks restored, PM diagnostics restored to zero and the
+boot-time test service/timer removed. The automatic-sleep marker was never
+created.
 
 ## Test and recovery constraints
 
@@ -161,16 +123,16 @@ Keep configfs gadget objects bound. Removing gadget functions can wedge tasks
 in D state and prevent freezing. A freezer-only pass does not prove device
 resume or a wake path.
 
-The external S35390A RTC supplies timekeeping only. Its unusable board alarm
-IRQ was removed in r48 after an IRQ storm; see the [RTC reference](power.md#rtc).
-`CONFIG_RTC_DRV_MT6397` remains unset. A temporary MT6358 RTC module fired a
-20-second alarm while Linux was awake on 2026-09-25, but was not packaged and
-was lost at reboot. Neither observation proves wake from s2idle.
+The external S35390A supplies timekeeping only; its unusable board alarm IRQ
+stays disabled. The packaged PMIC RTC supplies the verified timed wake path;
+see the [RTC reference](power.md#rtc). Before another timed test, identify the
+PMIC RTC, check its clock and wake-enable state, refuse an existing alarm,
+and verify the new alarm's readback. Clear the alarm and restore the original
+sleep policy after the test. Do not rely on an RTC number without checking
+its name. USB gadget and hall-switch wake remain unqualified.
 
-The PMIC power key woke the current build from real s2idle as recorded above.
-Other unverified candidates include the PMIC RTC, USB gadget and hall switch.
-The hardware watchdog is **not** a timed recovery path:
-`mtk_wdt_suspend()` stops it and restarts it only after resume.
+The PMIC power key woke r63 from real s2idle. The hardware watchdog is **not**
+a timed recovery path: `mtk_wdt_suspend()` stops it until resume.
 
 ## Automatic sleep and remaining acceptance
 
@@ -178,10 +140,10 @@ The enabled `dc1-sleep-on-blank` service stays inactive without the opt-in
 marker. It requests sleep once per screen-off cycle after DRM and both
 frontlights have been off for 60 seconds on battery. It unmasks the package's
 sleep targets immediately before its first request. Keep the marker absent
-until the installed build has a verified full cycle and physical wake path.
+until physical display/touch behavior and owner wake behavior are verified
+on the installed build.
 
-Next resolve long-cycle timekeeping/software-watchdog failures, verify a
-systemd-managed cycle with uninterrupted desktop input, then test the owner
-opt-in screen-off cycle and measure battery current while asleep. Fix or
-explicitly scope the remaining mt7921s resume failure; stage tests alone do
-not justify enabling automatic sleep.
+Next confirm physical relight/redraw and touch, handle or explicitly scope
+Wi-Fi's resume failure, then test the owner opt-in screen-off cycle and
+measure battery current while asleep. RTC wake and frozen timekeeping do not
+establish hardware deep sleep or power savings.

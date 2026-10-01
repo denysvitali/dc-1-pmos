@@ -23,7 +23,8 @@ require updating the pinned kernel commit/archive checksum and
 change this package. `sdcard.config` adds built-in storage requirements to
 the pinned defconfig; `latency.config` requires high-resolution timers for
 GPU wake and desktop scheduling precision. `suspend.config` enables the
-shallow WFI cpuidle driver required to freeze s2idle timekeeping. The recipe
+shallow WFI cpuidle driver required to freeze s2idle timekeeping and packages
+the PMIC alarm RTC as a module, preserving the built-in boot-time RTC. The recipe
 verifies the resolved values from all four fragments, including
 `usb-host.config`, and packages the resulting configuration.
 

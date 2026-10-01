@@ -293,32 +293,28 @@ surfaced only on hardware). The calibration runbook is in
 
 ## RTC
 
-The `rtc-s35390a` at i2c-8 registers as `rtc0`; the MT6358 PMIC RTC does
-not register. Alarm support appeared after the S35390A driver gained an
-IRQ path, but it is not usable on this board.
+The built-in `rtc-s35390a` at i2c-8 registers as `rtc0` and initializes
+system time. Its board alarm IRQ stays disabled: GPIO14 produced about
+492 IRQ/s despite the chip reporting INT2 clear. Kernel `8f0bfe8f8a4c`
+(package r48) removed the alarm IRQ and `wakeup-source` properties. The
+2026-08-28 r48 check confirmed the IRQ storm was gone and timekeeping
+continued normally. Do not re-enable this route for timed wake.
 
-The r46 boot on 2026-08-28 turned the earlier log-noise observation into
-a P0 defect: `/proc/interrupts` counted GPIO14 at about 492 IRQ/s (984 in
-two seconds), while STATUS1 never reported INT2 and the ring printed
-`alarm IRQ with INT2 flag clear; disarmed INT2`. The printed rate is only
-~0.6 lines/s because the warning is rate-limited; the underlying IRQ
-storm is continuous. Both driver-side mitigations are already present:
-the handler clears the INT2 alarm-enable mode, and probe clears every
-battery-backed INT output mode. Neither releases GPIO14, so the board
-line is not behaving as the controllable INT2 signal described by the
-DT. Besides rotating away early-boot evidence, this costs CPU wakeups and
-likely idle power.
+Kernel package r65 requires `CONFIG_RTC_DRV_MT6397=m`. The PMIC RTC node
+already exists in the running DT; udev loads the module after the built-in
+RTC and registers `rtc1`, named `mt6397-rtc mt6358-rtc`, without displacing
+`rtc0`. Its wake capability is enabled. On 2026-10-02, the installed r65
+build passed a 20-second awake alarm and automatically woke from two
+systemd-managed s2idle cycles, including 237.2 seconds of recorded sleep.
+Each produced one RTC alarm interrupt and wake through PMIC parent IRQ 152;
+no power-key interrupt was recorded. See the [suspend record](suspend.md).
 
-Kernel `8f0bfe8f8a4c` (package r48) removes the alarm IRQ and
-`wakeup-source` properties from the board node. This deliberately keeps
-RTC timekeeping and drops a timed-wake feature that has never worked;
-suspend remains disabled independently.
-
-**Hardware-verified 2026-08-28 on r48:** at 10m15s uptime there was no
-`8-0030` entry in `/proc/interrupts` and no S35390A alarm/error line in
-dmesg. Probe registered `rtc0` and set the system clock from it, and
-`date`, `time`, and `since_epoch` under `/sys/class/rtc/rtc0/` advanced
-normally across the observation window. The normal account cannot run
-`hwclock --show` because `/dev/rtc0` is intentionally `root:clock` mode
-0660; that permission error is not a hardware failure. The storm is
-closed.
+Before timed testing, identify the RTC by name, check its wake-enable state
+and time, and refuse to overwrite an existing alarm. Synchronize a stale
+PMIC clock explicitly with `hwclock --systohc --utc --rtc /dev/rtc1` only
+after checking that device's identity and alarm state. Verify alarm readback
+and clear the alarm when finished. The installed driver's advertised date
+range ends on 2027-12-31; later dates need separate driver qualification.
+The ordinary RTC synchronization service continues using the default
+external RTC. `/dev/rtc0` is intentionally `root:clock` mode 0660; an
+unprivileged `hwclock` permission error is not a hardware failure.
