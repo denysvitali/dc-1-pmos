@@ -157,6 +157,35 @@ if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$tmp/root-modules-drift" \
 	fail "Gate A accepted a same-version modules APK with different content"
 fi
 
+# depmod rewrites its text indexes when the rootfs installs them, and its
+# output is not stable across kmod versions: comment headers appear and
+# disappear, records reorder, and alias patterns get normalized between the '-'
+# and '_' spellings of the same wildcard. Those differences are not drift, and
+# the real kernel build trips on them. Re-derive the rootfs copies the way a
+# different depmod would and the export must still succeed.
+cp -a "$root" "$tmp/root-modules-reindexed"
+{
+	printf '# Aliases extracted from modules themselves.\n'
+	printf 'alias char-major-81-* videodev\n'
+	printf 'alias char_major_81_* videodev\n'
+	printf '\n'
+} >"$tmp/root-modules-reindexed/$module_path/modules.alias"
+mkdir "$tmp/out-modules-reindexed"
+PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$tmp/root-modules-reindexed" \
+	"$tmp/packages" "$tmp/SOURCES" "$tmp/out-modules-reindexed" >"$tmp/reindexed.log" 2>&1 ||
+	{ cat "$tmp/reindexed.log" >&2; fail "Gate A rejected a depmod-reindexed rootfs"; }
+
+# Normalization must not become a loophole: an index that points at a module
+# the APK does not ship is real drift and must still stop the export.
+cp -a "$root-modules-reindexed" "$tmp/root-modules-alias-drift"
+printf 'alias char-major-81-* othermodule\n' \
+	>>"$tmp/root-modules-alias-drift/$module_path/modules.alias"
+mkdir "$tmp/out-modules-alias-drift"
+if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$tmp/root-modules-alias-drift" \
+	"$tmp/packages" "$tmp/SOURCES" "$tmp/out-modules-alias-drift" >/dev/null 2>&1; then
+	fail "Gate A accepted a modules index naming a module the APK lacks"
+fi
+
 # Content Gate A: a same-version kernel APK containing different bytes must be
 # rejected even though its filename and the installed package database agree.
 cp -a "$tmp/packages" "$tmp/packages-kernel-drift"
