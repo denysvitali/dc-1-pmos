@@ -113,7 +113,12 @@ def boot_read(device):
         k, r = struct.unpack_from('<II', header, 8)
         size = 8192 + ((k+4095)&~4095) + ((r+4095)&~4095)
         require(8192 < size <= 64*1024*1024, 'implausible boot size')
-        data = header + stream.read(size-4096)
+        # Keep partition padding and the final AVB footer in backups and
+        # readback comparisons. The Android payload ends before these bytes.
+        # Read one extra byte to refuse targets beyond the supported bound.
+        data = header + stream.read(64*1024*1024 - 4096 + 1)
+        require(size <= len(data) <= 64*1024*1024,
+                'truncated or oversized boot target')
     unpack(data)
     return data
 

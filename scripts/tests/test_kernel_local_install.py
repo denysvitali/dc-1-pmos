@@ -80,6 +80,33 @@ class LocalKernelTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             local.unpack(image[:-1])
 
+    def test_boot_read_preserves_padding_and_footer(self):
+        image, _ = fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)/'boot'
+            target.write_bytes(image)
+            self.assertEqual(local.boot_read(target), image)
+            padded = image + bytes(65536-len(image)-64) + b'AVBf' + bytes(60)
+            target.write_bytes(padded)
+            self.assertEqual(local.boot_read(target), padded)
+            changed = bytearray(padded)
+            changed[-1] = 1
+            target.write_bytes(changed)
+            self.assertNotEqual(local.boot_read(target), padded)
+
+    def test_boot_read_refuses_truncated_or_oversized_target(self):
+        image, _ = fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)/'boot'
+            target.write_bytes(image[:-1])
+            with self.assertRaisesRegex(RuntimeError, 'truncated or oversized'):
+                local.boot_read(target)
+            target.write_bytes(image)
+            with target.open('r+b') as stream:
+                stream.truncate(64*1024*1024+1)
+            with self.assertRaisesRegex(RuntimeError, 'truncated or oversized'):
+                local.boot_read(target)
+
     def test_header_and_signature_refusals(self):
         image, _ = fixture()
         for offset in (0, 20, 40, 1580, len(image)-4096):

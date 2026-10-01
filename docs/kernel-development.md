@@ -43,6 +43,9 @@ differ from the running one.
 It also refuses a ramdisk containing kernel modules, which would need to be
 rebuilt against the new kernel instead of copied into the new boot image.
 
+Boot backups and readback comparisons include partition padding and the final
+AVB footer, with a 64 MiB bound. Truncated or oversized targets are refused.
+
 Before writing, it stages and verifies the package, backs up both boot images
 and the previous matching kernel/modules packages under `/var/lib/dc1/local-kernel/`, and
 checks the repacked image with `mkboot` and the kernel-parity verifier.
