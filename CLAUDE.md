@@ -85,8 +85,9 @@ Three overlays produce four APKs:
   `CC="ccache clang-20"`, `HOSTCC="ccache clang-20"`. DTB generation is
   serial with `HOSTCC=gcc`. Keep `CCACHE_DIR=/home/pmos/.ccache` and the
   positive check that ccache recorded compiles.
-- Preserve the built-in settings from `sdcard.config` and `latency.config`,
-  especially `CONFIG_HIGH_RES_TIMERS=y`. Ship the resolved kernel config.
+- Preserve the built-in settings from `sdcard.config`, `latency.config` and
+  `suspend.config`, especially `CONFIG_HIGH_RES_TIMERS=y` and the shallow WFI
+  cpuidle driver needed to freeze s2idle timekeeping. Ship the resolved config.
 
 The rootfs builder is non-deploying: `pmbootstrap install --no-image
 --no-sshd --no-firewall --no-recommends`. Builders write regular files;

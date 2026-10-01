@@ -117,7 +117,7 @@ device access. The owner then confirmed touch worked and a user desktop was
 active. This recovery does not qualify uninterrupted desktop input across
 sleep; restarting GDM in a logged-in session would discard that session.
 
-The shipped config has `CONFIG_CPU_IDLE` and `CONFIG_NO_HZ` unset. With no
+The r63 config has `CONFIG_CPU_IDLE` and `CONFIG_NO_HZ` unset. With no
 cpuidle device, `cpuidle_idle_call()` takes `default_idle_call()` before the
 s2idle path that calls `tick_freeze()` and suspends timekeeping. This agrees
 with the observed monotonic clock continuing during sleep. Systemd 262's
@@ -127,6 +127,23 @@ failures. The direct-sysfs test also bypassed systemd's sleep orchestration.
 Resolve the clock/watchdog interaction and verify a systemd-managed long
 cycle before enabling automatic sleep; do not disable watchdog protection as
 a substitute. No kernel input-driver change was made for this incident.
+
+### Shallow WFI timekeeping fix
+
+The r64 recipe enables `CONFIG_CPU_IDLE` and `CONFIG_ARM_JAGAR_CPUIDLE`
+through `suspend.config`. The board-gated `jagar_wfi` driver registers the
+existing arm64 `cpu_do_idle()` WFI operation, preserving interrupt masking.
+Its second state, `WFI-S2`, supplies `enter_s2idle` so the cpuidle core can
+freeze the tick and timekeeping. State zero is excluded from the core's
+s2idle selection, so both states perform the same architectural WFI.
+
+This requires no new PSCI power state or device-tree change. The periodic
+awake tick policy, high-resolution timers and service watchdogs are retained.
+Only s2idle is provided; registering CPU idle does not establish hardware
+deep sleep or measured battery savings. Qualification requires a long
+systemd-managed cycle with a frozen monotonic clock, unchanged logind and
+journald processes, retained GNOME input access, and physical display/touch
+confirmation. Until that passes, keep automatic sleep off.
 
 ## Test and recovery constraints
 

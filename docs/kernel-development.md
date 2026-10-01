@@ -22,8 +22,10 @@ require updating the pinned kernel commit/archive checksum and
 `scripts/versions.env`; editing the sibling kernel checkout alone does not
 change this package. `sdcard.config` adds built-in storage requirements to
 the pinned defconfig; `latency.config` requires high-resolution timers for
-GPU wake and desktop scheduling precision. The recipe verifies the resolved
-values from both fragments, and packages the resulting configuration.
+GPU wake and desktop scheduling precision. `suspend.config` enables the
+shallow WFI cpuidle driver required to freeze s2idle timekeeping. The recipe
+verifies the resolved values from all four fragments, including
+`usb-host.config`, and packages the resulting configuration.
 
 The kernel recipe emits a separate `-modules` APK and requires its exact
 version. Keep both APKs together for local installation. `usb-host.config`

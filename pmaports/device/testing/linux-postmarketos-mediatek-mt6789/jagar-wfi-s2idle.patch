@@ -1,0 +1,101 @@
+diff --git a/drivers/cpuidle/Kconfig.arm b/drivers/cpuidle/Kconfig.arm
+index a1ee475d180d..2a1dd6c21379 100644
+--- a/drivers/cpuidle/Kconfig.arm
++++ b/drivers/cpuidle/Kconfig.arm
+@@ -2,6 +2,15 @@
+ #
+ # ARM CPU Idle drivers
+ #
++config ARM_JAGAR_CPUIDLE
++	bool "Daylight DC-1 shallow CPU idle driver"
++	depends on ARM64 && ARCH_MEDIATEK && SUSPEND
++	help
++	  Register architectural WFI on the Daylight DC-1 so suspend-to-idle
++	  can freeze the tick and timekeeping. No PSCI power state or CPU
++	  power-domain transition is requested. Other boards are unaffected.
++	  Select this for the DC-1 until deeper firmware idle is validated.
++
+ config ARM_CPUIDLE
+ 	bool "Generic ARM CPU idle Driver"
+ 	depends on ARM
+diff --git a/drivers/cpuidle/Makefile b/drivers/cpuidle/Makefile
+index 1de9e92c5b0f..513d3aa2af2c 100644
+--- a/drivers/cpuidle/Makefile
++++ b/drivers/cpuidle/Makefile
+@@ -15,6 +15,7 @@ obj-$(CONFIG_HALTPOLL_CPUIDLE)		  += cpuidle-haltpoll.o
+ 
+ ##################################################################################
+ # ARM SoC drivers
++obj-$(CONFIG_ARM_JAGAR_CPUIDLE)		+= cpuidle-jagar.o
+ obj-$(CONFIG_ARM_MVEBU_V7_CPUIDLE) += cpuidle-mvebu-v7.o
+ obj-$(CONFIG_ARM_BIG_LITTLE_CPUIDLE)	+= cpuidle-big_little.o
+ obj-$(CONFIG_ARM_CLPS711X_CPUIDLE)	+= cpuidle-clps711x.o
+diff --git a/drivers/cpuidle/cpuidle-jagar.c b/drivers/cpuidle/cpuidle-jagar.c
+new file mode 100644
+index 000000000000..47a052c06e0e
+--- /dev/null
++++ b/drivers/cpuidle/cpuidle-jagar.c
+@@ -0,0 +1,63 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Shallow WFI and suspend-to-idle timekeeping for the Daylight DC-1. */
++
++#include <linux/cpuidle.h>
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/of.h>
++
++#include <asm/cpuidle.h>
++
++static __cpuidle int jagar_enter_wfi(struct cpuidle_device *dev,
++				     struct cpuidle_driver *drv, int index)
++{
++	/* Keep interrupts masked for the s2idle core's tick_freeze() pair. */
++	cpu_do_idle();
++	return index;
++}
++
++static struct cpuidle_driver jagar_idle_driver = {
++	.name = "jagar_wfi",
++	.owner = THIS_MODULE,
++	.states = {
++		{
++			.enter = jagar_enter_wfi,
++			.exit_latency = 1,
++			.target_residency = 1,
++			.name = "WFI",
++			.desc = "Architectural WFI",
++		},
++		{
++			/*
++			 * The s2idle core excludes fallback state zero. This
++			 * second state uses the same WFI, with enter_s2idle
++			 * allowing the core to freeze ticks and timekeeping.
++			 * Ordinary idle selection still executes only WFI.
++			 */
++			.enter = jagar_enter_wfi,
++			.enter_s2idle = jagar_enter_wfi,
++			.exit_latency = 1,
++			.target_residency = 1,
++			.name = "WFI-S2",
++			.desc = "WFI with s2idle timekeeping",
++		},
++	},
++	.safe_state_index = 0,
++	.state_count = 2,
++};
++
++static int __init jagar_cpuidle_init(void)
++{
++	int ret;
++
++	if (!of_machine_is_compatible("daylight,jagar"))
++		return -ENODEV;
++
++	ret = cpuidle_register(&jagar_idle_driver, NULL);
++	if (ret)
++		return ret;
++
++	pr_info("jagar cpuidle: registered WFI with s2idle timekeeping\n");
++	return 0;
++}
++device_initcall(jagar_cpuidle_init);
