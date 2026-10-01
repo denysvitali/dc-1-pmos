@@ -1,9 +1,60 @@
 #!/usr/bin/env python3
 """Check the split modules APK against the installed rootfs without extraction."""
 from pathlib import Path, PurePosixPath
-import hashlib
 import sys
 import tarfile
+
+# Files that make up the module tree itself. These carry the driver code and
+# must match byte for byte: a same-version APK that relinked a module, or whose
+# firmware/overlay payload drifted, is exactly what this gate exists to catch.
+DRIVER_SUFFIXES = ('.ko', '.ko.gz', '.ko.xz', '.ko.zst')
+
+# depmod's binary indices are a derived, lossy view of the same data as the
+# text files beside them, encoded in a layout specific to the kmod build that
+# produced it. They must be present on both sides, but their bytes record which
+# depmod ran, not which modules are installed.
+BINARY_INDEX_SUFFIX = '.bin'
+
+
+def index_records(data):
+    """Semantic records of a kmod text index, independent of depmod's format.
+
+    depmod output is not stable across kmod versions: comment headers appear and
+    disappear, records are reordered, and alias patterns get normalized between
+    the '-' and '_' spellings of the same wildcard. kmod matches aliases with
+    '-' and '_' treated as equivalent, so those spellings are one alias; only a
+    genuinely different pattern, or a different module, is real drift.
+    """
+    records = set()
+    for raw in data.splitlines():
+        line = raw.decode('utf-8', 'replace').strip()
+        if not line or line.startswith('#'):
+            continue
+        fields = line.split()
+        if fields[0] == 'alias' and len(fields) >= 3:
+            # Normalize the wildcard pattern only. The target is a module path
+            # where '-' and '_' are distinct characters.
+            records.add('alias ' + ' '.join([fields[1].replace('_', '-')] + fields[2:]))
+        else:
+            records.add(' '.join(fields))
+    return records
+
+
+def compare(apk_data, installed, name):
+    """Raise ValueError unless the two copies of `name` hold the same content."""
+    rootfs_data = installed.read_bytes()
+    if apk_data == rootfs_data:
+        return
+    base = PurePosixPath(name).name
+    if not base.startswith('modules.'):
+        raise ValueError(f'module package/rootfs mismatch: {name}')
+    if base.endswith(BINARY_INDEX_SUFFIX):
+        return
+    apk_records = index_records(apk_data)
+    rootfs_records = index_records(rootfs_data)
+    if apk_records != rootfs_records:
+        sample = sorted(apk_records ^ rootfs_records)[:3]
+        raise ValueError(f'module index content mismatch: {name}: {sample}')
 
 
 def verify(apk, root):
@@ -28,22 +79,8 @@ def verify(apk, root):
             installed = root / name
             if not installed.is_file():
                 raise ValueError(f'module package file absent from rootfs: {name}')
-            data = stream.read()
-            if hashlib.sha256(data).digest() != hashlib.sha256(installed.read_bytes()).digest():
-                # kmod's index files are derived by depmod, which the rootfs
-                # install may re-run; only their content (not byte order or
-                # binary layout) is meaningful. Drivers must match exactly.
-                base = PurePosixPath(name).name
-                if not base.startswith('modules.') or base.endswith('.ko'):
-                    raise ValueError(f'module package/rootfs mismatch: {name}')
-                if base.endswith('.bin'):
-                    pass
-                elif sorted(data.splitlines()) != sorted(installed.read_bytes().splitlines()):
-                    a = set(data.splitlines())
-                    b = set(installed.read_bytes().splitlines())
-                    sample = sorted(a ^ b)[:3]
-                    raise ValueError(f'module index content mismatch: {name}: {sample}')
-            if name.endswith(('.ko', '.ko.gz', '.ko.xz', '.ko.zst')):
+            compare(stream.read(), installed, name)
+            if name.endswith(DRIVER_SUFFIXES):
                 count += 1
     if not count or not all(prefix + name in seen for name in ('modules.dep', 'modules.alias', 'modules.builtin')):
         raise ValueError('modules APK lacks drivers or kmod dependency/alias/builtin metadata')
