@@ -35,3 +35,14 @@ cycle. If AVB verification is ever re-enabled, images must instead be signed
 properly with `avbtool`.
 
 SHA-256: `403d35c3dfd74f04d0c3e20b17f4031b3cbedb7de656b44ceb70b90580dd8009`
+
+## Partition-sized images and the AVB footer
+
+`repack-boot.sh` pads every image to the full 64 MiB `boot_*` partition and
+ends it with an `AVBf` footer pointing at the image's own AVB0 page. A plain
+`fastboot flash` or `dd` writes only the image's bytes, so on a stock device the
+original footer in the partition's last 64 bytes would survive and point into
+the new payload. LK reads a non-AVB0 target as "invalid metadata", a hard error
+even on an unlocked device, and the tablet loops on the Orange State screen
+(issue #7). Stock `vbmeta` (flags 0) does not need to be modified. Readers that
+walk the header (`mkboot verify`, the installers) ignore the zero padding.

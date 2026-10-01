@@ -88,9 +88,22 @@ require(image[ramdisk_offset:ramdisk_offset + ramdisk_size] == ramdisk,
         "ramdisk is not placed exactly after the padded kernel")
 require(image[ramdisk_offset + ramdisk_size:signature_offset] ==
         bytes(aligned(ramdisk_size) - ramdisk_size), "ramdisk padding is not zeroed")
-require(len(image) == signature_offset + 4096, "signature is not the exact image tail")
-require(image[-4096:] == signature, "image tail differs from boot-signature.bin")
-require(hashlib.sha256(image[-4096:]).hexdigest() ==
+require(image[signature_offset:signature_offset + 4096] == signature,
+        "signature page differs from boot-signature.bin")
+# Issue #7: the image is padded to the whole partition and ends with an AVBf
+# footer pointing at our own AVB0 page, so a stale stock footer cannot survive.
+require(len(image) == 0x4000000, "image is not padded to the 64 MiB partition")
+require(image[signature_offset + 4096:-64] == bytes(len(image) - 64 - signature_offset - 4096),
+        "padding before the AVB footer is not zeroed")
+footer = image[-64:]
+require(footer[:4] == b"AVBf", "missing AVBf footer")
+major, minor, orig, vb_off, vb_size = struct.unpack(">IIQQQ", footer[4:36])
+require((major, minor) == (1, 0), "unexpected footer version")
+require(orig == vb_off == signature_offset, "footer does not point at the AVB0 page")
+auth, aux = struct.unpack(">QQ", signature[12:28])
+require(vb_size == 256 + auth + aux, "footer vbmeta_size does not match the AVB0 header")
+require(footer[36:] == bytes(28), "footer reserved bytes not zero")
+require(hashlib.sha256(image[signature_offset:signature_offset + 4096]).hexdigest() ==
         "403d35c3dfd74f04d0c3e20b17f4031b3cbedb7de656b44ceb70b90580dd8009",
         "image signature tail hash drifted from recorded provenance")
 require(len(image) <= 0x4000000, "image exceeds the 64 MiB boot partition")

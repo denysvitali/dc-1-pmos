@@ -114,9 +114,24 @@ if len(img) > LIMIT:
     sys.exit("image is %d bytes, larger than the %d-byte boot partition / "
              "fastboot download limit" % (len(img), LIMIT))
 
+# `fastboot flash` (and a plain dd) writes only the image's own bytes, so the
+# stock 64-byte AVBf footer in the last bytes of the partition survives and
+# points at an offset inside the new payload. LK then reads a non-AVB0 target,
+# gets "invalid metadata" (a hard error, unlike the tolerated key/hash
+# mismatch on an unlocked device) and loops (issue #7). Pad to the full
+# partition and end it with our own footer pointing at the AVB0 page we carry.
+# Layout is avbtool's: magic, major/minor, original_image_size, vbmeta_offset,
+# vbmeta_size, 28 reserved bytes (64 total).
+vb_off = len(img) - P
+auth, aux = struct.unpack('>QQ', sig[12:28])
+footer = b'AVBf' + struct.pack('>IIQQQ', 1, 0, vb_off, vb_off, 256 + auth + aux)
+footer += b'\0' * (64 - len(footer))
+img += b'\0' * (LIMIT - len(img) - 64) + footer
+assert len(img) == LIMIT
+
 open(out, 'wb').write(img)
-print("%s: %d bytes (kernel %d, ramdisk %d, signed)%s"
-      % (out, len(img), len(kern), len(rd),
+print("%s: %d bytes (kernel %d, ramdisk %d, signed, AVB footer -> 0x%x)%s"
+      % (out, len(img), len(kern), len(rd), vb_off,
          ("\n  cmdline: " + cmdline + "  [NOTE: this LK ignores the header cmdline]")
          if cmdline else ""))
 PYEOF
