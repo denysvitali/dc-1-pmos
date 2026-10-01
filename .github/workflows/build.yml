@@ -339,11 +339,18 @@ jobs:
             # marker wording varies. Always publish the failure tail instead
             # of searching for one brittle marker (which hid an UNTRUSTED
             # local-package signature on the first restored-cache run).
+            # GitHub renders at most ten annotations per step, so emit each
+            # tail as ONE multi-line annotation (newlines escaped as %0A).
+            # build-rootfs.log carries the wrapper/exporter's own failure
+            # message; the pmbootstrap log tail alone ends in routine chroot
+            # cleanup and hid a post-install export failure.
+            annotate() {
+              printf '::error title=%s::%s\n' "$1" \
+                "$(sed -e 's/%/%25/g' -e 's/\r/%0D/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
+            }
+            tail -n 30 build-rootfs.log | annotate "build-rootfs.log tail"
             pmblog=work/postmarketos/pmbootstrap-work/log.txt
-            sudo tail -n 40 "$pmblog" 2>/dev/null |
-              while IFS= read -r l; do
-              printf '::error::pmblog: %s\n' "$l"
-              done
+            sudo tail -n 40 "$pmblog" 2>/dev/null | annotate "pmbootstrap log tail"
             exit 1
           fi
 
