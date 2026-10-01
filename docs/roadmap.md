@@ -46,9 +46,9 @@ A development unit upgraded over time does not replace fresh-rootfs acceptance.
 
 ## Remaining features
 
-- **Suspend/resume:** resolve long-cycle timekeeping/software-watchdog
-  failures and verify a systemd-managed cycle with uninterrupted desktop input
-  on the installed build. Handle Wi-Fi resume failures, then test the owner
+- **Suspend/resume:** qualify the shallow WFI timekeeping path in a long
+  systemd-managed cycle with uninterrupted desktop input on the installed
+  build. Handle Wi-Fi resume failures, then test the owner
   opt-in screen-off cycle and measure battery current.
   Keep sleep masked by default. See [suspend](hw/suspend.md).
 - **Pack gauge:** establish live BQ78Z100 ACK and protocol before enabling it.

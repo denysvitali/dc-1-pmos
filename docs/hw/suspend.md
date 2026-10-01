@@ -7,13 +7,15 @@ Current constraints and measurements for the *Suspend/sleep* row in
 
 ## Current status
 
-The installed kernel r63 (`#64-postmarketos-mediatek-mt6789`, 7.2.0-rc5)
-passed automatic-return device and platform resume tests on 2026-09-30. The
-OVL underflow/quarantine regression was resolved in these tests by restoring
-physical memory routing and the overlay's proven FIFO policy after display
-power loss. On 2026-10-01, the same build completed a real s2idle cycle and
-woke through the PMIC power key. The owner confirmed the restored image.
-Touch events also resumed, but a login-manager restart left GNOME without
+The installed kernel r64 (`#65-postmarketos-mediatek-mt6789`, 7.2.0-rc5)
+booted and passed automatic-return device and platform resume tests on
+2026-10-01. Display routing and FIFO policy restore correctly after power
+loss. Its shallow WFI cpuidle driver is registered on all eight CPUs; a long
+systemd-managed cycle is still required to qualify timekeeping and desktop
+input across sleep.
+
+The previous r63 build completed a real s2idle cycle with PMIC power-key
+wake and a restored image, but a login-manager restart left GNOME without
 input until the greeter was restarted. Automatic sleep remains unqualified.
 
 Only `[s2idle]` is exposed in `/sys/power/mem_sleep`; hardware `deep` suspend
@@ -43,22 +45,25 @@ second-stage GMC settings did not change. The fixes preserve the translated
 DMA path and all first-frame underflow/quarantine checks. They are kernel-only
 updates: the source pin, running DT, dtbswap stub and initramfs are preserved.
 
-## Current-build stage validation (2026-09-30)
+## Current-build stage validation (2026-10-01)
 
-The r63 kernel and matching modules were built natively with LLVM 20. Local
-installation verified package/image parity and inactive-slot readback; the
-#64 boot confirmed the candidate slot and installed package/modules identities
-while retaining the successful fallback. These are local-development results,
-not acceptance of an exact published release artifact set.
+The r64 kernel and matching modules were built natively with LLVM 20. The
+packaged config retains high-resolution timers and the periodic awake tick
+policy. Local installation verified package/image parity and the complete
+64 MiB inactive-slot readback; the #65 boot confirmed the candidate slot,
+installed package/modules identities and SD filesystems while retaining the
+successful r63 fallback. The registered `jagar_wfi` driver exposes `WFI-S2`
+on all eight online CPUs. These are local-development results, not acceptance
+of an exact published release artifact set.
 
 With the panel on at 60 Hz, USB power connected and local recovery available:
 
 | Stage | Return time | First frame | TE after resume |
 | --- | --- | --- | --- |
-| `devices` | 11.16 s | `0x4003`, no underflow | 59.18 Hz |
-| `platform`, cycle 1 | 11.24 s | `0x4003`, no underflow | 59.18 Hz |
-| `platform`, cycle 2 | 11.19 s | `0x4003`, no underflow | 59.18 Hz |
-| `platform`, cycle 3 | 11.27 s | `0x4003`, no underflow | 59.18 Hz |
+| `devices` | 11.11 s | `0x4003`, no underflow | 59.18 Hz |
+| `platform`, cycle 1 | 11.23 s | `0x4003`, no underflow | 59.18 Hz |
+| `platform`, cycle 2 | 11.17 s | `0x4003`, no underflow | 59.18 Hz |
+| `platform`, cycle 3 | 11.23 s | `0x4003`, no underflow | 59.18 Hz |
 
 All cycles preserved active LARB0 physical routing, all ten OVL request/buffer
 policy registers and the output-clamp bit. No first-frame failure or quarantine
