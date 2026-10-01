@@ -161,14 +161,17 @@ fi
 # output is not stable across kmod versions: comment headers appear and
 # disappear, records reorder, and alias patterns get normalized between the '-'
 # and '_' spellings of the same wildcard. Those differences are not drift, and
-# the real kernel build trips on them. Re-derive the rootfs copies the way a
-# different depmod would and the export must still succeed.
+# the real kernel build trips on them. Give the fixture the same alias the real
+# kernel ships, then re-derive the rootfs copy the way a different depmod would.
+printf 'alias char-major-81-* videodev\nalias usb:* test\n' \
+	>"$tmp/modules-apk/$module_path/modules.alias"
+tar -czf "$packages/$modules_apk" -C "$tmp/modules-apk" lib
 cp -a "$root" "$tmp/root-modules-reindexed"
 {
 	printf '# Aliases extracted from modules themselves.\n'
-	printf 'alias char-major-81-* videodev\n'
 	printf 'alias char_major_81_* videodev\n'
 	printf '\n'
+	printf 'alias usb:* test\n'
 } >"$tmp/root-modules-reindexed/$module_path/modules.alias"
 mkdir "$tmp/out-modules-reindexed"
 PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$tmp/root-modules-reindexed" \
@@ -177,13 +180,23 @@ PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$tmp/root-modules-reindexed" \
 
 # Normalization must not become a loophole: an index that points at a module
 # the APK does not ship is real drift and must still stop the export.
-cp -a "$root-modules-reindexed" "$tmp/root-modules-alias-drift"
-printf 'alias char-major-81-* othermodule\n' \
+cp -a "$tmp/root-modules-reindexed" "$tmp/root-modules-alias-drift"
+printf 'alias char-major-99-* othermodule\n' \
 	>>"$tmp/root-modules-alias-drift/$module_path/modules.alias"
 mkdir "$tmp/out-modules-alias-drift"
 if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$tmp/root-modules-alias-drift" \
 	"$tmp/packages" "$tmp/SOURCES" "$tmp/out-modules-alias-drift" >/dev/null 2>&1; then
 	fail "Gate A accepted a modules index naming a module the APK lacks"
+fi
+
+# A driver that differs is still a same-version cache drift, even when the
+# indexes around it differ only in formatting.
+cp -a "$tmp/root-modules-reindexed" "$tmp/root-modules-drift-reindexed"
+printf 'other build\n' >"$tmp/root-modules-drift-reindexed/$module_path/kernel/drivers/usb/test.ko"
+mkdir "$tmp/out-modules-drift-reindexed"
+if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$tmp/root-modules-drift-reindexed" \
+	"$tmp/packages" "$tmp/SOURCES" "$tmp/out-modules-drift-reindexed" >/dev/null 2>&1; then
+	fail "Gate A accepted a reindexed rootfs with different driver bytes"
 fi
 
 # Content Gate A: a same-version kernel APK containing different bytes must be
