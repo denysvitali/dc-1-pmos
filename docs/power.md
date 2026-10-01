@@ -78,9 +78,12 @@ disable that gauge node, so it cannot register.
 Automatic suspend remains disabled. Kernel r63 passed device/platform tests
 and a real s2idle cycle after fixes to display memory routing and FIFO policy.
 The power key woke Linux after about 20 minutes, with panel TE restored and
-Wi-Fi reconnecting after its known resume error. Screen/touch verification
-and the automatic screen-off cycle remain outstanding; sleep targets stay
-masked. Battery-current savings have not been measured. See the
+Wi-Fi reconnecting after its known resume error. The owner confirmed the
+image returned, but touch required restarting the login screen after the
+login manager restarted during resume. The controller itself was delivering
+valid touch events. Long-cycle service failures and uninterrupted desktop
+input still need fixing, so sleep targets stay masked. Battery-current
+savings have not been measured. See the
 [suspend record](hw/suspend.md) and [roadmap](roadmap.md).
 
 A temporary PMIC RTC module fired an alarm while awake on 2026-09-25, but it

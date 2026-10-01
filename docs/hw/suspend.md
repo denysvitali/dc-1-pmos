@@ -12,8 +12,9 @@ passed automatic-return device and platform resume tests on 2026-09-30. The
 OVL underflow/quarantine regression was resolved in these tests by restoring
 physical memory routing and the overlay's proven FIFO policy after display
 power loss. On 2026-10-01, the same build completed a real s2idle cycle and
-woke through the PMIC power key. Screen redraw/touch and the automatic
-screen-off policy still need owner verification.
+woke through the PMIC power key. The owner confirmed the restored image.
+Touch events also resumed, but a login-manager restart left GNOME without
+input until the greeter was restarted. Automatic sleep remains unqualified.
 
 Only `[s2idle]` is exposed in `/sys/power/mem_sleep`; hardware `deep` suspend
 is unavailable. `sleep.target` and `suspend.target` remain masked, and
@@ -97,9 +98,35 @@ with no suspend failure and one additional Wi-Fi resume failure.
 `CLOCK_MONOTONIC` continued through this s2idle path, so subtracting it from
 `CLOCK_BOOTTIME` did not measure time asleep. The interval above uses the
 kernel's noirq-complete and wake-IRQ timestamps. It establishes physical wake,
-not battery-current savings. Human image/touch verification, a systemd-managed
-cycle and the battery-only screen-off policy remain outstanding. Temporary PM
-diagnostics were restored and the transient test unit exited.
+not battery-current savings. Temporary PM diagnostics were restored and the
+transient test unit exited.
+
+### Desktop input failure after the long cycle
+
+The owner confirmed that the display returned but the login screen ignored
+touch. A non-grabbing libinput capture then recorded 123 touch-downs, 5096
+motions and 119 touch-ups without errors. The controller was running, its
+reset GPIO was high, and the IRQ/I2C event path was active; no touchscreen
+driver reset or rebind was needed.
+
+At resume, journald reported a three-minute software-watchdog timeout and
+logind aborted with `SIGABRT`, then restarted. GNOME lost access to all five
+input devices and its attempts to reopen them failed with `DeviceIsTaken`.
+Restarting GDM at the greeter, with no logged-in user desktop, restored input
+device access. The owner then confirmed touch worked and a user desktop was
+active. This recovery does not qualify uninterrupted desktop input across
+sleep; restarting GDM in a logged-in session would discard that session.
+
+The shipped config has `CONFIG_CPU_IDLE` and `CONFIG_NO_HZ` unset. With no
+cpuidle device, `cpuidle_idle_call()` takes `default_idle_call()` before the
+s2idle path that calls `tick_freeze()` and suspends timekeeping. This agrees
+with the observed monotonic clock continuing during sleep. Systemd 262's
+[service watchdog uses CLOCK_MONOTONIC](https://github.com/systemd/systemd/blob/v262/src/core/service.c),
+so expiry across the long frozen interval is a likely cause of these service
+failures. The direct-sysfs test also bypassed systemd's sleep orchestration.
+Resolve the clock/watchdog interaction and verify a systemd-managed long
+cycle before enabling automatic sleep; do not disable watchdog protection as
+a substitute. No kernel input-driver change was made for this incident.
 
 ## Test and recovery constraints
 
@@ -131,7 +158,8 @@ frontlights have been off for 60 seconds on battery. It unmasks the package's
 sleep targets immediately before its first request. Keep the marker absent
 until the installed build has a verified full cycle and physical wake path.
 
-Next verify screen redraw/relight and touch, exercise a systemd-managed cycle,
-then test the owner opt-in screen-off cycle and measure battery current
-while asleep. Fix or explicitly scope the remaining mt7921s resume failure;
-stage tests alone do not justify enabling automatic sleep.
+Next resolve long-cycle timekeeping/software-watchdog failures, verify a
+systemd-managed cycle with uninterrupted desktop input, then test the owner
+opt-in screen-off cycle and measure battery current while asleep. Fix or
+explicitly scope the remaining mt7921s resume failure; stage tests alone do
+not justify enabling automatic sleep.

@@ -6,7 +6,13 @@ Newest facts last inside each section.
 
 ## Touchscreen
 
-ILI2910, 10-point multitouch. ✅ Works; no open items.
+ILI2910, 10-point multitouch. Cold-boot touch and post-suspend kernel/libinput
+events work. During the r63 long s2idle test on 2026-10-01, the display returned
+but the greeter ignored touch after logind restarted and GNOME lost access to
+its input devices. Restarting the greeter restored touch, confirmed by the
+owner; the touchscreen needed no reset or driver change. Uninterrupted desktop
+input after long sleep remains open. See the
+[suspend record](suspend.md#desktop-input-failure-after-the-long-cycle).
 
 ## Buttons
 

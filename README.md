@@ -63,7 +63,7 @@ model and records sourced board specifications.
 | Storage & microSD | ✅ | UFS internal storage; microSD slot works |
 | Battery & charging | 🟡 | USB-C PD negotiates (12 V PDO verified); Charging Profile selects 3.15 A or 2.00 A; charge % is restored only after a valid clean reboot within ten minutes; pack-temperature control is unavailable |
 | USB-C data | 🟡 | USB 2.0 ACM serial works; ECM is configured device-side but host Ethernet/SSH remains unverified, and host mode is partial. No implemented SuperSpeed, video Alt Mode, or Thunderbolt path |
-| Suspend/sleep | 🚧 | Current kernel resumes from real s2idle through the power key; screen/touch and automatic screen-off acceptance remain. Hardware deep sleep is unavailable; sleep targets stay masked |
+| Suspend/sleep | 🚧 | Real s2idle, power-key wake and display resume work; long sleep broke desktop input until the login screen was restarted. Hardware deep sleep is unavailable; automatic sleep stays disabled |
 | Ambient light / proximity sensor | ❌ | An unidentified MN29-family part ACKs at `0x49`; protocol and driver remain unknown |
 | Gyro, magnetometer, cellular, GPS, onboard cameras | ❌ | Not fitted/exposed on this hardware |
 
