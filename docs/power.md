@@ -75,15 +75,17 @@ disable that gauge node, so it cannot register.
 
 ## Battery life today
 
-Automatic suspend remains disabled. Kernel r63 passed device and platform
-resume tests after fixes to display memory routing and FIFO policy. A full
-s2idle cycle, screen relight and reliable physical wake on the installed build
-remain unverified, so the sleep targets stay masked. See the
+Automatic suspend remains disabled. Kernel r63 passed device/platform tests
+and a real s2idle cycle after fixes to display memory routing and FIFO policy.
+The power key woke Linux after about 20 minutes, with panel TE restored and
+Wi-Fi reconnecting after its known resume error. Screen/touch verification
+and the automatic screen-off cycle remain outstanding; sleep targets stay
+masked. Battery-current savings have not been measured. See the
 [suspend record](hw/suspend.md) and [roadmap](roadmap.md).
 
 A temporary PMIC RTC module fired an alarm while awake on 2026-09-25, but it
-is not packaged and wake from real sleep remains unverified. Keep automatic
-sleep disabled until a full cycle and intended physical wake path are verified.
+is not packaged and RTC wake from real sleep remains unverified. It cannot
+provide a timed recovery backstop for further tests.
 
 The device package now contains an opt-in `dc1-sleep-on-blank` service. Once
 enabled, it requests suspend after the DRM screen and both frontlights have

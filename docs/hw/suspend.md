@@ -11,17 +11,14 @@ The installed kernel r63 (`#64-postmarketos-mediatek-mt6789`, 7.2.0-rc5)
 passed automatic-return device and platform resume tests on 2026-09-30. The
 OVL underflow/quarantine regression was resolved in these tests by restoring
 physical memory routing and the overlay's proven FIFO policy after display
-power loss. This does **not** establish a real sleep/wake cycle or visually
-correct glass on this build.
+power loss. On 2026-10-01, the same build completed a real s2idle cycle and
+woke through the PMIC power key. Screen redraw/touch and the automatic
+screen-off policy still need owner verification.
 
 Only `[s2idle]` is exposed in `/sys/power/mem_sleep`; hardware `deep` suspend
 is unavailable. `sleep.target` and `suspend.target` remain masked, and
 `/var/lib/dc1/enable-auto-suspend` remains absent. Wi-Fi still reports resume
 `-EIO`, then recovers. There is no packaged RTC alarm backstop.
-
-An earlier full s2idle cycle returned to Linux on 2026-08-19, before the
-current kernel pin. Its wake cause and panel image were not independently
-verified; it is not acceptance of the current build.
 
 ## Display restoration
 
@@ -74,7 +71,35 @@ Each cycle logged the known mt7921s resume `-EIO`; NetworkManager was connected
 after testing. `suspend_stats` read success=4/fail=0 and failed_resume=4. These
 counters include debug test cycles, not real sleep acceptance. The selector was
 restored to `none`, temporary PM diagnostics were restored, and the one-shot
-test service/timer was removed. No real `mem` or timed-wake test was attempted.
+test service/timer was removed. These stage tests did not exercise real sleep.
+
+## Full cycle with physical wake (2026-10-01)
+
+With r63/#64, USB power connected and the owner beside the tablet, a one-shot
+test wrote `mem` to `/sys/power/state` with `pm_test=none`. No sleep target
+was unmasked and no automatic-sleep marker was created. The owner reported
+the tablet sleeping and then pressed the power key.
+
+The kernel completed noirq suspend, remained in that path for 1229.66 seconds
+(about 20 minutes), and logged `Triggering wakeup from IRQ 152`. This is the
+MT6358 PMIC parent interrupt; power-key press/release IRQ counts both
+increased by one, while the hall and USB interrupt counts stayed unchanged.
+The call returned successfully without a reboot, and the device-resume phase
+took 4.33 seconds.
+
+OVL's first frame completed with status `0x4003`; no underflow or quarantine
+was logged. TE returned at 59.18 Hz, active LARB0 retained physical routing,
+and OVL request limits/urgent requests remained `0xf1ff5555`/`0x5555`.
+The known mt7921s resume `-EIO` triggered firmware recovery; NetworkManager
+was connected after return. The success counter advanced from four to five,
+with no suspend failure and one additional Wi-Fi resume failure.
+
+`CLOCK_MONOTONIC` continued through this s2idle path, so subtracting it from
+`CLOCK_BOOTTIME` did not measure time asleep. The interval above uses the
+kernel's noirq-complete and wake-IRQ timestamps. It establishes physical wake,
+not battery-current savings. Human image/touch verification, a systemd-managed
+cycle and the battery-only screen-off policy remain outstanding. Temporary PM
+diagnostics were restored and the transient test unit exited.
 
 ## Test and recovery constraints
 
@@ -93,9 +118,9 @@ IRQ was removed in r48 after an IRQ storm; see the [RTC reference](power.md#rtc)
 20-second alarm while Linux was awake on 2026-09-25, but was not packaged and
 was lost at reboot. Neither observation proves wake from s2idle.
 
-The PMIC power key is configured as a wake source but has no current-build
-full-cycle wake result. Other candidates include the PMIC RTC, USB gadget and
-hall switch. The hardware watchdog is **not** a timed recovery path:
+The PMIC power key woke the current build from real s2idle as recorded above.
+Other unverified candidates include the PMIC RTC, USB gadget and hall switch.
+The hardware watchdog is **not** a timed recovery path:
 `mtk_wdt_suspend()` stops it and restarts it only after resume.
 
 ## Automatic sleep and remaining acceptance
@@ -106,8 +131,7 @@ frontlights have been off for 60 seconds on battery. It unmasks the package's
 sleep targets immediately before its first request. Keep the marker absent
 until the installed build has a verified full cycle and physical wake path.
 
-Next establish a wake source with local recovery, test a real s2idle cycle,
-verify screen redraw/relight and Wi-Fi recovery, and measure battery current
-while asleep. Only then test the owner opt-in screen-off cycle. Fix or
-explicitly scope the remaining mt7921s resume failure; stage tests alone do
-not justify enabling automatic sleep.
+Next verify screen redraw/relight and touch, exercise a systemd-managed cycle,
+then test the owner opt-in screen-off cycle and measure battery current
+while asleep. Fix or explicitly scope the remaining mt7921s resume failure;
+stage tests alone do not justify enabling automatic sleep.
