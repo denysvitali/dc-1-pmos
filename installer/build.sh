@@ -108,21 +108,24 @@ REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e91917
 # dbus-libs and libuuid; re-resolved 2026-09-17 for busybox-static and
 # libblkid, which edge had dropped, turning this build red while the
 # non-downloading verify job stayed green -- edge deletes superseded builds,
-# so expect to repeat this and re-check every pin whenever this fails).
+# so expect to repeat this and re-check every pin whenever this fails.
+# Re-resolved 2026-10-02 for busybox-static, musl, ca-certificates-bundle,
+# libcrypto3, libssl3, pcsc-lite-libs, libblkid and libuuid, all of which
+# edge had superseded; every other pin was re-checked and is still current.
 # A filename is not a content pin: mirrors may replace
 # bytes under one version, and dl/ is a persistent cache. Every cached or newly
 # downloaded APK is therefore verified before extraction.
 ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64"
 ALPINE_APKS="
-busybox-static-1.38.0-r6
-musl-1.2.6-r3
+busybox-static-1.38.0-r7
+musl-1.2.6-r4
 curl-8.22.0-r0
 libcurl-8.22.0-r0
-ca-certificates-bundle-20260611-r0
+ca-certificates-bundle-20260909-r0
 brotli-libs-1.2.0-r1
 c-ares-1.34.8-r0
-libcrypto3-3.5.8-r0
-libssl3-3.5.8-r0
+libcrypto3-3.5.9-r0
+libssl3-3.5.9-r0
 libidn2-2.3.8-r0
 libunistring-1.4.2-r0
 nghttp2-libs-1.70.0-r0
@@ -135,7 +138,7 @@ libstdc++-15.2.0-r9
 wpa_supplicant-2.11-r4
 dbus-libs-1.16.2-r3
 libnl3-3.11.0-r0
-pcsc-lite-libs-2.5.1-r0
+pcsc-lite-libs-2.5.2-r0
 dropbear-2026.94-r0
 utmps-libs-0.1.3.4-r0
 skalibs-libs-2.15.1.0-r0
@@ -143,20 +146,20 @@ e2fsprogs-1.47.4-r0
 e2fsprogs-extra-1.47.4-r0
 e2fsprogs-libs-1.47.4-r0
 libcom_err-1.47.4-r0
-libblkid-2.42.3-r1
-libuuid-2.42.3-r1
+libblkid-2.42.4-r1
+libuuid-2.42.4-r1
 libeconf-0.8.4-r0
 "
 ALPINE_APK_SHA256S="
-840c0938d4d361d411718dcdef14d4c7fba844e7492209d4161c007d1b98dc6a busybox-static-1.38.0-r6
-00fc1ac4ccc9fb5084222cd2d79a8eb3fe1a9420ca7064ec3dae752cac53d114 musl-1.2.6-r3
+6e1b8ecc3fb6a991025127120378521f481daa886e7f346f1089019d9741df2f busybox-static-1.38.0-r7
+86cab172080541a8b9516578bd1811d509789c94bc180b3453d8f170f659f193 musl-1.2.6-r4
 e5b5f41ce308324fe0b7102a67e176dc4a841fc0400ee1139a454d99bf09749f curl-8.22.0-r0
 a0bcde87175e2e73d087e8626b8c606d83c61851b06f36e108abff4f1d8a20e9 libcurl-8.22.0-r0
-b6263f8453b37537725a17bdfdcecdf7f6cd016b3421d3238e36f1005776e332 ca-certificates-bundle-20260611-r0
+e85937873b0c571353aa521dec19753156a2b976dde278d0703db6e5e1e0071f ca-certificates-bundle-20260909-r0
 1d355054e19b7dd843d225c878a8e92b205270f4f7c89fb218151d21c9ae87e0 brotli-libs-1.2.0-r1
 b16ca578a8718851e2d3068120c0e60753a66f2df1fe44c530198b3ef5882b67 c-ares-1.34.8-r0
-d75cc169c5b7a4bfd94a99d3f22ef9892465f19a2db4017a832c4f6f5a756c33 libcrypto3-3.5.8-r0
-d9555001cc3fc6dcdb8a9ce62154fc888a39fea59cf98eab767a6c6682e6d769 libssl3-3.5.8-r0
+ddfed8feb861b75bc002c3bc4a8453cee00f46db822dadc40dabb2334c47b585 libcrypto3-3.5.9-r0
+90f714960f379016298504d2afac67196814fff6f78ad9844348dda74cc99cb0 libssl3-3.5.9-r0
 3c6f9af20e672e880e2d719445750ad5ba41dceb53158fef9f256f17dc828f09 libidn2-2.3.8-r0
 2c2a871d7cf19eae35e3a6a57d74fd194bd3d68742d78d7b54b698f62fcdde0e libunistring-1.4.2-r0
 a552fb542888b300e353c960be884d448e789e8fb96be5e12873f0102540c363 nghttp2-libs-1.70.0-r0
@@ -169,7 +172,7 @@ a552fb542888b300e353c960be884d448e789e8fb96be5e12873f0102540c363 nghttp2-libs-1.
 7060615b397fd9ddca3b430fe98b6dd50494e09a6d7275a8fd0b255c0cd04a3e wpa_supplicant-2.11-r4
 9f0fe922c7226c1a4929ca98f9b0cb31d4a45d90259351b97af768dcd3fc142a dbus-libs-1.16.2-r3
 49d92bf6e6c55da94fdd0dde05a66af761258458e6db3c7b87d773c4517a50e1 libnl3-3.11.0-r0
-a5cd0931a100efd4eeedb1ab54443f67fdb7341060463e64017d0de6986b54fd pcsc-lite-libs-2.5.1-r0
+fee7634ca4f4d9527ac5fb769ae7ca2dd7e1693d7fb3d647366c76d087d5642a pcsc-lite-libs-2.5.2-r0
 445c25a5cbd99ce1881df61fd1a191705e937e0c6e9963cbb8b04f2acf3541ac dropbear-2026.94-r0
 230e4a1749df6ece26852f552e84789fac750eef613e6f9cca0c5aedcd75514a utmps-libs-0.1.3.4-r0
 f14960b7a1d40c20d6c045874682f73c0aa4e8f36bae11583d3b860fb10b6764 skalibs-libs-2.15.1.0-r0
@@ -177,8 +180,8 @@ f14960b7a1d40c20d6c045874682f73c0aa4e8f36bae11583d3b860fb10b6764 skalibs-libs-2.
 44096fa251d7cf4a5d8c6c1ffb4014e28fc63ccd4e02534d0e2908fc5e7bc850 e2fsprogs-extra-1.47.4-r0
 476555b7a8178a8acf7cd94e0b3d10deb12ac236b9e78e04fc1648f0a29e3ea5 e2fsprogs-libs-1.47.4-r0
 b8d23585a851bfc732cfb39638b5d92c88a309ba1eb52243796c69c18a978b10 libcom_err-1.47.4-r0
-13ca7ec33e3235272402370dcec72c38b3285a1fb678583b2fc485d38d427dc4 libblkid-2.42.3-r1
-1fc6e03656452a390cffacef3423d463e25eef7c816fa9cce70cd22fd7a047ae libuuid-2.42.3-r1
+aa4c5a18441965cd874d60dbb0a4113125883376fda8c9bdb51a40847085013c libblkid-2.42.4-r1
+e6227bf261f459809efac504401a6e273fa7817f2e9f8ce5d8c37ce8485c1411 libuuid-2.42.4-r1
 dd863710179743e49a6f2d446576aec31dbc5ab61f88da254e054f530b99cdb1 libeconf-0.8.4-r0
 "
 
