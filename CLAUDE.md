@@ -191,14 +191,14 @@ as data. Never move secrets/write permissions into PR review or switch to
 Run narrow checks first, then relevant offline gates when practical:
 
 ```sh
-sh -n scripts/*.sh installer/build.sh installer/src/*.sh \
-  installer/src/system/*.sh installer/host/*.sh installer/tests/*.sh
-sh scripts/verify.sh
-sh installer/tests/run-tests.sh
-(cd boot/mkboot && go build ./... && go vet ./... && go test ./...)
-(cd installer/gotools && CGO_ENABLED=0 go build ./... && go vet ./... && go test ./...)
-make -C boot/dtbswap
+sh scripts/check.sh --check-deps
+sh scripts/check.sh
 ```
+
+The shared local/CI runner also accepts `syntax`, `packaging`, `installer`,
+`c`, `go`, and `dtbswap` groups. It never installs dependencies or deploys;
+Go may download its declared toolchain or modules on the first run. See
+[contributor setup](CONTRIBUTING.md#local-setup) for prerequisites.
 
 Use `actionlint` for workflow changes, or at least parse YAML. Documentation
 edits need link/anchor and command checks, not a hardware boot.

@@ -113,7 +113,10 @@ Community. This project is not officially supported by Daylight.
 
 ## Release contents
 
-Every successful push build on `main` republishes the rolling prerelease:
+Every successful push build on `main` publishes a retained numbered build
+and refreshes the rolling `latest` prerelease. See
+[release versions](docs/releases.md) to select a build or understand reruns.
+Each release contains:
 
 - `installer-boot.img` — the installation-mode boot image;
 - `jagar-boot.img` — the installed system's boot image;
@@ -149,5 +152,3 @@ source directories and hardware records. Open acceptance work lives in the
 See [LICENSE](LICENSE) for the repository's MIT license. Files with their own
 SPDX or license notices retain those terms; the kernel is maintained in the
 separate [kernel repository](https://github.com/denysvitali/dc-1-linux-kernel).
-
-Numbered installer builds are retained alongside `latest`; see [release versions](docs/releases.md).

@@ -55,99 +55,48 @@ jobs:
             exit 1
           fi
 
-
       - uses: actions/checkout@v4
 
-      # mkfs.ext4 / e2fsck / dumpe2fs / debugfs live in /usr/sbin, which is
-      # not on the default non-root PATH; the offline ext4 test needs them
-      # without sudo.
-      # timeout-minutes + a bounded retry: on 2026-08-19 this step -- which
-      # takes ~1 minute healthy -- hung three separate runs until the job's
-      # 30-minute ceiling (GitHub-side apt/mirror weather; runs in between
-      # passed unchanged). Better to fail one apt attempt in 5 minutes and
-      # retry than to burn the whole job budget in one silent hang.
+      # Install all missing verifier packages in one transaction. Bound the
+      # entire update+install attempt so both tries fit the step timeout.
       - name: Install verification dependencies
         timeout-minutes: 12
         run: |
-          # Both tools ship preinstalled on ubuntu-24.04 runners; apt is only
-          # a guard against image changes. Today's mirror weather has now
-          # failed this step two ways (silent 30-min hang, then bounded
-          # double failure), so: skip apt entirely when the binaries already
-          # exist, and only hard-fail when they are genuinely missing AND
-          # apt cannot deliver them.
-          if command -v mkfs.ext4 >/dev/null && command -v zstd >/dev/null \
-             || [ -x /usr/sbin/mkfs.ext4 ] && command -v zstd >/dev/null; then
-            echo "e2fsprogs + zstd already present; skipping apt"
-          else
+          packages=()
+          for package in e2fsprogs zstd gjs; do
+            if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null \
+                | grep -qx 'install ok installed'; then
+              packages+=("$package")
+            fi
+          done
+          if ((${#packages[@]} > 0)); then
             for attempt in 1 2; do
-              timeout 300 sudo apt-get update && \
-              timeout 300 sudo apt-get install -y --no-install-recommends \
-                e2fsprogs zstd && break
-              echo "apt attempt $attempt failed or hung; retrying" >&2
+              if timeout --kill-after=15s 300 sudo env DEBIAN_FRONTEND=noninteractive \
+                  sh -eu -c 'apt-get update; apt-get install -y --no-install-recommends "$@"' \
+                  sh "${packages[@]}"; then
+                break
+              fi
+              echo "dependency installation attempt $attempt failed or timed out" >&2
               [ "$attempt" = 2 ] && exit 1
               sleep 10
             done
+          else
+            echo "verification dependencies already present; skipping apt"
           fi
+          # Offline ext4 tools must be available without sudo. gjs runs the
+          # lock-sheet regression test and is required even on Node-equipped hosts.
           echo /usr/sbin >> "$GITHUB_PATH"
           echo /sbin >> "$GITHUB_PATH"
-
-      # scripts/verify.sh runs the dc1-safe-area lock-sheet regression test
-      # under gjs. Nothing else in the verify job needs a JavaScript runtime,
-      # so install it only when missing (ubuntu-24.04 runners ship node but
-      # not gjs) and never silently skip the test.
-      - name: Ensure gjs for the lock-sheet regression test
-        run: |
-          if command -v gjs >/dev/null; then
-            echo "gjs already present"
-          else
-            for attempt in 1 2; do
-              timeout 300 sudo apt-get update && \
-              timeout 300 sudo apt-get install -y --no-install-recommends \
-                gjs && break
-              echo "apt attempt $attempt failed or hung; retrying" >&2
-              [ "$attempt" = 2 ] && exit 1
-              sleep 10
-            done
-          fi
           gjs --version
 
-      - name: Packaging verification (scripts/verify.sh)
-        run: sh scripts/verify.sh
+      - name: Shell syntax and packaging verification
+        run: sh scripts/check.sh syntax packaging
 
       - name: Installer offline tests
-        run: sh installer/tests/run-tests.sh
+        run: sh scripts/check.sh installer
 
-      # Same compiler contract as installer/build.sh (-static -Os -Wall
-      # -Wextra), so an installer C breakage fails here in seconds instead of
-      # after the aarch64 rootfs build. init.c talks DRM raw ioctls against
-      # the vendored UAPI headers under installer/src/uapi, so pin to them and
-      # define __user empty exactly as build.sh does.
-      - name: Installer C smoke build
-        run: |
-          set -eu
-          for src in installer/src/init.c installer/src/system/init.c; do
-            out=$(mktemp)
-            gcc -static -Os -Wall -Wextra -D__user= -I installer/src/uapi -o "$out" "$src"
-            rm -f "$out"
-            echo "compiled $src"
-          done
-          # The device-package C tools share dc1-misc.c (the PARTNAME=misc
-          # resolver), so each links against it here exactly as the APKBUILD
-          # build() does -- except dc1-pwrkey and dc1-mn29-probe, which are
-          # deliberately freestanding (nothing partition-related).
-          dev=pmaports/device/testing/device-daylight-jagar
-          for tool in dc1-reboot-fastboot dc1-slotctl; do
-            out=$(mktemp)
-            gcc -Wall -Wextra -Os -o "$out" "$dev/$tool.c" "$dev/dc1-misc.c"
-            rm -f "$out"
-            echo "compiled $dev/$tool.c + $dev/dc1-misc.c"
-          done
-          for tool in dc1-pwrkey dc1-mn29-probe; do
-            out=$(mktemp)
-            gcc -Wall -Wextra -Os -o "$out" "$dev/$tool.c"
-            rm -f "$out"
-            echo "compiled $dev/$tool.c (freestanding)"
-          done
+      - name: Installer and device C smoke builds
+        run: sh scripts/check.sh c
 
       - uses: actions/setup-go@v5
         with:
@@ -159,29 +108,8 @@ jobs:
             boot/mkboot/go.mod
             installer/gotools/go.sum
 
-      - name: mkboot build, vet, test
-        working-directory: boot/mkboot
-        run: |
-          go build ./...
-          go vet ./...
-          go test ./...
-
-      # The installer daemon owns the byte-critical write path, so its tests
-      # (exact splitting from a dribbling reader, superblock held back until
-      # the transfer verifies, read-back catching a device that drops writes)
-      # are the regression net for the corruption that shipped.
-      - name: dc1tools build, vet, test
-        working-directory: installer/gotools
-        env:
-          CGO_ENABLED: "0"
-        run: |
-          go build ./...
-          go vet ./...
-          go test ./...
-          # It ships into an aarch64 initramfs; prove it cross-compiles here
-          # rather than an hour into the device build.
-          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o /tmp/dc1tools .
-          ls -l /tmp/dc1tools
+      - name: Go build, vet, test and arm64 compile
+        run: sh scripts/check.sh go
 
   build:
     runs-on: ubuntu-24.04-arm
@@ -199,6 +127,38 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet \
             /opt/ghc /usr/local/.ghcup
           df -h /
+
+      # Install rootfs and boot-image tools before the long build. The stub
+      # keeps its hardware-proven LLVM 19; kernel LLVM 20 lives in the chroot.
+      # pigz parallelizes rootfs archive creation. Ubuntu busybox-static is
+      # deliberately omitted: the installer fetches its pinned Alpine package.
+      - name: Install build and boot-image dependencies
+        timeout-minutes: 12
+        run: |
+          packages=()
+          for package in e2fsprogs zstd lz4 cpio file kpartx xz-utils binutils \
+              openssl pigz clang-19 lld-19 llvm-19 device-tree-compiler python3; do
+            if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null \
+                | grep -qx 'install ok installed'; then
+              packages+=("$package")
+            fi
+          done
+          if ((${#packages[@]} > 0)); then
+            for attempt in 1 2; do
+              if timeout --kill-after=15s 300 sudo env DEBIAN_FRONTEND=noninteractive \
+                  sh -eu -c 'apt-get update; apt-get install -y --no-install-recommends "$@"' \
+                  sh "${packages[@]}"; then
+                break
+              fi
+              echo "dependency installation attempt $attempt failed or timed out" >&2
+              [ "$attempt" = 2 ] && exit 1
+              sleep 10
+            done
+          else
+            echo "build dependencies already present; skipping apt"
+          fi
+          echo /usr/sbin >> "$GITHUB_PATH"
+          echo /sbin >> "$GITHUB_PATH"
 
       # Persistence across ephemeral runners. Cached:
       #   cache_ccache*   — compiler cache (ccache_size = 2G in pmb.cfg)
@@ -294,23 +254,6 @@ jobs:
             fi
           done
 
-      # The kernel toolchain (clang-20/LLVM, per the APKBUILD) lives inside
-      # the build chroot; the runner only needs the host-side tools. pigz is
-      # host-side on purpose: make-rootfs-archive.py pipes the rootfs tar
-      # through it, which is the difference between one core and all of them
-      # on the longest step of the export.
-      # No busybox-static here on purpose: Ubuntu's busybox lacks blkid (it
-      # failed installer/build.sh's applet check on a live run). The build
-      # script fetches Alpine's pinned busybox-static apk instead, which is
-      # also what the initramfs scripts were proven against.
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            e2fsprogs zstd lz4 cpio file kpartx xz-utils binutils openssl pigz
-          echo /usr/sbin >> "$GITHUB_PATH"
-          echo /sbin >> "$GITHUB_PATH"
-
       # installer/build.sh cross-compiles the dc1tools Go userland into the
       # initramfs (CGO_ENABLED=0 GOOS=linux GOARCH=arm64), so this job needs a
       # Go toolchain on PATH before the boot-image build, not just the lint
@@ -392,38 +335,9 @@ jobs:
             work/postmarketos/pmbootstrap-work/config_abuild
           key: pmb4-${{ hashFiles('scripts/versions.env') }}-${{ github.run_id }}
 
-      # Root is required for mknod. BUSYBOX defaults to the pinned Alpine
-      # busybox-static apk that installer/build.sh downloads itself (Ubuntu's
-      # busybox-static lacks blkid); build.sh verifies linkage and the
-      # required applets natively — no qemu, this runner is aarch64.
-      # MODDIR is passed only if the built rootfs actually shipped modules
-      # (the gadget stack may be built in).
-      # clang/lld/dtc build the dtbswap stub + payload so both boot images
-      # boot the MAINLINE device tree (issue #1: the stock tree black-screens
-      # installation mode on some units, so installer-boot.img carries it too).
-      # clang 19 built the hardware-proven stub on 2026-08-19. Pin that major
-      # explicitly instead of inheriting whichever clang Ubuntu later makes
-      # default; the kernel itself keeps clang/LLVM 20 inside pmbootstrap.
-      - name: Install dtbswap stub toolchain
-        timeout-minutes: 12
-        run: |
-          # Same mirror-weather tolerance as the verify job's apt step:
-          # skip apt when everything is already on the image.
-          if command -v clang-19 >/dev/null && command -v ld.lld-19 >/dev/null \
-             && command -v llvm-objcopy-19 >/dev/null && command -v dtc >/dev/null \
-             && command -v python3 >/dev/null; then
-            echo "stub toolchain already present; skipping apt"
-          else
-            for attempt in 1 2; do
-              timeout 300 sudo apt-get update && \
-              timeout 300 sudo apt-get install -y --no-install-recommends \
-                clang-19 lld-19 llvm-19 device-tree-compiler python3 && break
-              echo "apt attempt $attempt failed or hung; retrying" >&2
-              [ "$attempt" = 2 ] && exit 1
-              sleep 10
-            done
-          fi
-
+      # Root is required for initramfs device nodes. installer/build.sh
+      # downloads pinned Alpine busybox-static; Ubuntu's lacks required applets.
+      # Pass MODDIR only when the rootfs ships modules.
       - name: Build installer and system boot images
         run: |
           moddir=$(sudo sh -c \
@@ -596,6 +510,8 @@ jobs:
         with:
           name: dc1-pmos-${{ github.sha }}
           path: release/
+          # Rootfs archives, APKs and boot payloads are already compressed.
+          compression-level: 0
           if-no-files-found: error
 
       - name: Write release notes

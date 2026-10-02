@@ -21,6 +21,7 @@ and the measurements supporting them. A successful build is not hardware validat
 | Guide | Covers |
 | --- | --- |
 | [Building from pinned sources](building.md) | Host requirements, rootfs exports, boot images, and CI release assembly |
+| [Release versions and publication](releases.md) | Retained numbered builds, rolling `latest`, manual tags, and rerun behavior |
 | [Local kernel development](kernel-development.md) | Native kernel-only build, installation, and rollback workflow |
 | [Contributing](../CONTRIBUTING.md) | Validation, package versioning, public-data rules, and review discipline |
 | [Operational instructions](../CLAUDE.md) | Build, boot, hardware, and CI invariants (`AGENTS.md` links to this file) |
@@ -55,6 +56,7 @@ Build revisions come from `scripts/versions.env`, not measurement dates.
 | [`installer/`](../installer/README.md) | Installer and system initramfs, touch UI, USB host fallback, and offline tests |
 | [`boot/`](../boot/README.md) | DT swap payload and Android boot-image packing and verification |
 | [`tools/performance/`](../tools/performance/README.md) | GPU throughput, idle-gap latency, and compositor measurement tools |
+| [`tools/usb/`](../tools/usb/README.md) | Read-only USB hub and Billboard diagnostics, with offline request tests |
 | [`tools/i2cbb/`](../tools/i2cbb/README.md) | Controlled hardware re-measurement utility; not a build dependency |
 | [Build workflow](../.github/workflows/build.yml) | Complete public-runner verification, build, and release contract |
 

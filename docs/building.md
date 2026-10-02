@@ -9,6 +9,11 @@ For kernel-only work on the DC-1, use [local kernel development](kernel-developm
 
 ## Host and dependencies
 
+For documentation and local regression checks, begin with
+[contributor setup](../CONTRIBUTING.md#local-setup). The shared check runner
+reports its dependencies without creating pmbootstrap chroots. The requirements
+below apply to building rootfs and boot-image artifacts.
+
 Use a Linux build host with enough disk space for pmbootstrap chroots, kernel
 objects, caches, and rootfs exports. CI uses `ubuntu-24.04-arm` for native
 aarch64 builds and `ubuntu-24.04` for offline verification. Prefer CI for full
@@ -47,17 +52,19 @@ bytes. Restored pmbootstrap signing caches require the public-key handoff in
 ## Build and export the rootfs
 
 Run from the repository root. `work/` and `out/` are ignored build directories;
-`out/` must be empty before export.
+`out/` must be empty before either command. Both commands prepare the pinned
+checkouts automatically, so a separate `scripts/prepare.sh` invocation is only
+needed when inspecting or staging sources without running the builder.
 
 ```sh
-sh scripts/prepare.sh work/postmarketos
 sh scripts/build-rootfs.sh --validate-only --verify-sources work/postmarketos out
 sh scripts/build-rootfs.sh work/postmarketos out
 ```
 
-The validation step fetches pinned sources and validates package metadata and
-checksums; it still needs network access. The full builder prepares sources
-again as needed, builds packages, and installs with
+The first command fetches pinned sources and validates package metadata and
+checksums; it needs network access and can download large source archives.
+Use the [offline contribution checks](../CONTRIBUTING.md#validation-gates)
+for routine local validation. The second command builds packages and installs with
 `--no-image --no-sshd --no-firewall --no-recommends` before exporting.
 It never selects a device, flashes a slot, or writes a block-device target.
 

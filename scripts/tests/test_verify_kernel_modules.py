@@ -16,6 +16,8 @@ import unittest
 SCRIPT = Path(__file__).resolve().parent.parent / 'verify-kernel-modules.py'
 RELEASE = '7.2.0-rc5'
 PREFIX = f'lib/modules/{RELEASE}/'
+DRIVER = 'kernel/drivers/usb/test.ko'
+DEPENDENCIES = ('kernel/lib/test-dep.ko', 'kernel/lib/other_dep.ko')
 
 
 def build_tree(root):
@@ -43,6 +45,18 @@ class VerifyKernelModulesTest(unittest.TestCase):
         build_tree(self.apk_tree)
         build_tree(self.root)
 
+    def add_dependencies(self):
+        """Add two independent dependencies to both copies of the driver tree."""
+        records = (f'{DRIVER}: {" ".join(DEPENDENCIES)}\n'
+                   + ''.join(f'{dep}:\n' for dep in DEPENDENCIES))
+        for root in (self.apk_tree, self.root):
+            for dep in DEPENDENCIES:
+                path = root / PREFIX / dep
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f'{dep} module bytes\n')
+            (root / PREFIX / 'modules.dep').write_text(records)
+        return records
+
     def check(self):
         """Run the gate and return (returncode, combined output)."""
         apk = self.tmp / 'modules.apk'
@@ -69,6 +83,56 @@ class VerifyKernelModulesTest(unittest.TestCase):
             '# comment\n\nkernel/drivers/usb/test.ko:   \n')
         code, out = self.check()
         self.assertEqual(code, 0, out)
+
+    def test_dependency_reordering_passes(self):
+        """Independent deps may swap order when identical modules are reindexed."""
+        self.add_dependencies()
+        (self.root / PREFIX / 'modules.dep').write_text(
+            '# Regenerated dependencies\n'
+            + ''.join(f'{dep}:\n' for dep in reversed(DEPENDENCIES))
+            + f'{DRIVER}:\t' + '   '.join(reversed(DEPENDENCIES)) + '\n')
+        code, out = self.check()
+        self.assertEqual(code, 0, out)
+
+    def test_dependency_drift_fails(self):
+        records = self.add_dependencies()
+        for dependency in ('kernel/lib/replacement.ko', '',
+                           DEPENDENCIES[0].replace('-', '_'),
+                           DEPENDENCIES[0] + ' ' + DEPENDENCIES[0]):
+            with self.subTest(dependency=dependency):
+                (self.root / PREFIX / 'modules.dep').write_text(
+                    records.replace(DEPENDENCIES[0], dependency, 1))
+                code, out = self.check()
+                self.assertNotEqual(code, 0, out)
+                self.assertIn('modules.dep', out)
+
+    def test_dependency_owner_drift_fails(self):
+        records = self.add_dependencies()
+        for owner in ('kernel/drivers/usb/other.ko', DEPENDENCIES[0]):
+            with self.subTest(owner=owner):
+                (self.root / PREFIX / 'modules.dep').write_text(
+                    records.replace(DRIVER, owner, 1))
+                code, out = self.check()
+                self.assertNotEqual(code, 0, out)
+                self.assertIn('modules.dep', out)
+
+    def test_dropped_dependency_record_fails(self):
+        records = self.add_dependencies()
+        (self.root / PREFIX / 'modules.dep').write_text(
+            records.replace(f'{DEPENDENCIES[0]}:\n', ''))
+        code, out = self.check()
+        self.assertNotEqual(code, 0, out)
+        self.assertIn('modules.dep', out)
+
+    def test_softdep_reordering_fails(self):
+        """The dependency normalization must not reorder softdep pre/post lists."""
+        (self.apk_tree / PREFIX / 'modules.softdep').write_text(
+            'softdep test pre: first second post: third\n')
+        (self.root / PREFIX / 'modules.softdep').write_text(
+            'softdep test pre: second first post: third\n')
+        code, out = self.check()
+        self.assertNotEqual(code, 0, out)
+        self.assertIn('modules.softdep', out)
 
     def test_alias_naming_an_absent_module_fails(self):
         """Normalization must not launder an index that references other modules."""

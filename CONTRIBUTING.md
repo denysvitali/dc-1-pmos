@@ -17,26 +17,61 @@ the relevant guide, and the [build guide](docs/building.md) to reproduce CI.
   verified where.
 - [docs/roadmap.md](docs/roadmap.md) — open work, with runbooks.
 
-## Validation gates
+## Local setup
 
-Run the narrowest relevant checks, then the full offline gates before
-handing off:
+Use a Linux host and start with a regular checkout:
 
 ```sh
-sh -n scripts/*.sh installer/build.sh installer/src/*.sh \
-  installer/src/system/*.sh installer/host/*.sh installer/tests/*.sh
-sh scripts/verify.sh
-sh installer/tests/run-tests.sh
-
-(cd boot/mkboot && go build ./... && go vet ./... && go test ./...)
-(cd installer/gotools && CGO_ENABLED=0 go build ./... && \
-  go vet ./... && go test ./...)
-make -C boot/dtbswap
+git clone https://github.com/denysvitali/dc-1-pmos.git
+cd dc-1-pmos
+sh scripts/check.sh --help
+sh scripts/check.sh --check-deps
 ```
 
-Workflow YAML should pass `actionlint` when available. After pushing,
-inspect the actual GitHub Actions run — do not report it green without
-checking its result.
+The dependency check reports missing tools for local validation without
+installing packages or requesting privileges. Add a check group to inspect
+only its dependencies, for example `sh scripts/check.sh --check-deps go`.
+Install the reported tools using your host's package manager. Go requirements
+come from the two `go.mod` files; the first Go run may download its toolchain
+or module dependencies.
+
+Full image builds have additional dependencies and need pmbootstrap chroot
+privileges; follow the [build guide](docs/building.md#host-and-dependencies).
+Preparing pmaports or building a rootfs is unnecessary for documentation and
+local regression checks. On the live tablet, prefer CI for full image builds.
+
+## Validation gates
+
+Run commands from the repository root. Start with the group matching the
+change; multiple groups can be supplied in one invocation. The shared
+[`scripts/check.sh`](scripts/check.sh) runner checks dependencies first and
+keeps C, Go, and DT swap build outputs in temporary directories.
+
+| Change | Relevant validation |
+| --- | --- |
+| Documentation | Check relative links, heading anchors, and command examples against their implementations; no image build is required |
+| Shell scripts | `sh scripts/check.sh syntax`, then the affected packaging or installer tests |
+| Package recipes, services, or rootfs export | `sh scripts/check.sh packaging installer`; include `c` for C changes |
+| Installer or device C helpers | `sh scripts/check.sh c installer` |
+| Boot-image or installer Go tools | `sh scripts/check.sh go` |
+| DT swap stub | `sh scripts/check.sh dtbswap`; see the [toolchain requirements](docs/building.md#host-and-dependencies) |
+| GitHub workflows | `actionlint`, or at least parse YAML; run the affected local check groups |
+
+For changes spanning these components, run the complete local suite:
+
+```sh
+sh scripts/check.sh
+```
+
+These checks use fixtures and temporary files without accessing tablet
+hardware or deploying images. The packaging and installer groups run
+`scripts/verify.sh` and `installer/tests/run-tests.sh`; the Go group also
+cross-compiles the installer tools for aarch64. Review any reported skipped
+test cases before claiming full coverage.
+
+After pushing, inspect the actual GitHub Actions run and report its observed
+state. CI still builds every push to `main`, including documentation changes;
+passing software checks does not establish a hardware boot.
 
 ## Packaging discipline
 
@@ -78,8 +113,8 @@ provenance, not a precedent.
 
 ## Hardware measurements
 
-A hardware boot is expensive and this device has no recovery channel
-without a running kernel. The partition rules are absolute: normal work
+Hardware testing can disrupt recovery access; follow the relevant subsystem
+reference before testing on the tablet. The partition rules are absolute: normal work
 never writes `preloader`, `lk`, `dtbo`, `vendor_boot`, or UFS boot LUNs.
 When you verify (or refute) something on hardware: record it in the
 matching `docs/hw/` page with the date and the running package versions

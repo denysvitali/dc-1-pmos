@@ -16,14 +16,18 @@ DRIVER_SUFFIXES = ('.ko', '.ko.gz', '.ko.xz', '.ko.zst')
 BINARY_INDEX_SUFFIX = '.bin'
 
 
-def index_records(data):
-    """Semantic records of a kmod text index, independent of depmod's format.
+def index_records(data, name):
+    """Content records of a kmod text index, independent of depmod's format.
 
     depmod output is not stable across kmod versions: comment headers appear and
     disappear, records are reordered, and alias patterns get normalized between
     the '-' and '_' spellings of the same wildcard. kmod matches aliases with
     '-' and '_' treated as equivalent, so those spellings are one alias; only a
     genuinely different pattern, or a different module, is real drift.
+
+    For modules.dep, compare each module's full dependency membership. depmod
+    emits a topological order whose independent dependencies can be reordered.
+    This parity check does not rewrite or validate the generated load order.
     """
     records = set()
     for raw in data.splitlines():
@@ -31,7 +35,11 @@ def index_records(data):
         if not line or line.startswith('#'):
             continue
         fields = line.split()
-        if fields[0] == 'alias' and len(fields) >= 3:
+        if name == 'modules.dep' and fields[0].endswith(':'):
+            # Preserve the owner, exact paths and duplicate dependency tokens.
+            # Other indices (notably softdep pre/post lists) retain field order.
+            records.add(' '.join([fields[0]] + sorted(fields[1:])))
+        elif fields[0] == 'alias' and len(fields) >= 3:
             # Normalize the wildcard pattern only. The target is a module path
             # where '-' and '_' are distinct characters.
             records.add('alias ' + ' '.join([fields[1].replace('_', '-')] + fields[2:]))
@@ -50,8 +58,8 @@ def compare(apk_data, installed, name):
         raise ValueError(f'module package/rootfs mismatch: {name}')
     if base.endswith(BINARY_INDEX_SUFFIX):
         return
-    apk_records = index_records(apk_data)
-    rootfs_records = index_records(rootfs_data)
+    apk_records = index_records(apk_data, base)
+    rootfs_records = index_records(rootfs_data, base)
     if apk_records != rootfs_records:
         sample = sorted(apk_records ^ rootfs_records)[:3]
         raise ValueError(f'module index content mismatch: {name}: {sample}')
