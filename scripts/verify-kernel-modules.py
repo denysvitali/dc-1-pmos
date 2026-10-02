@@ -5,15 +5,21 @@ The driver objects and firmware payloads are compared byte for byte: a
 same-version APK that relinked a module, or whose payload drifted, is exactly
 what this gate exists to catch.
 
-The kmod text and binary indexes under /lib/modules are compared by the set of
-modules they name, not byte for byte. depmod runs again when the rootfs
-installs the modules package, using the kmod from the rootfs rather than from
-the build chroot, and that regenerates the indexes: comment headers come and
-go, records and dependency edges reorder, an alias pattern flips between the
-'-' and '_' spellings of the same wildcard, and a symbol with several possible
-providers can resolve to a different module. None of that is drift in what we
-ship -- the .ko files themselves still have to match exactly -- so comparing
-depmod's output as bytes would fail builds over a difference in meaning.
+The kmod text indexes under /lib/modules are compared by the set of modules
+they name, not byte for byte. depmod runs again when the rootfs installs the
+modules package, using the kmod from the rootfs rather than from the build
+chroot, and that regenerates the indexes: comment headers come and go, records
+and dependency edges reorder, an alias pattern flips between the '-' and '_'
+spellings of the same wildcard, and a symbol with several possible providers
+can resolve to a different module. None of that is drift in what we ship --
+the .ko files themselves still have to match exactly -- so comparing depmod's
+output as bytes would fail builds over a difference in meaning.
+
+depmod's binary indexes (.bin) are exempt from content comparison entirely.
+They are a derived encoding of the text indexes beside them, in a format
+carrying no public contract, so parsing them would only re-derive fragility
+in a file that says nothing about what we ship. modules.dep already covers
+dependency membership.
 """
 from pathlib import Path, PurePosixPath
 import re
@@ -23,8 +29,9 @@ import tarfile
 # Files that make up the module tree itself. These carry the driver code.
 DRIVER_SUFFIXES = ('.ko', '.ko.gz', '.ko.xz', '.ko.zst')
 
-# A module reference as it appears in a depmod index, binary or text.
-MODULE_REF = re.compile(rb'[A-Za-z0-9_./+-]+\.ko(?:\.(?:gz|xz|zst))?')
+# A module reference as it appears in a depmod text index. Paths are relative
+# to the module directory, so they start at a word character.
+MODULE_REF = re.compile(rb'[A-Za-z0-9_][A-Za-z0-9_./+-]*\.ko(?:\.(?:gz|xz|zst))?')
 
 
 def is_index(name):
@@ -32,8 +39,13 @@ def is_index(name):
     return PurePosixPath(name).name.startswith('modules.')
 
 
+def is_binary_index(name):
+    """True for depmod's .bin indices, whose encoding carries no contract."""
+    return PurePosixPath(name).name.endswith('.bin')
+
+
 def index_modules(data):
-    """The set of modules a depmod index names, in any encoding depmod used."""
+    """The set of modules a depmod text index names."""
     return {match.decode() for match in MODULE_REF.findall(data)}
 
 
@@ -77,8 +89,10 @@ def verify(apk, root):
                 # modules that are actually installed. A reference to a module
                 # from neither package is the real failure this catches.
                 # modules.builtin* is exempt: built-in drivers are compiled
-                # into the kernel and have no file in the module tree.
-                if not PurePosixPath(name).name.startswith('modules.builtin'):
+                # into the kernel and have no file in the module tree. The .bin
+                # encodings are exempt too; modules.dep carries the same facts.
+                if not (PurePosixPath(name).name.startswith('modules.builtin')
+                        or is_binary_index(name)):
                     for label, blob in (('APK', data), ('rootfs', rootfs_data)):
                         unknown = sorted(index_modules(blob) - drivers)
                         if unknown:

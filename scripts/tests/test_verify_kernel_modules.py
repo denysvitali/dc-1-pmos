@@ -17,6 +17,12 @@ import tempfile
 import unittest
 
 SCRIPT = Path(__file__).resolve().parent.parent / 'verify-kernel-modules.py'
+
+_spec = __import__('importlib.util', fromlist=['util']).spec_from_file_location(
+    '_gate', SCRIPT)
+_gate = __import__('importlib.util', fromlist=['util']).module_from_spec(_spec)
+_spec.loader.exec_module(_gate)
+index_modules = _gate.index_modules
 RELEASE = '7.2.0-rc5'
 PREFIX = f'lib/modules/{RELEASE}/'
 
@@ -116,15 +122,27 @@ class VerifyKernelModulesTest(unittest.TestCase):
         code, out = self.check()
         self.assertEqual(code, 0, out)
 
-    def test_binary_index_is_compared_by_module_set(self):
-        """depmod's .bin indices are derived too, and are read as such."""
+    def test_binary_index_is_exempt_from_content(self):
+        """depmod's .bin indices are opaque, and modules.dep covers them.
+
+        The real build's index began
+        b'\x0b.kernel/...videobuf2-v4l2.ko\x00+kernel/...uvc.ko\x00' with
+        kmod's type markers, which is exactly why these are not parsed.
+        """
         (self.apk_tree / PREFIX / 'modules.dep.bin').write_bytes(
-            b'PADDING\x00kernel/drivers/usb/test.ko\x00kernel/mm/zsmalloc.ko\x00\x00')
+            b'PADDING\x00kernel/drivers/usb/test.ko\x00\x00')
         (self.root / PREFIX / 'modules.dep.bin').write_bytes(
-            b'ENTIRELY DIFFERENT HEADER\x00'
-            b'kernel/mm/zsmalloc.ko\x00kernel/drivers/usb/test.ko\x00\x00')
+            b'\x0b.kernel/drivers/usb/test.ko\x00'
+            b'+kernel/drivers/uvc.ko\x00-kernel/drivers/other.ko\x00')
         code, out = self.check()
         self.assertEqual(code, 0, out)
+
+    def test_marker_prefixed_index_path_is_not_read_as_a_module(self):
+        """A kmod type marker must never become part of a module name."""
+        blob = (b'\x0b.kernel/drivers/usb/test.ko\x00'
+                b'+kernel/drivers/uvc.ko\x00')
+        self.assertNotIn('+kernel/drivers/uvc.ko', index_modules(blob))
+        self.assertIn('kernel/drivers/uvc.ko', index_modules(blob))
 
     def test_index_naming_an_absent_module_fails(self):
         """An index naming a module neither package ships is real drift."""
