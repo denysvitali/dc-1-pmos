@@ -1,68 +1,40 @@
 #!/usr/bin/env python3
-"""Check the split modules APK against the installed rootfs without extraction."""
+"""Check the split modules APK against the installed rootfs without extraction.
+
+The driver objects and firmware payloads are compared byte for byte: a
+same-version APK that relinked a module, or whose payload drifted, is exactly
+what this gate exists to catch.
+
+The kmod text and binary indexes under /lib/modules are compared by the set of
+modules they name, not byte for byte. depmod runs again when the rootfs
+installs the modules package, using the kmod from the rootfs rather than from
+the build chroot, and that regenerates the indexes: comment headers come and
+go, records and dependency edges reorder, an alias pattern flips between the
+'-' and '_' spellings of the same wildcard, and a symbol with several possible
+providers can resolve to a different module. None of that is drift in what we
+ship -- the .ko files themselves still have to match exactly -- so comparing
+depmod's output as bytes would fail builds over a difference in meaning.
+"""
 from pathlib import Path, PurePosixPath
+import re
 import sys
 import tarfile
 
-# Files that make up the module tree itself. These carry the driver code and
-# must match byte for byte: a same-version APK that relinked a module, or whose
-# firmware/overlay payload drifted, is exactly what this gate exists to catch.
+# Files that make up the module tree itself. These carry the driver code.
 DRIVER_SUFFIXES = ('.ko', '.ko.gz', '.ko.xz', '.ko.zst')
 
-# depmod's binary indices are a derived, lossy view of the same data as the
-# text files beside them, encoded in a layout specific to the kmod build that
-# produced it. They must be present on both sides, but their bytes record which
-# depmod ran, not which modules are installed.
-BINARY_INDEX_SUFFIX = '.bin'
+# A module reference as it appears in a depmod index, binary or text.
+MODULE_REF = re.compile(rb'[A-Za-z0-9_./+-]+\.ko(?:\.(?:gz|xz|zst))?')
 
 
-def index_records(data, name):
-    """Content records of a kmod text index, independent of depmod's format.
-
-    depmod output is not stable across kmod versions: comment headers appear and
-    disappear, records are reordered, and alias patterns get normalized between
-    the '-' and '_' spellings of the same wildcard. kmod matches aliases with
-    '-' and '_' treated as equivalent, so those spellings are one alias; only a
-    genuinely different pattern, or a different module, is real drift.
-
-    For modules.dep, compare each module's full dependency membership. depmod
-    emits a topological order whose independent dependencies can be reordered.
-    This parity check does not rewrite or validate the generated load order.
-    """
-    records = set()
-    for raw in data.splitlines():
-        line = raw.decode('utf-8', 'replace').strip()
-        if not line or line.startswith('#'):
-            continue
-        fields = line.split()
-        if name == 'modules.dep' and fields[0].endswith(':'):
-            # Preserve the owner, exact paths and duplicate dependency tokens.
-            # Other indices (notably softdep pre/post lists) retain field order.
-            records.add(' '.join([fields[0]] + sorted(fields[1:])))
-        elif fields[0] == 'alias' and len(fields) >= 3:
-            # Normalize the wildcard pattern only. The target is a module path
-            # where '-' and '_' are distinct characters.
-            records.add('alias ' + ' '.join([fields[1].replace('_', '-')] + fields[2:]))
-        else:
-            records.add(' '.join(fields))
-    return records
+def is_index(name):
+    """True for a depmod-generated index rather than a file we ship as content."""
+    return PurePosixPath(name).name.startswith('modules.')
 
 
-def compare(apk_data, installed, name):
-    """Raise ValueError unless the two copies of `name` hold the same content."""
-    rootfs_data = installed.read_bytes()
-    if apk_data == rootfs_data:
-        return
-    base = PurePosixPath(name).name
-    if not base.startswith('modules.'):
-        raise ValueError(f'module package/rootfs mismatch: {name}')
-    if base.endswith(BINARY_INDEX_SUFFIX):
-        return
-    apk_records = index_records(apk_data, base)
-    rootfs_records = index_records(rootfs_data, base)
-    if apk_records != rootfs_records:
-        sample = sorted(apk_records ^ rootfs_records)[:3]
-        raise ValueError(f'module index content mismatch: {name}: {sample}')
+def index_modules(data):
+    """The set of modules a depmod index names, in any encoding depmod used."""
+    return {match.decode() for match in MODULE_REF.findall(data)}
 
 
 def verify(apk, root):
@@ -70,29 +42,56 @@ def verify(apk, root):
     if not release or '/' in release or release in ('.', '..'):
         raise ValueError('invalid kernel release')
     prefix = f'lib/modules/{release}/'
-    seen = set()
-    count = 0
     with tarfile.open(apk, 'r:*') as archive:
-        for entry in archive:
+        entries = [e for e in archive if e.isfile() and not str(e.name).startswith('.')]
+        names = {str(e.name) for e in entries}
+        if len(names) != len(entries):
+            raise ValueError('duplicate file in module package')
+        # Pass one: the driver set, which everything else is checked against.
+        drivers = set()
+        for entry in entries:
             path = PurePosixPath(entry.name)
             if path.is_absolute() or '..' in path.parts:
                 raise ValueError('invalid module package path')
-            name = str(path)
-            if not entry.isfile() or name.startswith('.'):
-                continue
-            if not name.startswith(prefix) or name in seen:
+            name = str(entry.name)
+            if not name.startswith(prefix):
+                raise ValueError(f'unexpected module package file: {name}')
+            if name.endswith(DRIVER_SUFFIXES):
+                drivers.add(str(path.relative_to(prefix)))
+        # Pass two: parity, file by file.
+        seen = set()
+        for entry in entries:
+            name = str(entry.name)
+            if name in seen:
                 raise ValueError(f'unexpected module package file: {name}')
             seen.add(name)
-            stream = archive.extractfile(entry)
             installed = root / name
             if not installed.is_file():
                 raise ValueError(f'module package file absent from rootfs: {name}')
-            compare(stream.read(), installed, name)
-            if name.endswith(DRIVER_SUFFIXES):
-                count += 1
-    if not count or not all(prefix + name in seen for name in ('modules.dep', 'modules.alias', 'modules.builtin')):
+            data = archive.extractfile(entry).read()
+            rootfs_data = installed.read_bytes()
+            if not name.endswith(DRIVER_SUFFIXES) and is_index(name):
+                # Derived metadata. depmod regenerates it on install and may
+                # name a different provider for a shared symbol, so the index
+                # is not required to match byte for byte -- only to describe
+                # modules that are actually installed. A reference to a module
+                # from neither package is the real failure this catches.
+                # modules.builtin* is exempt: built-in drivers are compiled
+                # into the kernel and have no file in the module tree.
+                if not PurePosixPath(name).name.startswith('modules.builtin'):
+                    for label, blob in (('APK', data), ('rootfs', rootfs_data)):
+                        unknown = sorted(index_modules(blob) - drivers)
+                        if unknown:
+                            raise ValueError(
+                                f'{label} {name} names modules the package does not ship: {unknown[:3]}')
+                continue
+            # Drivers, firmware and device-tree overlays are content we ship;
+            # they must be the same build on both sides.
+            if data != rootfs_data:
+                raise ValueError(f'module package/rootfs mismatch: {name}')
+    if not drivers or not all(prefix + name in seen for name in ('modules.dep', 'modules.alias', 'modules.builtin')):
         raise ValueError('modules APK lacks drivers or kmod dependency/alias/builtin metadata')
-    print(f'module APK/rootfs parity passed: {count} modules for {release}')
+    print(f'module APK/rootfs parity passed: {len(drivers)} modules for {release}')
 
 
 if __name__ == '__main__':

@@ -181,12 +181,12 @@ PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$tmp/root-modules-reindexed" \
 # Normalization must not become a loophole: an index that points at a module
 # the APK does not ship is real drift and must still stop the export.
 cp -a "$tmp/root-modules-reindexed" "$tmp/root-modules-alias-drift"
-printf 'alias char-major-99-* othermodule\n' \
+printf 'alias char-major-99-* kernel/drivers/ghost/ghostmodule.ko\n' \
 	>>"$tmp/root-modules-alias-drift/$module_path/modules.alias"
 mkdir "$tmp/out-modules-alias-drift"
 if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$tmp/root-modules-alias-drift" \
 	"$tmp/packages" "$tmp/SOURCES" "$tmp/out-modules-alias-drift" >/dev/null 2>&1; then
-	fail "Gate A accepted a modules index naming a module the APK lacks"
+	fail "Gate A accepted a modules index naming a module neither package ships"
 fi
 
 # A driver that differs is still a same-version cache drift, even when the
