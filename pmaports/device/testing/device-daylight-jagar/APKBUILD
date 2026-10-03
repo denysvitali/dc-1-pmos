@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=106
+pkgrel=108
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -124,6 +124,7 @@ source="
 	daylight-dc1.tablet
 	10-dc1-power.conf
 	10-dc1-pdf.json
+	dc1-webgpu.conf
 	dc1-mimeapps.list
 	49-device-daylight-jagar-sensors.rules
 	dc1-orientation
@@ -348,6 +349,8 @@ package() {
 	# back into the internal viewer if desired.
 	install -Dm644 "$srcdir"/10-dc1-pdf.json \
 		"$pkgdir"/etc/chromium/policies/recommended/10-dc1-pdf.json
+	install -Dm644 "$srcdir"/dc1-webgpu.conf \
+		"$pkgdir"/etc/chromium/dc1-webgpu.conf
 	install -Dm644 "$srcdir"/dc1-mimeapps.list \
 		"$pkgdir"/etc/xdg/mimeapps.list
 
@@ -598,6 +601,7 @@ cc5e4610fb18d78207eb83bae191493e2fb03cbd9d5e2bc1b7f9dea93d20771446a52b3048dd2052
 d6aec155af0def9a5b480a60e713aeee0738271bfe85c397ec1f23fda73359e9280b6f3332f02e4801d940005610b4c71a82820afb3e7865ca4345cb32ff6105  daylight-dc1.tablet
 dfabf2e5a9eca548c5a07de0eb010678b0ade1c4ddc844b82fe9d2fddb12ae5c8ebd783f6f9e4a4c08c958df73f6b81edc774c44ecd533cc4b97ae4ff7e6cc6d  10-dc1-power.conf
 98ccb4d352f0c1ded1a33e159b0b2d3229835e124cb645eec062dabd55cccdf46d4ec3073be8a431d0d74ce71a7c20c9b17be1225a06c51290676429675ed3cf  10-dc1-pdf.json
+34b09c72df6b4ce6add7208917f4908d466ef6f77ced7168da3bf7d93f23ead9fc7778f48c8717dd76e138f063bfcf40977a2407434a8d9f2c706e17d4c993b8  dc1-webgpu.conf
 c52919a5cedd59e1be8037fd306b98b15a7176a8f6d287ef52f96f44fd5d6c76462b49d486981b069d06b0db41b7920461b1b2b59d2dbe302c2718a565218681  dc1-mimeapps.list
 27d1223ba673ee4639d12a7eb2bf7b24e8baf549c3eca7dc943d2e26d30aa094fcb3d22db7d15ac150329100e4af68443ef8324e4af919612bc43b262734abec  49-device-daylight-jagar-sensors.rules
 d4a7b92da07063eede5ce4198138183393a264947589e262b313ca05046da4c4fec5fa30099359ea28fc774311f311775d47a8d8f0f02e5101c33c9151513be1  dc1-orientation

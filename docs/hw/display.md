@@ -267,6 +267,31 @@ frame later than the 20 ms it replaces. The r57 timing table above was
 measured at a 700 MHz floor and is not a before/after for this change; the
 new poll has not been measured on hardware.
 
+### Chromium WebGPU compatibility mode
+
+On 2026-10-03, the live tablet ran Chromium `154.0.8037.92-r0`, Mesa
+`26.2.3-r1`, linux r65 and device r105. The default Wayland launch rendered
+through ANGLE/Panfrost but both core and compatibility WebGPU adapter requests
+returned null. Mesa's [support table](https://docs.mesa3d.org/drivers/panfrost.html)
+lists no Vulkan support for Mali-G57; the installed OpenGL driver does not
+provide a Vulkan ICD.
+
+Selecting `--use-gl=angle --use-angle=gles --use-webgpu-adapter=opengles`
+allowed an explicit compatibility adapter. Adding `--force-webgpu-compat`
+also allowed an ordinary `requestAdapter()` call. With those four flags in a
+fresh Wayland process, the [execution check](../../tools/performance/webgpu-smoke.html)
+compiled WGSL, computed all 64 expected integers, rendered 16 pixels with
+RGBA readback `[255,128,64,255]`, and completed a WebGPU canvas submission.
+The renderer was Mali-G57 MC2/Panfrost, the adapter was not a fallback, and
+`core-features-and-limits` was absent. This verifies compatibility-mode
+execution, not full WebGPU application coverage or physical panel output.
+
+No unsafe WebGPU or sandbox-disabling flags were used. Renderer processes had
+seccomp mode 2; the GPU process had seccomp mode 0 in both the default and
+modified Wayland launches. That existing browser isolation limitation was
+not fixed by this configuration. Device r108 packages the four flags; see
+the [desktop guide](../gnome.md#chromium-webgpu) for restart and override behavior.
+
 ## Frontlight
 
 Dual RT4539 backlight drivers: `lcd-backlight` (white, i2c-5) and

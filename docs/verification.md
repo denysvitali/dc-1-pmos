@@ -16,6 +16,7 @@ measurement was made. "Pending" items live in
 | Display: DPMS off/on relight (`DSI_SW_CTL_EN` fix, TE + DCS ground truth) | linux r37 (`2466a7f6`) | 2026-08-24 | [hw/display.md](hw/display.md) |
 | GPU: Panfrost native on mainline DT, devfreq cooling | kernel `981870b`/`0f6e730c92d6` builds | 2026-08-19 / 08-22 | [hw/display.md](hw/display.md) |
 | GPU wake latency: high-resolution timers, 100 ms idle-gap p95 8.11–8.20 ms and max 8.37–9.89 ms at 700 MHz; offscreen, not compositor FPS | linux r57 | 2026-09-12 | [hw/display.md](hw/display.md) |
+| Chromium WebGPU compatibility: 64 compute values, 16 rendered pixels and canvas completion on Mali/Panfrost; core features unavailable | Chromium `154.0.8037.92-r0`, Mesa `26.2.3-r1`, linux r65 / device r105 with r108 launch flags | 2026-10-03 | [hw/display.md](hw/display.md#chromium-webgpu-compatibility-mode) |
 | Frontlight warmth crossfade slider | device r66 | 2026-08-24 | [hw/display.md](hw/display.md) |
 | Touchscreen multitouch | earlier bring-up | pre-2026-08-17 | [hw/input.md](hw/input.md) |
 | Pen: kernel events (proximity/touch/barrel/eraser/pressure) | linux r31 | 2026-08-23 | [hw/input.md](hw/input.md) |

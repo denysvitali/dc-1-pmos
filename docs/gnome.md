@@ -53,6 +53,31 @@ mounting and physical-pose acceptance.
 | Mutter `kms-modifiers` | Allows tiled Panfrost intermediates. 60 Hz remains preferred; landscape requires a GPU blit. |
 | Native PDF viewer | Chromium downloads PDFs for Papers to avoid costly browser rendering. |
 
+## Chromium WebGPU
+
+The device package installs `/etc/chromium/dc1-webgpu.conf`. Alpine's launcher
+reads it after `chromium.conf`; it selects ANGLE GLES and Dawn's OpenGL ES
+backend, and forces WebGPU compatibility mode for default adapter requests.
+Quit all Chromium windows and reopen the browser after installing the update;
+launching another window in an existing process does not apply new flags.
+
+Mali-G57 has working Panfrost GLES 3.1 but no supported Mesa Vulkan driver.
+Chromium's default Linux WebGPU backend therefore cannot provide an adapter.
+Installing `mesa-vulkan-panfrost` or enabling Vulkan cannot fix that hardware
+support gap. See Mesa's [GPU support table](https://docs.mesa3d.org/drivers/panfrost.html).
+
+Compatibility mode runs shaders on the Mali GPU, but has fewer features and
+limits than core WebGPU. Applications requiring `core-features-and-limits`,
+`shader-f16` or other unavailable features can still fail. The configuration
+does not enable Chromium's unsafe WebGPU switch or disable its sandbox flags.
+Alpine's `CHROMIUM_USER_FLAGS` and explicit command-line arguments can override
+these defaults. Google's Chrome binary is not installed on the Alpine tablet.
+
+Verify execution with the [WebGPU check](../tools/performance/README.md#webgpu-execution-check),
+and check `chrome://gpu` for Mali/Panfrost and enabled WebGPU. Adapter creation
+alone is insufficient; the check validates compute and pixel readback.
+See the [measured result](hw/display.md#chromium-webgpu-compatibility-mode).
+
 ## Acceptance
 
 Verify a fresh published-rootfs install through provisioning, first login and

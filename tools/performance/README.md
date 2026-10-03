@@ -96,3 +96,24 @@ gdbus call --session --dest org.gnome.Mutter.DisplayConfig \
 The advertised refresh rate is not measured presentation cadence. Preserve
 the [display invariants](../../docs/hw/display.md) and measure real frame
 presentation separately before changing refresh, rotation, or compositor policy.
+
+## WebGPU execution check
+
+Serve the standalone [WebGPU check](webgpu-smoke.html) on loopback, then open
+it in a fresh Chromium process with the device's WebGPU configuration:
+
+```sh
+python3 -m http.server 18765 --bind 127.0.0.1 --directory tools/performance
+```
+
+Open `http://localhost:18765/webgpu-smoke.html`. WebGPU requires a secure
+context; a plain HTTP LAN address does not qualify. The page must report PASS:
+it requests the default adapter, compiles WGSL, checks 64 compute results and
+all 16 rendered pixels, then submits a WebGPU canvas and waits for completion.
+Validation errors fail the check. Stop the server with Ctrl-C when finished.
+
+For a hardware result, also check `chrome://gpu` for Mali/Panfrost and reject
+a fallback adapter. A PASS with `coreFeature: false` verifies compatibility
+mode, not the full core feature set. This check does not measure performance
+or establish that the panel displayed the canvas. The supported launch
+settings and limitations are in the [desktop guide](../../docs/gnome.md#chromium-webgpu).
