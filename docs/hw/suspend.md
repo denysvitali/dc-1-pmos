@@ -16,8 +16,8 @@ Physical display/touch confirmation on this build remains outstanding.
 
 Only `[s2idle]` is exposed in `/sys/power/mem_sleep`; hardware `deep` suspend
 is unavailable. Battery-current savings have not been measured. Automatic
-sleep remains opt-in: `sleep.target` and `suspend.target` are masked and
-`/var/lib/dc1/enable-auto-suspend` is absent. Wi-Fi still reports resume
+sleep remains opt-in: fresh installs mask `sleep.target` and `suspend.target`
+and do not create `/var/lib/dc1/enable-auto-suspend`. Wi-Fi still reports resume
 `-EIO`, then recovers.
 
 ## Display restoration
@@ -137,7 +137,11 @@ a timed recovery path: `mtk_wdt_suspend()` stops it until resume.
 ## Automatic sleep and remaining acceptance
 
 The enabled `dc1-sleep-on-blank` service stays inactive without the opt-in
-marker. It requests sleep once per screen-off cycle after DRM and both
+marker. The owner switch creates the marker and starts the service without a
+reboot; disabling it removes the marker before stopping the service.
+See [Automatic sleep](../power.md#automatic-sleep) for the controls.
+GNOME locks/blanks after five idle minutes by default, and the helper requests
+sleep once per screen-off cycle after DRM and both
 frontlights have been off for 60 seconds on battery. It unmasks the package's
 sleep targets immediately before its first request. Keep the marker absent
 until physical display/touch behavior and owner wake behavior are verified

@@ -2,10 +2,11 @@
 # dc1-owner-settings -- narrow privileged backend for Charging Profile.
 #
 # The desktop process must not receive arbitrary root file-write capability.
-# This helper owns exactly three user choices:
+# This helper owns exactly four user choices:
 #   * live MT6375 charge-current target: 2.00 A or 3.15 A;
 #   * headless charging mode enabled/disabled;
-#   * automatic updates enabled/disabled.
+#   * automatic updates enabled/disabled;
+#   * automatic screen-off suspend enabled/disabled (opt-in).
 #
 # Production paths are fixed even when the caller supplies environment
 # variables through pkexec. Fixture overrides exist only when the file is
@@ -15,15 +16,17 @@ set -eu
 if [ "${DC1_OWNER_SETTINGS_LIB:-0}" = 1 ]; then
 	VAR_DIR=${DC1_OWNER_VAR_DIR:-/var/lib/dc1}
 	CHARGE_CURRENT=${DC1_OWNER_CHARGE_CURRENT:-/sys/class/power_supply/mt6375-charger/constant_charge_current}
+	SYSTEMCTL=${DC1_OWNER_SYSTEMCTL:-/usr/sbin/systemctl}
 	TEST_MODE=1
 else
 	VAR_DIR=/var/lib/dc1
 	CHARGE_CURRENT=/sys/class/power_supply/mt6375-charger/constant_charge_current
+	SYSTEMCTL=/usr/sbin/systemctl
 	TEST_MODE=0
 fi
 
 usage() {
-	echo "usage: dc1-owner-settings status | charge-current 2000000|3150000 | charging-mode on|off | auto-update on|off" >&2
+	echo "usage: dc1-owner-settings status | charge-current 2000000|3150000 | charging-mode on|off | auto-update on|off | auto-suspend on|off" >&2
 	exit 2
 }
 
@@ -55,6 +58,11 @@ cmd_status() {
 	printf 'charge_current=%s\n' "$charge"
 	printf 'charging_mode=%s\n' "$(marker_state no-charging-mode)"
 	printf 'auto_update=%s\n' "$(marker_state no-auto-update)"
+	if [ -e "$VAR_DIR/enable-auto-suspend" ]; then
+		printf 'auto_suspend=on\n'
+	else
+		printf 'auto_suspend=off\n'
+	fi
 }
 
 write_marker() {
@@ -109,6 +117,33 @@ set_charge_current() {
 	}
 }
 
+set_auto_suspend() {
+	case $1 in
+	on)
+		already_enabled=no
+		[ ! -e "$VAR_DIR/enable-auto-suspend" ] || already_enabled=yes
+		write_marker enable-auto-suspend || return 1
+		# Creating the marker alone cannot start a unit skipped at boot.
+		# enable --now also leaves an already-running helper's cycle intact.
+		if ! "$SYSTEMCTL" enable --now dc1-sleep-on-blank.service; then
+			[ "$already_enabled" = yes ] || rm -f "$VAR_DIR/enable-auto-suspend"
+			fail "cannot start automatic sleep"
+			return 1
+		fi
+		;;
+	off)
+		# Remove authorization before stopping, so even a failed stop prevents
+		# subsequent sleep requests. Leave the boot enablement conditional.
+		rm -f "$VAR_DIR/enable-auto-suspend" || return 1
+		"$SYSTEMCTL" stop dc1-sleep-on-blank.service || {
+			fail "cannot stop automatic sleep"
+			return 1
+		}
+		;;
+	*) fail "auto-suspend must be on or off"; return 1 ;;
+	esac
+}
+
 # Library mode exposes the pure, fixture-rooted functions and never dispatches
 # privileged commands.
 if [ "$TEST_MODE" = 1 ]; then
@@ -132,6 +167,11 @@ charging-mode|auto-update)
 	[ "$#" -eq 1 ] || usage
 	require_root
 	set_feature "$command" "$1"
+	;;
+auto-suspend)
+	[ "$#" -eq 1 ] || usage
+	require_root
+	set_auto_suspend "$1"
 	;;
 *)
 	usage

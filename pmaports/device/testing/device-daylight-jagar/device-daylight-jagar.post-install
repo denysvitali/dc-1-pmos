@@ -26,7 +26,7 @@ if [ -x /etc/init.d/sshd ]; then
 fi
 
 # Compile the gschema overrides (including ours: the power key locks and
-# blanks the screen, nothing idle-blanks or sleeps) so the GNOME
+# blanks the screen, idle locks/blanks after five minutes) so the GNOME
 # power defaults take effect. Best-effort: only relevant when a GNOME desktop
 # is installed.
 glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true

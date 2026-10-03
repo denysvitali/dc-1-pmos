@@ -49,7 +49,7 @@ mounting and physical-pose acceptance.
 | `dc1-session-compat` | Reads the shutdown capability through a signature-tolerant GDBus call. Recheck whether the installed shell/session pair still needs it before removal. |
 | Greeter schema override | Enables the on-screen keyboard so logout does not require a physical keyboard. |
 | GPU settings | Uses the helper/polkit path for min/max changes; periodic current-frequency reads run in a background worker. See [display](hw/display.md). |
-| Charging Profile | Shows PD and charger state, selects charge current, and controls charging mode/automatic updates. Contract selection remains in kernel TCPM. See [power](power.md). |
+| Charging Profile | Shows PD and charger state, selects charge current, and controls charging mode, automatic updates and opt-in automatic sleep. Contract selection remains in kernel TCPM. See [power](power.md). |
 | Mutter `kms-modifiers` | Allows tiled Panfrost intermediates. 60 Hz remains preferred; landscape requires a GPU blit. |
 | Native PDF viewer | Chromium downloads PDFs for Papers to avoid costly browser rendering. |
 

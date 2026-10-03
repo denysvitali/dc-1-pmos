@@ -138,7 +138,7 @@ before changing drivers, DTS, power policy or desktop integration.
 | Sensors | AP and SCP must not own the same pins. MC3416 uses AP i2c6; the unidentified i2c1 `0x49` part stays unbound. If DTS gains panel `rotation = <180>`, remove the matching accelerometer mount-matrix compensation. |
 | Audio | Keep `dc1-audio` and UCM mixer sequences in sync. Speakers use LoudSPK headphone routes and `Ext_Speaker_Amp`; DMIC capture uses UL1/device 9, `Mic Type Mux=DMIC`, `MTKAIF_DMIC=Off`. No headset/analog-mic paths. |
 | Audio services | Keep `55-dc1-audio.conf` and `pipewire-pulse`. Recheck the WirePlumber nil-name guard at upgrades; retain the idempotent fix/trigger rather than forking a versioned ALSA script. |
-| Suspend | Keep sleep opt-in until current-build display resume and a wake path are proven. A watchdog is not a timed sleep recovery path. |
+| Suspend | Keep sleep opt-in until current-build display resume and a wake path are proven. GNOME idle-blanks after five minutes; the owner sleep switch applies the marker and service immediately. Suspend requires 60 seconds of DRM/frontlights off on battery, with one attempt per screen-off cycle. A watchdog is not a timed sleep recovery path. |
 
 Preserve script/event support (`BINFMT_SCRIPT`, `EPOLL`, `SIGNALFD`, `TIMERFD`,
 `EVENTFD`), built-in FUSE, Landlock/BPF LSM dependencies, securityfs, kernel

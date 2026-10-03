@@ -68,12 +68,11 @@ show-screenshot-ui=['Print', 'XF86Launch1']
 toggle-overview=['XF86Launch2']
 
 [org.gnome.desktop.session]
-# No spontaneous idle-blanking while unlocked: this key is what powerManager
-# arms its screensaver idle watch from, and while the shield is down 0
-# disables the watch entirely. With the shield up, powerManager ignores this
-# value and uses a hardcoded 10 s timeout instead -- see the screensaver
-# section below.
-idle-delay=0
+# Blank and lock after five minutes without input. The separate opt-in
+# dc1-sleep-on-blank service handles suspend after another minute on battery;
+# GNOME's own suspend timers remain disabled. With the shield up,
+# powerManager uses a hardcoded 10 s timeout instead -- see below.
+idle-delay=300
 
 [org.gnome.desktop.screensaver]
 # Lock on blank: the power button's blank action consults this key

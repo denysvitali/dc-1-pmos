@@ -137,6 +137,7 @@ def parse_owner_status(text):
         "charge_current": charge_current,
         "charging_mode": result.get("charging_mode") == "on",
         "auto_update": result.get("auto_update") == "on",
+        "auto_suspend": result.get("auto_suspend") == "on",
     }
 
 
@@ -242,7 +243,7 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
         controls = Adw.PreferencesGroup(
             title="Owner controls",
             description="Changes require authorization. Charge rate is live until "
-            "the next boot; the two switches persist.",
+            "the next boot; the switches persist.",
         )
         page.add(controls)
         self._profile = Adw.ComboRow(
@@ -268,6 +269,15 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
         )
         self._auto_update.connect("notify::active", self._on_switch)
         controls.add(self._auto_update)
+
+        self._auto_suspend = Adw.SwitchRow(
+            title="Automatic sleep",
+            subtitle="Sleep after 60 seconds with the screen off on battery. "
+            "Enable after confirming screen, touch and power-button wake "
+            "on the installed kernel.",
+        )
+        self._auto_suspend.connect("notify::active", self._on_switch)
+        controls.add(self._auto_suspend)
 
         errors = Adw.PreferencesGroup()
         page.add(errors)
@@ -297,7 +307,8 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
             self._error.set_visible(False)
 
     def _set_controls_sensitive(self, sensitive):
-        for row in (self._profile, self._charging_mode, self._auto_update):
+        for row in (self._profile, self._charging_mode, self._auto_update,
+                    self._auto_suspend):
             row.set_sensitive(sensitive)
 
     def _refresh_controls(self):
@@ -317,6 +328,7 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
         self._profile.set_selected(selected)
         self._charging_mode.set_active(status["charging_mode"])
         self._auto_update.set_active(status["auto_update"])
+        self._auto_suspend.set_active(status["auto_suspend"])
         self._building = was_building
         self._set_controls_sensitive(True)
         self._set_error("")
@@ -332,7 +344,12 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
     def _on_switch(self, row, _pspec):
         if self._building or self._busy:
             return
-        command = "charging-mode" if row is self._charging_mode else "auto-update"
+        if row is self._charging_mode:
+            command = "charging-mode"
+        elif row is self._auto_update:
+            command = "auto-update"
+        else:
+            command = "auto-suspend"
         state = "on" if row.get_active() else "off"
         self._write([command, state])
 

@@ -24,8 +24,9 @@ only what the tablet presently consumes. If the panel says **5 V fallback**,
 reconnect the cable; a healthy PD attach automatically selects the
 highest-power compatible fixed profile (12 V/3 A on a capable source).
 The same panel selects the live **Measured default (3.15 A)** or
-**Conservative (2.00 A)** target and controls the persistent Charging mode and
-Automatic updates opt-outs. These policy changes require authorization.
+**Conservative (2.00 A)** target and controls Charging mode, Automatic updates
+and the opt-in Automatic sleep policy. These policy changes require
+authorization.
 
 **Default rate:** ~2.94 A into the pack, roughly 40 %/h on the 8 Ah pack.
 This is the hardware-measured result of the 3.15 A charger target, with the
@@ -75,7 +76,7 @@ disable that gauge node, so it cannot register.
 
 ## Battery life today
 
-Automatic suspend remains disabled. The installed r65 kernel passed two
+Automatic suspend is disabled by default. The installed r65 kernel passed two
 systemd-managed s2idle cycles with automatic PMIC RTC wake. The longer cycle
 recorded 237.2 seconds asleep with timekeeping frozen, no logind/journald/GDM
 restart and retained GNOME input access. Panel TE and the display memory path
@@ -89,15 +90,39 @@ external RTC retains timekeeping; its faulty alarm route stays disabled.
 Identify the PMIC RTC and verify its clock, alarm and wake-enable state before
 testing. Restore the sleep masks and clear the alarm afterwards.
 
-The device package now contains an opt-in `dc1-sleep-on-blank` service. Once
-enabled, it requests suspend after the DRM screen and both frontlights have
-been off for 60 seconds **on battery**. It makes one attempt per screen-off
+## Automatic sleep
+
+The desktop locks and blanks after five minutes without input by default.
+Change **Settings → Power → Screen Blank** to choose another timeout;
+existing user settings take precedence over the package default. A short
+power-key press also locks and blanks immediately. Screen blanking alone
+does not suspend the system.
+
+After verifying display redraw, touch and a reliable power-key wake after
+suspend on the installed kernel, turn on **Settings → Charging Profile →
+Automatic sleep**. This starts the opt-in `dc1-sleep-on-blank` service
+immediately and persists across boots. It requests suspend after the DRM
+screen and both frontlights have been off for 60 seconds **on battery**.
+It makes one attempt per screen-off
 cycle, so a failed suspend or immediate wake cannot trap the device in a
-sleep loop. The service stays inactive without
-`/var/lib/dc1/enable-auto-suspend`; create that marker only after a full
-suspend and a reliable physical wake have been verified on the installed
-kernel. Removing it prevents further automatic attempts. The hardware
-acceptance sequence is in the [suspend record](hw/suspend.md).
+sleep loop. Plugged-in devices stay awake. Turning the switch off removes
+the opt-in and stops the helper immediately.
+
+The equivalent root commands are:
+
+```sh
+/usr/libexec/dc1-owner-settings auto-suspend on
+/usr/libexec/dc1-owner-settings status
+/usr/libexec/dc1-owner-settings auto-suspend off
+```
+
+The persistent opt-in is `/var/lib/dc1/enable-auto-suspend`. Creating this
+file by hand after boot does not start a service that was skipped at boot;
+use the switch or helper instead. At its first sleep attempt, the service
+unmasks `sleep.target` and `suspend.target`; hibernation remains unavailable.
+Disabling Automatic sleep stops automatic requests and leaves manual suspend
+available if those targets were already unmasked. The hardware acceptance
+sequence is in the [suspend record](hw/suspend.md).
 
 A short power-key press blanks the panel and turns off the frontlights. The
 current reduction from doing so has not been measured in a controlled quiet
