@@ -32,8 +32,8 @@ The dependency check reports missing tools for local validation without
 installing packages or requesting privileges. Add a check group to inspect
 only its dependencies, for example `sh scripts/check.sh --check-deps go`.
 Install the reported tools using your host's package manager. Go requirements
-come from the two `go.mod` files; the first Go run may download its toolchain
-or module dependencies.
+come from the repository's `go.mod` files; the first Go run may download its
+toolchain or module dependencies.
 
 Full image builds have additional dependencies and need pmbootstrap chroot
 privileges; follow the [build guide](docs/building.md#host-and-dependencies).
@@ -53,7 +53,7 @@ keeps C, Go, and DT swap build outputs in temporary directories.
 | Shell scripts | `sh scripts/check.sh syntax`, then the affected packaging or installer tests |
 | Package recipes, services, or rootfs export | `sh scripts/check.sh packaging installer`; include `c` for C changes |
 | Installer or device C helpers | `sh scripts/check.sh c installer` |
-| Boot-image or installer Go tools | `sh scripts/check.sh go` |
+| Boot-image, installer, or hardware-test Go tools | `sh scripts/check.sh go` |
 | DT swap stub | `sh scripts/check.sh dtbswap`; see the [toolchain requirements](docs/building.md#host-and-dependencies) |
 | GitHub workflows | `actionlint`, or at least parse YAML; run the affected local check groups |
 
@@ -66,8 +66,9 @@ sh scripts/check.sh
 These checks use fixtures and temporary files without accessing tablet
 hardware or deploying images. The packaging and installer groups run
 `scripts/verify.sh` and `installer/tests/run-tests.sh`; the Go group also
-cross-compiles the installer tools for aarch64. Review any reported skipped
-test cases before claiming full coverage.
+cross-compiles the installer tools for aarch64 and the
+[hardware tester](tools/hwtest/README.md) for Linux arm64/amd64. Review any
+reported skipped test cases before claiming full coverage.
 
 After pushing, inspect the actual GitHub Actions run and report its observed
 state. CI still builds every push to `main`, including documentation changes;

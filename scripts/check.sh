@@ -11,7 +11,7 @@ Run selected groups, or all groups when none are supplied:
   packaging  Verify package inputs, source pins, and export/release helpers
   installer  Run unprivileged installer and device-helper regression tests
   c          Compile installer init programs and device C helpers
-  go         Build, vet, and test both Go modules; compile installer for arm64
+  go         Build, vet, and test Go modules; compile Linux tools for arm64/amd64
   dtbswap    Build the freestanding arm64 stub in a temporary directory
 
 --check-deps  Check required executables without running any tests
@@ -137,6 +137,17 @@ for group do
 				go test ./...
 				GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' \
 					-o "$scratch/go/dc1tools-arm64" .
+			)
+			(
+				cd tools/hwtest
+				export CGO_ENABLED=0
+				go build -o "$scratch/go/hwtest" .
+				go vet ./...
+				go test ./...
+				for arch in arm64 amd64; do
+					GOOS=linux GOARCH="$arch" go build -trimpath \
+						-o "$scratch/go/hwtest-$arch" .
+				done
 			)
 			;;
 		dtbswap)
