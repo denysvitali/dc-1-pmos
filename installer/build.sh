@@ -104,21 +104,16 @@ REGDB_SIG_SIZE=1085
 REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e919179
 
 # Alpine edge/main aarch64 packages, pinned by exact version AND content hash
-# (resolved 2026-09-01; re-resolved 2026-09-10 for musl, curl, libcurl,
-# dbus-libs and libuuid; re-resolved 2026-09-17 for busybox-static and
-# libblkid, which edge had dropped, turning this build red while the
-# non-downloading verify job stayed green -- edge deletes superseded builds,
-# so expect to repeat this and re-check every pin whenever this fails.
-# Re-resolved 2026-10-02 for busybox-static, musl, ca-certificates-bundle,
-# libcrypto3, libssl3, pcsc-lite-libs, libblkid and libuuid, all of which
-# edge had superseded; every other pin was re-checked and is still current.
+# (verified 2026-10-10 against official artifacts with trusted Alpine signing
+# keys; replacement hashes confirmed by a second download). Edge removes
+# superseded builds, so audit every pin when refreshing unavailable packages.
 # A filename is not a content pin: mirrors may replace
 # bytes under one version, and dl/ is a persistent cache. Every cached or newly
 # downloaded APK is therefore verified before extraction.
 ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64"
 ALPINE_APKS="
 busybox-static-1.38.0-r7
-musl-1.2.6-r4
+musl-1.2.6-r5
 curl-8.22.0-r0
 libcurl-8.22.0-r0
 ca-certificates-bundle-20260909-r0
@@ -130,7 +125,7 @@ libidn2-2.3.8-r0
 libunistring-1.4.2-r0
 nghttp2-libs-1.70.0-r0
 libpsl-0.21.5-r3
-zlib-1.3.2-r0
+zlib-1.3.2-r1
 zstd-1.5.7-r2
 zstd-libs-1.5.7-r2
 libgcc-15.2.0-r9
@@ -146,13 +141,13 @@ e2fsprogs-1.47.4-r0
 e2fsprogs-extra-1.47.4-r0
 e2fsprogs-libs-1.47.4-r0
 libcom_err-1.47.4-r0
-libblkid-2.42.4-r1
-libuuid-2.42.4-r1
+libblkid-2.42.4-r3
+libuuid-2.42.4-r3
 libeconf-0.8.4-r0
 "
 ALPINE_APK_SHA256S="
 6e1b8ecc3fb6a991025127120378521f481daa886e7f346f1089019d9741df2f busybox-static-1.38.0-r7
-86cab172080541a8b9516578bd1811d509789c94bc180b3453d8f170f659f193 musl-1.2.6-r4
+d59b8eecf8bd212162171bd816861c19319a5616e33380ae68fa9fcb7d2f4d1b musl-1.2.6-r5
 e5b5f41ce308324fe0b7102a67e176dc4a841fc0400ee1139a454d99bf09749f curl-8.22.0-r0
 a0bcde87175e2e73d087e8626b8c606d83c61851b06f36e108abff4f1d8a20e9 libcurl-8.22.0-r0
 e85937873b0c571353aa521dec19753156a2b976dde278d0703db6e5e1e0071f ca-certificates-bundle-20260909-r0
@@ -164,7 +159,7 @@ ddfed8feb861b75bc002c3bc4a8453cee00f46db822dadc40dabb2334c47b585 libcrypto3-3.5.
 2c2a871d7cf19eae35e3a6a57d74fd194bd3d68742d78d7b54b698f62fcdde0e libunistring-1.4.2-r0
 a552fb542888b300e353c960be884d448e789e8fb96be5e12873f0102540c363 nghttp2-libs-1.70.0-r0
 6758fc2b54987b260855e95ede93e7a5aefdf5955a5915aba25ea172fbc301ca libpsl-0.21.5-r3
-1d354ed1ef4e7bd9f6459b56a5e0d5c81ec78788d165b6a459f0b41ff3f4c037 zlib-1.3.2-r0
+11c745d55520625947fae4096fef8e719c04501484843e123d8051f8f3d6dfa1 zlib-1.3.2-r1
 5ddea5d959e1ec4464042fa6c58bf10cfaf9212d634a7540d7c4f96251ccbd1d zstd-1.5.7-r2
 67f0803cc07bad0dd866d21fdaca1fa742b541a4e5e96e0159bd8b0054d348ac zstd-libs-1.5.7-r2
 23653103b2adf85dab73e4e35047f64b8671cd654e2d0291f44bec549084afd1 libgcc-15.2.0-r9
@@ -180,8 +175,8 @@ f14960b7a1d40c20d6c045874682f73c0aa4e8f36bae11583d3b860fb10b6764 skalibs-libs-2.
 44096fa251d7cf4a5d8c6c1ffb4014e28fc63ccd4e02534d0e2908fc5e7bc850 e2fsprogs-extra-1.47.4-r0
 476555b7a8178a8acf7cd94e0b3d10deb12ac236b9e78e04fc1648f0a29e3ea5 e2fsprogs-libs-1.47.4-r0
 b8d23585a851bfc732cfb39638b5d92c88a309ba1eb52243796c69c18a978b10 libcom_err-1.47.4-r0
-aa4c5a18441965cd874d60dbb0a4113125883376fda8c9bdb51a40847085013c libblkid-2.42.4-r1
-e6227bf261f459809efac504401a6e273fa7817f2e9f8ce5d8c37ce8485c1411 libuuid-2.42.4-r1
+0a01844c07c3ae1ba0388a83316466ef2b41c6ccd46efff19bbcfdfbcaac78a5 libblkid-2.42.4-r3
+61844afc7b573f6b21cb6c644ba485ea1597c9969219b5ad8c8e9f5f0dc2590b libuuid-2.42.4-r3
 dd863710179743e49a6f2d446576aec31dbc5ab61f88da254e054f530b99cdb1 libeconf-0.8.4-r0
 "
 

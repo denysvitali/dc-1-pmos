@@ -166,7 +166,11 @@ before use:
   the musl loader, and the CA bundle. Only named files are staged, a
   `readelf` DT_NEEDED closure check fails the build if Alpine's dependency
   graph drifts, and a version bump on the mirror 404s the pinned URL so
-  the build fails closed until the pin is updated deliberately.
+  the build fails closed until the pin is updated deliberately. Refresh
+  both `ALPINE_APKS` filenames and matching `ALPINE_APK_SHA256S` full-archive
+  hashes only after verifying official Alpine artifacts with trusted Alpine
+  signing keys. Audit every pin when refreshing: the build stops at the first
+  unavailable package, so one failure can hide other superseded versions.
 
 `BUSYBOX=` overrides the busybox binary (must be static; the applet check
 enforces `nc sha256sum base64 blkid awk switch_root cryptpw udhcpc` and
