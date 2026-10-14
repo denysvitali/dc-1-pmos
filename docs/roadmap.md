@@ -53,12 +53,33 @@ A development unit upgraded over time does not replace fresh-rootfs acceptance.
   Keep sleep masked by default. See [suspend](hw/suspend.md).
 - **Pack gauge:** establish live BQ78Z100 ACK and protocol before enabling it.
   Learned capacity and pack-temperature-informed charging depend on this.
+  Mainline `bq27xxx_battery` already supports the part. Collect the
+  [read-only I2C survey](../tools/i2c-survey/README.md) on battery and
+  while charging; if `0x55` stays silent on every bus, try a 100 kHz test
+  overlay before treating the pack connector as a hardware fault.
   See [power hardware](hw/power.md).
 - **Ambient light/proximity:** identify the i2c1 `0x49` part and its protocol
-  before binding a driver. Keep AP/SCP pin ownership exclusive.
-  See [sensors](hw/sensors.md).
+  before binding a driver. Keep AP/SCP pin ownership exclusive. The survey's
+  opt-in single pointer select (`0x00`) is the next step after the
+  current-address captures. See [sensors](hw/sensors.md).
+- **Secondary charger:** RT9471 stays unbound. The mainline driver resets the
+  chip, sets `CHG_EN`, clears JEITA and enables BC1.2 detection at probe, so
+  it is not a safe first bind. Gates, in order: survey evidence (ID, GPIO151
+  pad level, VBUS-good while plugged), a working pack-temperature source, a
+  driver variant that leaves those bits alone, and a bench trial capped at
+  1 A with external current and temperature measurement.
+- **Single-charger shortfall:** on 2026-10-14 (linux r65), a 9 V/3 A contract
+  with a 3.15 A charger target delivered 1.79–1.93 A into the pack at
+  20 % with the warmest zone at 38.5 °C, against about 2.94 A measured at the
+  12 V contract on 2026-08-23. Explain this (input power, regulation loop or
+  calibration) before any second charge path.
 - **Source power validation:** measure external VBUS current margin and
-  thermals before increasing the conservative USB source allowance.
+  thermals before increasing the conservative USB source allowance. The only
+  hard limit is the MT6375 boost current-limit field (`OTG_C`, code 0 in
+  `mt6375-source-role.patch`), whose current mapping is undocumented. The
+  device cannot measure VBUS or see boost overcurrent, so use an inline
+  USB-C meter and load; raise `OTG_C` before the PDO. Also confirm the
+  charger input is not reprogrammed from our own source contract.
   See [USB](hw/usb.md).
 
 ## Upstreaming

@@ -53,7 +53,9 @@ proper protection — still does not answer: every `bq27xxx-battery` read
 of `7-0055` returns `-ENXIO`. The bus is not the problem: the RT9471 at
 `0x53` on the same i2c-7 replies, a full scan finds only `0x53`, `0x55`
 NAKs both read and write addressing across 60 retries, and the bus
-measures 49.2 kHz against the 50 kHz the DT asks for. The vendor 5.10
+measured 49.2 kHz against 50 kHz requested at the time. The current DT
+and the running tree request 400 kHz, so the old NAK result does not
+establish behavior at today's bus speed. The vendor 5.10
 tree was compared line by line — same bq27xxx glue, same pad tuning
 (RSEL_111 1k pull-up, applied and read back in hardware), byte-identical
 pinctrl rsel tables, equivalent controller quirks and AC timing — so
