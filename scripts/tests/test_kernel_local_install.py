@@ -35,6 +35,87 @@ def fixture():
 
 
 class LocalKernelTests(unittest.TestCase):
+    def release_fixture(self, root, fields=None):
+        apk = root/'kernel.apk'
+        apk.write_bytes(b'archive')
+        index = root/'APKINDEX.tar.gz'
+        index.write_bytes(b'index')
+        entry = dict(P=local.PACKAGE, V='1-r1', A='aarch64', S='7', C='Q1expected')
+        entry.update(fields or {})
+        text = ''.join(key+':'+value+'\n' for key, value in entry.items())
+        def member(path, name):
+            if path == index:
+                return text.encode()
+            return ('pkgname = '+local.PACKAGE+'\npkgver = 1-r1\n').encode()
+        return apk, index, text, member
+
+    def test_release_index_authentication_precedes_package_integrity_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            apk, index, _, member = self.release_fixture(root)
+            with patch.object(local, 'member', side_effect=member), \
+                    patch.object(local, 'control_checksum', return_value='Q1expected'), \
+                    patch.object(local, 'run') as run:
+                repository = local.release_repository(index, [apk], root/'keys')
+            calls = [call.args for call in run.call_args_list]
+            self.assertEqual(calls, [
+                ('apk', '--keys-dir', str(root/'keys'), 'verify', str(index)),
+                ('apk', '--allow-untrusted', 'verify', str(apk)),
+            ])
+            self.assertEqual(repository.read_text(), index.as_uri()+'\n')
+
+    def test_release_refuses_untrusted_index_before_reading_metadata(self):
+        with patch.object(local, 'run', side_effect=RuntimeError('untrusted signature')), \
+                patch.object(local, 'member') as member:
+            with self.assertRaisesRegex(RuntimeError, 'untrusted signature'):
+                local.release_repository(Path('index'), [], Path('keys'))
+            member.assert_not_called()
+
+    def test_release_refuses_mismatched_identity_size_and_control(self):
+        for fields in ({'P': 'other'}, {'V': '2-r1'}, {'A': 'x86_64'},
+                       {'S': '8'}, {'C': 'Q1wrong'}):
+            with self.subTest(fields=fields), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                apk, index, _, member = self.release_fixture(root, fields)
+                with patch.object(local, 'member', side_effect=member), \
+                        patch.object(local, 'control_checksum', return_value='Q1expected'), \
+                        patch.object(local, 'run') as run:
+                    with self.assertRaisesRegex(RuntimeError, 'does not authenticate'):
+                        local.release_repository(index, [apk], root/'keys')
+                    self.assertEqual(run.call_count, 1)
+                    self.assertFalse((root/'repositories').exists())
+
+    def test_release_refuses_duplicate_entries_fields_and_damaged_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            apk, index, text, member = self.release_fixture(root)
+            for bad in (text+'\n'+text, text+'P:other\n', 'malformed\n'):
+                with patch.object(local, 'member', return_value=bad.encode()), \
+                        patch.object(local, 'run'):
+                    with self.assertRaises(RuntimeError):
+                        local.release_repository(index, [apk], root/'keys')
+            with patch.object(local, 'member', side_effect=member), \
+                    patch.object(local, 'control_checksum', return_value='Q1expected'), \
+                    patch.object(local, 'run', side_effect=[None, RuntimeError('bad datahash')]):
+                with self.assertRaisesRegex(RuntimeError, 'bad datahash'):
+                    local.release_repository(index, [apk], root/'keys')
+            self.assertFalse((root/'repositories').exists())
+
+    def test_release_install_uses_exact_repository_versions_without_untrusted_flag(self):
+        def member(path, name):
+            if name.endswith('kernel.release'):
+                return b'7.2-test\n'
+            name = local.MODULES_PACKAGE if path.name == 'modules.apk' else local.PACKAGE
+            return ('pkgname = '+name+'\npkgver = 1-r1\n').encode()
+        with patch.object(local, 'run') as run, patch.object(local, 'member', side_effect=member):
+            local.install_apk(Path('kernel.apk'), Path('keys'), modules=Path('modules.apk'),
+                              repository=Path('repositories'))
+        calls = [call.args for call in run.call_args_list]
+        self.assertEqual(calls[0][-3:], ('add', local.PACKAGE+'=1-r1', local.MODULES_PACKAGE+'=1-r1'))
+        self.assertIn('--no-network', calls[0])
+        self.assertIn('--repositories-file', calls[0])
+        self.assertFalse(any('--allow-untrusted' in call for call in calls))
+
     def test_matching_modules_refuses_missing_or_wrong_package(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

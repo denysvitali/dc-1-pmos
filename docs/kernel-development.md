@@ -16,6 +16,26 @@ uses sudo; build-only never installs a package on the host or flashes a slot.
 The installed system must provide Python 3, Go, systemd, apk-tools 3, lz4, cpio,
 `dc1-slotctl`, and the repository's current `dc1-boot-sync` implementation.
 
+For a CI-built kernel, download the kernel APK, its matching modules APK,
+`APKINDEX.tar.gz`, and `SHA256SUMS` from the same immutable numbered release.
+Check the downloaded files against the manifest, keep both APKs beside the
+index, then use the signed-repository path instead of rebuilding locally:
+
+```sh
+(cd boot/mkboot && go build -o mkboot .)
+sudo python3 scripts/kernel-local-install.py install-release "$PWD" \
+  /path/to/release/linux-postmarketos-mediatek-mt6789-VERSION.apk \
+  /path/to/release/APKINDEX.tar.gz
+```
+
+This authenticates the index using the installed APK keys, matches each
+package's identity, architecture, archive size and control checksum, and
+checks the payload against its authenticated data hash. Installation uses
+only those exact kernel/modules versions from the staged offline repository.
+CI's throwaway package-signing key is not required. The same boot checks and
+rollback requirements below apply; installation stages a candidate without
+rebooting. A successful CI build does not establish a hardware boot.
+
 Increment the kernel APKBUILD's `pkgrel` whenever its effective inputs change.
 An unchanged package version is deliberately reused. Source changes still
 require updating the pinned kernel commit/archive checksum and

@@ -171,9 +171,52 @@ def control_checksum(apk):
     return 'Q1'+base64.b64encode(hashlib.sha1(compressed).digest()).decode()
 
 
-def install_apk(apk, keys, rollback=False, modules=None, remove_modules_world=False):
+def package_pin(apk):
+    info = member(apk, '.PKGINFO').decode().splitlines()
+    names = [line[10:] for line in info if line.startswith('pkgname = ')]
+    versions = [line[9:] for line in info if line.startswith('pkgver = ')]
+    require(len(names) == len(versions) == 1 and names[0] in (PACKAGE, MODULES_PACKAGE)
+            and re.fullmatch(r'[A-Za-z0-9._+~-]+', versions[0]), 'invalid package identity/version')
+    return names[0] + '=' + versions[0]
+
+
+def release_repository(index, apks, keys):
+    # Published APKs carry a throwaway build signature. Authenticate their
+    # control streams using the stable-key-signed repository index instead.
+    run('apk', '--keys-dir', str(keys), 'verify', str(index))
+    entries = {}
+    for stanza in member(index, 'APKINDEX').decode().split('\n\n'):
+        fields = {}
+        for line in stanza.splitlines():
+            key, sep, value = line.partition(':')
+            require(sep and key not in fields, 'malformed or duplicate index field')
+            fields[key] = value
+        if not fields:
+            continue
+        name = fields.get('P')
+        require(name and name not in entries, 'missing or duplicate index package')
+        entries[name] = fields
+    for apk in apks:
+        name, version = package_pin(apk).split('=', 1)
+        entry = entries.get(name, {})
+        require(entry.get('V') == version and entry.get('A') == 'aarch64'
+                and entry.get('S') == str(apk.stat().st_size)
+                and entry.get('C') == control_checksum(apk),
+                'release index does not authenticate ' + apk.name)
+        # The signed index authenticated the control archive, including its
+        # datahash. This read-only check verifies the data against that hash;
+        # it does not trust or install an unauthenticated package.
+        run('apk', '--allow-untrusted', 'verify', str(apk))
+    repository = index.parent/'repositories'
+    repository.write_text(index.as_uri()+'\n')
+    return repository
+
+
+def install_apk(apk, keys, rollback=False, modules=None, remove_modules_world=False, repository=None):
     # Suppress the release-download trigger; deploy the local image explicitly.
     args = ['apk', '--keys-dir', str(keys), '--scripts=no']
+    if repository:
+        args += ['--repositories-file', str(repository), '--no-network', '--no-cache']
     if rollback:
         # This cached package was authenticated against the installed APK
         # database before staging; CI's ephemeral package key is not retained.
@@ -182,7 +225,8 @@ def install_apk(apk, keys, rollback=False, modules=None, remove_modules_world=Fa
         # The current split kernel still requires the modules, so this only
         # removes an explicit world constraint before restoring a legacy APK.
         run(*args, 'del', MODULES_PACKAGE)
-    run(*args, 'add', str(apk), *([str(modules)] if modules else []))
+    packages = [apk, *([modules] if modules else [])]
+    run(*args, 'add', *[package_pin(p) if repository else str(p) for p in packages])
     if modules:
         # The parent now pins the installed subpackage exactly. Keep it as a
         # dependency so a later downgrade to a pre-split kernel can drop it.
@@ -284,7 +328,7 @@ def confirm():
     print(result)
 
 
-def install(repo, apk, keydir):
+def install(repo, apk, keydir, index=None):
     require(not STATE.exists(), 'an earlier local kernel update is still pending')
     require(os.uname().machine == 'aarch64', 'local install requires the DC-1')
     devs = devices()
@@ -320,11 +364,20 @@ def install(repo, apk, keydir):
         dest = keys/key.name
         require(not dest.exists() or dest.read_bytes() == key.read_bytes(), 'APK key name collision')
         shutil.copyfile(key, dest)
-    run('apk', '--keys-dir', str(keys), 'verify', str(apk_copy))
-    if modules:
-        run('apk', '--keys-dir', str(keys), 'verify', str(modules))
-    run('apk', '--keys-dir', str(keys), '--scripts=no', '--simulate', 'add', str(apk_copy),
-        *([str(modules)] if modules else []))
+    packages = [apk_copy, *([modules] if modules else [])]
+    repository = None
+    if index:
+        staged_index = directory/'APKINDEX.tar.gz'
+        shutil.copyfile(index, staged_index)
+        repository = release_repository(staged_index, packages, keys)
+        run('apk', '--keys-dir', str(keys), '--scripts=no', '--repositories-file',
+            str(repository), '--no-network', '--no-cache', '--simulate', 'add',
+            *[package_pin(p) for p in packages])
+    else:
+        for package in packages:
+            run('apk', '--keys-dir', str(keys), 'verify', str(package))
+        run('apk', '--keys-dir', str(keys), '--scripts=no', '--simulate', 'add',
+            *[str(p) for p in packages])
     info = member(apk_copy, '.PKGINFO').decode()
     require('pkgname = '+PACKAGE+'\n' in info and 'arch = aarch64\n' in info, 'wrong package identity')
     kernel_gz = member(apk_copy, 'boot/vmlinuz')
@@ -426,7 +479,7 @@ def install(repo, apk, keydir):
     require(installed_package_checksum(MODULES_PACKAGE, optional=True) == previous_modules_checksum,
             'installed modules changed during preparation')
     save_state(state)
-    install_apk(apk_copy, keys, modules=modules)
+    install_apk(apk_copy, keys, modules=modules, repository=repository)
     require(Path('/boot/vmlinuz').read_bytes() == kernel_gz, 'APK installation mismatch')
     # Existing guarded deployer verifies hash, kernel parity, readback and arms
     # exactly one try. Its best-effort exit is NOT accepted as proof below.
@@ -453,8 +506,12 @@ def main():
             confirm()
         elif len(sys.argv) == 5 and sys.argv[1] == 'install':
             install(*(Path(p).resolve() for p in sys.argv[2:]))
+        elif len(sys.argv) == 5 and sys.argv[1] == 'install-release':
+            repo, apk, index = (Path(p).resolve() for p in sys.argv[2:])
+            install(repo, apk, Path('/etc/apk/keys'), index)
         else:
-            raise RuntimeError('usage: kernel-local-install.py install REPO APK KEYDIR | confirm')
+            raise RuntimeError('usage: kernel-local-install.py install REPO APK KEYDIR | '
+                               'install-release REPO APK APKINDEX | confirm')
 
 
 if __name__ == '__main__':
