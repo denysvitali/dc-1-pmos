@@ -20,7 +20,7 @@ static void *cancelled_writer(void *unused)
 {
 	(void)unused;
 	pthread_barrier_wait(&barrier);
-	pwrite(descriptor, "BAD", 3, 0);
+	assert(pwrite(descriptor, "BAD", 3, 0) == 3);
 	return NULL;
 }
 
