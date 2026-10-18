@@ -90,7 +90,20 @@ jobs:
           gjs --version
 
       - name: Shell syntax and packaging verification
-        run: sh scripts/check.sh syntax packaging
+        run: |
+          status=0
+          sh scripts/check.sh syntax packaging > "$RUNNER_TEMP/dc1-verification.log" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/dc1-verification.log"
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          import os
+          from pathlib import Path
+          text = (Path(os.environ['RUNNER_TEMP']) / 'dc1-verification.log').read_text(errors='replace')[-12000:]
+          text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print('::error title=Packaging verification failed::' + text)
+          PY
+          fi
+          exit "$status"
 
       - name: Installer offline tests
         run: sh scripts/check.sh installer
