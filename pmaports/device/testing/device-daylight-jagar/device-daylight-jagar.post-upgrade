@@ -42,6 +42,7 @@ systemctl reenable dc1-update.timer 2>/dev/null || true
 # start it and charging mode would never see a recorded flag. Same shape
 # as the update timer above: enable only, no start mid-transaction.
 systemctl reenable dc1-poweroff-flag.service 2>/dev/null || true
+systemctl reenable dc1-poweroff-record.service 2>/dev/null || true
 
 # The fallback-gauge continuity hook arrives with pkgrel 88. Presets are not
 # rerun on upgrade; enable it for existing installations, without starting it

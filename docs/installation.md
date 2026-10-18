@@ -360,7 +360,7 @@ watchdog and warm-reboot boots never enter it — which is exactly what
 makes the brief power-key press above able to exit to the desktop even
 while docked. Any other boot — power key, alarm, panic, unknown code, or
 an unreadable log — falls back to the older heuristic: the timestamp
-recorded at the last clean shutdown (`dc1-poweroff-flag.service` writes
+recorded at the last clean poweroff (`dc1-poweroff-record.service` writes
 `/var/lib/dc1/poweroff-clean`; reboots leave no flag), valid for 7 days.
 Two conditions apply either way: `/var/lib/dc1/no-charging-mode` must not
 exist, and the device must have finished its first-boot setup once

@@ -38,7 +38,7 @@
 # power-key exit from charging mode work. Unknown codes fall back too.
 #
 # The fallback evidence: ${DC1_VAR_DIR}/poweroff-clean is written by
-# dc1-poweroff-flag.service ExecStop at every CLEAN shutdown and consumed
+# dc1-poweroff-record.service only at clean poweroff and consumed
 # again early in the next boot, so "present and fresh" means the previous
 # power cycle ended deliberately (stale beyond DC1_MAX_AGE, default one
 # week, means "parked", not "docked"). A crash, watchdog reset or PMIC
@@ -71,6 +71,21 @@ SUPPLY_ONLINE=${DC1_SUPPLY_ONLINE:-/sys/class/power_supply/mt6375-charger/online
 vbus_online() {
 	vo_val=$(cat "$SUPPLY_ONLINE" 2>/dev/null) || return 1
 	[ "$vo_val" = "1" ]
+}
+
+# TCPM can briefly remove VBUS during initial contract negotiation. Only an
+# otherwise eligible charging boot waits; ordinary reboots never wait here.
+wait_for_vbus() {
+	wv_left=${DC1_VBUS_RETRIES:-3}
+	case $wv_left in
+	''|*[!0-9]*) return 1 ;;
+	esac
+	[ "${#wv_left}" -le 1 ] || return 1
+	while ! vbus_online; do
+		[ "$wv_left" -gt 0 ] || return 1
+		sleep 1
+		wv_left=$((wv_left - 1))
+	done
 }
 
 # flag_is_fresh -- 0 iff poweroff-clean exists, is all digits, and is not
@@ -118,10 +133,7 @@ decide() {
 	# 1. The owner's opt-out always wins.
 	[ ! -e "$VAR_DIR/no-charging-mode" ] || return 1
 
-	# 2. No VBUS, no charge session, whatever the firmware says.
-	vbus_online || return 1
-
-	# 3. A system that has never finished first-boot provisioning must
+	# 2. A system that has never finished first-boot provisioning must
 	# always reach the desktop: a fresh install rebooting with the flash
 	# cable still attached would otherwise present BOOT_REASON=1 and wake
 	# as silent dark glass before dc1-first-boot has ever run. The marker
@@ -129,21 +141,22 @@ decide() {
 	# "not set up yet", whatever the firmware says.
 	[ -e "$VAR_DIR/first-boot-apps-done" ] || return 1
 
-	# 4. Firmware verdict. BOOT_REASON 1 is a charger boot outright;
+	# 3. Firmware verdict. BOOT_REASON 1 is a charger boot outright;
 	# anything else -- including an unreadable ring -- additionally
 	# requires a fresh clean-poweroff flag. Captured with care under
 	# set -eu: an unparsable ring yields "", not an aborted generator.
 	reason=$(detect_boot_reason) || reason=
-	if [ "$reason" = "1" ]; then
-		return 0
-	fi
 	# Known non-charger codes are excluded from the fallback too, not just
 	# from the authoritative path -- watchdog/warm-reboot bypasses must land
 	# in the desktop even if a stale-looking flag somehow survived.
 	case $reason in
 	3|4|5) return 1 ;;
 	esac
-	flag_is_fresh
+	if [ "$reason" != "1" ]; then
+		flag_is_fresh || return 1
+	fi
+	# 4. VBUS remains mandatory, including for authoritative reason 1.
+	wait_for_vbus
 }
 
 # Library seam (same idiom as dc1-update): stop here when sourced for tests.

@@ -4,7 +4,7 @@
 # Lifecycle (consumer side: dc1-charging-generator):
 #
 #   clean poweroff, from the desktop OR from a charging session
-#     -> ExecStop records date +%s atomically into
+#     -> dc1-poweroff-record.service records date +%s atomically into
 #        ${DC1_FLAG_FILE:-/var/lib/dc1/poweroff-clean}
 #        (temp file in the same directory + mv, so a reader never sees a
 #        torn value).
@@ -14,12 +14,11 @@
 #        crash, watchdog reset or hard reset leaves NO flag and the boot
 #        after THOSE lands in the normal desktop.
 #   unplug-poweroff from a charging session
-#     -> records again: this unit runs in charging mode too (it is wanted
-#        by basic.target, which dc1-charging.target Requires), so
+#     -> records again: poweroff.target requests the record unit in both
+#        the desktop and charging mode, so
 #        plug -> charge -> unplug -> plug cycles stay in charging mode.
 #   reboot / kexec
-#     -> record SKIPS silently when /run/systemd/reboot or
-#        /run/systemd/kexec exists. This is what makes the power-key exit
+#     -> never requests the record unit. This is what makes the power-key exit
 #        work: warm-rebooting out of charging mode must NOT leave a flag,
 #        or the "reboot" would come straight back into charging mode
 #        instead of the desktop.
@@ -40,9 +39,6 @@ consume)
 	rm -f "$FLAG"
 	;;
 record)
-	if [ -e /run/systemd/reboot ] || [ -e /run/systemd/kexec ]; then
-		exit 0
-	fi
 	pf_tmp="$FLAG.tmp.$$"
 	if date +%s >"$pf_tmp" 2>/dev/null &&
 		mv -f "$pf_tmp" "$FLAG" 2>/dev/null; then

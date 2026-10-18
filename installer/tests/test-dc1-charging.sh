@@ -6,8 +6,7 @@
 #
 # What is deliberately NOT exercised here: real KEY_POWER injection into an
 # event device (needs a uinput/eventfd-backed evdev device), the monitor's
-# systemctl poweroff/reboot actions, the flag hook's /run/systemd/reboot|
-# kexec skip branch (markers are root-owned; covered by code inspection),
+# systemctl poweroff/reboot actions,
 # and dc1-pwrkey's live forever-watch with real event devices.
 #
 # HARNESS NOTE: interactive shells in some development environments carry a
@@ -89,7 +88,7 @@ set_flag_fresh() {
 # gen_decide [EXTRA=EXPORT ...] -- run decide() against the current tree in
 # a clean subprocess; echoes CHARGE (0) or DESKTOP (non-zero).
 gen_decide() {
-	PATH=/bin:/usr/bin DC1_CHARGING_LIB=1 GEN="$GEN" \
+	PATH=/bin:/usr/bin DC1_CHARGING_LIB=1 DC1_VBUS_RETRIES=0 GEN="$GEN" \
 		GVAR="$var_dir" GSUP="$supply" GRING="$ring" \
 		sh -c '
 			export DC1_VAR_DIR="$GVAR" DC1_SUPPLY_ONLINE="$GSUP" \
@@ -297,6 +296,18 @@ run_gen_e2e "$outneg"
 [ ! -e "$outneg/default.target" ] && [ ! -L "$outneg/default.target" ] ||
 	fail "normal boot staged a default.target"
 
+# A real PD attach can momentarily remove VBUS while generators run.
+# An eligible charger boot waits for it, but still fails closed if absent.
+newtree e2edelayed
+ring_reason 1
+printf '%s\n' 0 >"$supply"
+(sleep 1; printf '%s\n' 1 >"$supply") &
+attach_pid=$!
+run_gen_e2e "$tmp/gen-out-delayed"
+wait "$attach_pid"
+[ "$e2e_rc" -eq 0 ] && [ -L "$tmp/gen-out-delayed/default.target" ] ||
+	fail "eligible boot did not wait for delayed VBUS"
+
 echo "-- monitor library functions (library seam)"
 
 mon_sup=$tmp/mon-supply
@@ -464,8 +475,8 @@ flagrun consume
 [ "$f_rc" -eq 0 ] || fail "consume over an existing flag exited $f_rc"
 [ ! -e "$flag_path" ] || fail "consume did not remove an existing flag"
 
-# Record (reboot markers absent on dev/CI machines) writes a fresh
-# epoch-seconds stamp atomically.
+# Record writes a fresh epoch-seconds stamp atomically. Only the poweroff
+# target requests this operation; the unit wiring is checked below.
 flag_path=$tmp/hookrec/poweroff-clean
 mkdir -p "$tmp/hookrec"
 flagrun record
@@ -496,8 +507,32 @@ flagrun record
 [ "$f_rc" -ne 0 ] || fail "record into a missing directory succeeded"
 [ ! -e "$flag_path" ] || fail "failed record left a flag"
 
-# Not exercisable unprivileged, covered by inspection: the record path's
-# /run/systemd/reboot and /run/systemd/kexec skip branch (root-owned
-# markers; they are what keeps a warm reboot out of charging mode).
+echo "-- poweroff-only unit wiring"
+python3 - "$DEVDIR" <<'PY'
+import configparser
+from pathlib import Path
+import sys
+
+device = Path(sys.argv[1])
+def unit(name):
+    config = configparser.ConfigParser(interpolation=None)
+    config.read(device / name)
+    return config
+
+consume = unit('dc1-poweroff-flag.service')
+record = unit('dc1-poweroff-record.service')
+assert consume['Service']['ExecStart'].endswith(' consume')
+assert 'ExecStop' not in consume['Service']
+assert consume['Install']['WantedBy'] == 'basic.target'
+assert record['Service']['ExecStart'].endswith(' record')
+assert record['Unit']['DefaultDependencies'] == 'no'
+assert set(record['Unit']['Before'].split()) >= {'shutdown.target', 'umount.target'}
+assert record['Unit']['RequiresMountsFor'] == '/var/lib/dc1'
+assert record['Install']['WantedBy'] == 'poweroff.target'
+assert 'enable dc1-poweroff-record.service' in (device / '80-device-daylight-jagar.preset').read_text()
+assert 'systemctl reenable dc1-poweroff-record.service' in (device / 'device-daylight-jagar.post-upgrade').read_text()
+recipe = (device / 'APKBUILD').read_text()
+assert '"$pkgdir"/usr/lib/systemd/system/dc1-poweroff-record.service' in recipe
+PY
 
 echo "dc1 charging mode tests passed"

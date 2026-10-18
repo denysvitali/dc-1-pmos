@@ -14,11 +14,10 @@ enable dc1-link-apk-keys.service
 enable dc1-first-boot.service
 enable dc1-boot-sync.service
 enable dc1-update.timer
-# The clean-poweroff flag unit backs charging mode (dc1-charging-generator
-# reads the flag it records). basic.target, not multi-user: charging mode
-# requires basic but never reaches multi-user, so recording must ride on
-# basic to also cover unplug-poweroffs from charge sessions.
+# Consume in basic.target for both desktop and charging boots; record only
+# when poweroff.target is requested, never on reboot or service restart.
 enable dc1-poweroff-flag.service
+enable dc1-poweroff-record.service
 # The PMIC fuel gauge's software charge anchor otherwise re-seeds from voltage
 # at every boot. Restore a recent clean-shutdown value before UPower starts.
 enable dc1-battery-state.service

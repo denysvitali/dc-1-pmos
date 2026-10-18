@@ -72,7 +72,11 @@ A development unit upgraded over time does not replace fresh-rootfs acceptance.
   with a 3.15 A charger target delivered 1.79–1.93 A into the pack at
   20 % with the warmest zone at 38.5 °C, against about 2.94 A measured at the
   12 V contract on 2026-08-23. Explain this (input power, regulation loop or
-  calibration) before any second charge path.
+  calibration) before any second charge path. A loaded 2026-10-18 session
+  confirmed lower current with the main charger's own ADC and a 99–100 °C
+  charger junction; MIVR was inactive after reconnect. Repeat with low system
+  load and an external meter to distinguish system demand from thermal
+  regulation. The r67 decimal-rounding correction still needs live readback.
 - **Source power validation:** measure external VBUS current margin and
   thermals before increasing the conservative USB source allowance. The only
   hard limit is the MT6375 boost current-limit field (`OTG_C`, code 0 in

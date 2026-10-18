@@ -28,9 +28,13 @@ The same panel selects the live **Measured default (3.15 A)** or
 and the opt-in Automatic sleep policy. These policy changes require
 authorization.
 
-**Default rate:** ~2.94 A into the pack, roughly 40 %/h on the 8 Ah pack.
-This is the hardware-measured result of the 3.15 A charger target, with the
-hottest zone at 46 °C during the audit. Until the pack gauge answers, this
+**Default target:** 3.15 A. An earlier 12 V audit measured ~2.94 A into the
+pack, roughly 40 %/h on the 8 Ah pack, with the hottest board zone at 46 °C.
+This is a measured operating point, not a guaranteed rate. A later loaded
+12 V session measured substantially less battery current and a 99–100 °C
+charger junction. System load and charger temperature must be measured
+alongside the rate; see the [measurement record](hw/power.md).
+Until the pack gauge answers, this
 default cannot use live pack temperature as an independent control.
 
 **Owner lever — charge rate.** Prefer the two profiles in Charging Profile.

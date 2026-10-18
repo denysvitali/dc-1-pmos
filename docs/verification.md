@@ -47,6 +47,7 @@ measurement was made. "Pending" items live in
 | Charger: former r23 fast-charge default ~1.8 A | kernel r23 (`6a12a0831485`) | 2026-08-21 | [hw/power.md](hw/power.md) |
 | USB-PD: 12 V PDO contract end-to-end | kernel r25 (`5e36dfcd3193`+`55509d09d028`) | 2026-08-22/23 | [hw/power.md](hw/power.md) |
 | Charge rate at the 3.15 A ceiling (~40 %/h) | running r2x build | 2026-08-23 | [hw/power.md](hw/power.md) |
+| Charger: independent ADC/PMIC current comparison under all-core load; 12 V PD recovers after cable reconnect; RT9471 remains inactive | linux r65 / device r105 | 2026-10-18; neither thermal-regulation isolation nor secondary-charge acceptance | [hw/power.md](hw/power.md) |
 | Charging mode: ring mechanism (BOOT_REASON readout) | device r79 | 2026-08-25 | [hw/power.md](hw/power.md) |
 | Charging mode: reason 1 on real charger insert | — | **pending calibration** | [hw/power.md](hw/power.md) |
 | Suspend: one clean s2idle cycle | pre-pin build | 2026-08-19 | [hw/suspend.md](hw/suspend.md) |

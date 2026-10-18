@@ -70,6 +70,11 @@ shutdowns — see [thermal.md](thermal.md)), and the owner-selected charge
 policy. The shipped default is now the 3.15 A charger target (~2.94 A measured
 into the pack, about 40 %/h); Settings → Charging Profile can reduce it.
 
+A 2026-10-18 charging-side recheck still found no response at either `0x55`
+or the alternate `0x0b` on any exposed AP I2C bus. Standard gauge word reads
+on i2c7 also failed. This does not establish a connector fault: a controlled
+100 kHz session and the electrical path remain to be checked.
+
 Cosmetic suppression landed in kernel `15fd2e78b746` (pkgrel 50): the
 production DT keeps the gauge node disabled while it NAKs, so it cannot
 register a phantom power_supply, spam `-ENXIO` property warnings, or create
@@ -195,6 +200,32 @@ policy, combined thermals, and pack-temperature enforcement; the BQ78Z100 is
 still silent, so blindly combining two nominal 3.15 A paths would discard the
 very protection needed to justify the higher rate.
 
+**2026-10-18 loaded recheck (running linux r65):** the main charger's
+single-conversion ADC reported 11.919 V input, 1.273 A input current,
+3.911–3.914 V battery voltage, 1.553–1.695 A battery charge current and a
+99–100 °C charger junction during an all-core kernel build. The calibrated
+PMIC gauge reported 1.530–1.671 A in the same samples. These are separate
+chip readings, not an external meter measurement. `CHG_STAT1` bit 7 was
+clear after reconnect, so MIVR was not active in those samples. The current
+shortfall is real; this session does not isolate system demand from thermal
+regulation. Do not raise thermal limits or combine charge paths to hide it.
+
+A cable unplug/reconnect recovered the 12 V/2.5 A contract and positive
+pack current. RT9471 ID was `0x69`, GPIO151 read output-high, `CHG_EN`
+remained set in its inherited register state, and `VBUS_GD` stayed clear.
+Its state changed from sleep (`0x00`) on battery to charge fault (`0x08`)
+after reconnect. A set `CHG_EN` bit therefore does not establish an active
+second charge path. The driver remains unbound; input routing and the fault
+cause still require measurement.
+
+The PD input policy also used the power-of-two-only `round_down()` helper
+with a decimal 100 mV step. Kernel r67 replaces it with `rounddown()`: the
+5/9/12 V contracts now compute MIVR floors of exactly 4.2/8.2/11.2 V.
+The current request is rounded down to the chip's 25 mA step so encoding
+cannot exceed a source budget between steps. Offline tests execute the
+patched policy with an observing regmap backend. This is not yet a
+hardware-validated kernel deployment or a demonstrated charge-rate fix.
+
 Writable owner levers (confirmed present 2026-08-26):
 `/sys/class/power_supply/mt6375-charger/{constant_charge_current,
 constant_charge_voltage, input_current_limit, input_voltage_limit}`.
@@ -236,10 +267,11 @@ with a fresh flag — watchdog/warm-reboot bypasses must land in the normal
 desktop even when docked, and that asymmetry is exactly what makes the
 power-key exit work. Reasons 0/2/8, unknown codes, or an unreadable ring
 fall through to the deliberate fallback: the clean-poweroff heuristic —
-`dc1-poweroff-flag.service` runs `/usr/libexec/dc1-poweroff-flag` via
-ExecStop to record `/var/lib/dc1/poweroff-clean` (an epoch timestamp)
-whenever the system shuts down without reboot markers
-(`/run/systemd/reboot`/`kexec` absent; reboots never leave the flag) —
+`dc1-poweroff-record.service`, requested only by `poweroff.target`, runs
+`/usr/libexec/dc1-poweroff-flag record` before shutdown and unmounting to write
+`/var/lib/dc1/poweroff-clean` (an epoch timestamp). Reboot, kexec and ordinary
+service stops never request recording; no undocumented reboot-marker files
+are needed. The flag is
 fresh for up to DC1_MAX_AGE, default 7 days (stale beyond that means
 "parked", not "docked"), which also degrades gracefully if a charger's
 ring value ever differs from enum expectations. The flag is consumed on
@@ -253,6 +285,10 @@ fresh-install-with-flash-cable-still-attached case that would otherwise
 present reason 1 and wake as silent dark glass — plus VBUS present
 (`/sys/class/power_supply/mt6375-charger/online` = 1; every charger
 driver is built-in, so sysfs exists before generators run).
+For an otherwise eligible charging boot, the generator allows up to three
+seconds for VBUS to become ready during initial PD negotiation. Opt-out,
+unprovisioned and watchdog/warm-reboot paths do not wait. Missing VBUS after
+that bounded wait still selects the desktop.
 
 Inside the target the monitor holds `bl_power=4` on all frontlight channels
 as insurance,

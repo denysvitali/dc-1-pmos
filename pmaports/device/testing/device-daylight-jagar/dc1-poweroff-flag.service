@@ -1,22 +1,10 @@
-# dc1-poweroff-flag.service -- the canonical systemd execute-at-shutdown
-# hook: ExecStart consumes (clears) the clean-poweroff flag early in every
-# boot, ExecStop records it again at every CLEAN shutdown. See
-# dc1-poweroff-flag for the full lifecycle and dc1-charging-generator for
-# the consumer side. DefaultDependencies=no plus the explicit shutdown
-# ordering is the standard shape for a unit that must act while everything
-# else stops (cf. alsa-store.service).
-#
-# Wanted by basic.target, NOT multi-user.target: charging mode requires
-# basic.target but never reaches multi-user, and an unplug-poweroff from a
-# charging session must record too -- otherwise plug -> charge -> unplug ->
-# plug would boot the desktop on the second round.
-#
-# RequiresMountsFor keeps the flag's filesystem up until ExecStop has run;
-# a failed record degrades safely (missing flag means one normal desktop
-# boot, never an unsafe one).
+# Consume the previous clean-poweroff flag once in both desktop and charging
+# boots, after generators have inspected it. No ExecStop: a service restart,
+# reboot or kexec must never manufacture a clean-poweroff flag.
+# dc1-poweroff-record.service records separately through poweroff.target.
 
 [Unit]
-Description=DC-1 clean-poweroff flag (consumed at boot, recorded at shutdown)
+Description=DC-1 consume clean-poweroff charging marker
 DefaultDependencies=no
 After=local-fs.target
 RequiresMountsFor=/var/lib/dc1
@@ -27,7 +15,6 @@ Before=shutdown.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/libexec/dc1-poweroff-flag consume
-ExecStop=/usr/libexec/dc1-poweroff-flag record
 
 [Install]
 WantedBy=basic.target

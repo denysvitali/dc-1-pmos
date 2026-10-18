@@ -1,0 +1,15 @@
+# Only poweroff.target requests this unit. A generic ExecStop hook cannot
+# distinguish poweroff from reboot, kexec or an ordinary service restart.
+[Unit]
+Description=DC-1 clean-poweroff charging marker
+DefaultDependencies=no
+RequiresMountsFor=/var/lib/dc1
+After=dc1-poweroff-flag.service
+Before=shutdown.target umount.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/dc1-poweroff-flag record
+
+[Install]
+WantedBy=poweroff.target

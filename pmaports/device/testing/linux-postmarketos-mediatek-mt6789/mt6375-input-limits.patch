@@ -1,0 +1,106 @@
+--- a/drivers/power/supply/mt6375-charger.c
++++ b/drivers/power/supply/mt6375-charger.c
+@@ -392,100 +392,101 @@
+ 	mutex_unlock(&charger->otg_lock);
+ 	return ret;
+ }
+ 
+ /*
+  * The TCPC backend reports settled PD sink contracts through
+  * mt6375_charger_program_input(). There is one PMIC on this board, so a
+  * static bridge says exactly what it is.
+  */
+ static struct {
+ 	struct regmap *regmap;
+ 	struct device *dev;
+ } mt6375_chg_bridge;
+ 
+ /**
+  * mt6375_charger_program_input - apply a PD sink contract to the input stage
+  * @mv: negotiated bus voltage, 0 for detach
+  * @ma: negotiated current, ignored when @mv is 0
+  *
+  * Raises the input over-voltage bucket above the contract voltage, sets MIVR
+  * (the input-voltage regulation floor) 800 mV under the contract so cable
+  * drop does not throttle prematurely but a collapse still protects, and
+  * points AICR at the contracted current. On detach the VBUS policy defaults
+  * are restored. Called from the TCPC driver's TCPM set_current_limit hook.
+  */
+ int mt6375_charger_program_input(u32 mv, u32 ma)
+ {
+ 	struct regmap *regmap = READ_ONCE(mt6375_chg_bridge.regmap);
+ 	unsigned int mivr_mv = 0, mivr_code, aicr_ua, aicr_code = 0, ov = 0;
+ 	int ret;
+ 
+ 	if (!regmap)
+ 		return -ENODEV;
+ 
+ 	if (!mv) {
+ 		mivr_code = DIV_ROUND_CLOSEST(4500 - 3900, 100);
+ 		ret = mt6375_aicr_encode(MT6375_AICR_BOOST_UA, &aicr_code);
+ 		if (ret)
+ 			return ret;
+ 	} else {
+ 		/* OVP bucket strictly above the contract, with margin. */
+ 		if (mv <= 5500)
+ 			ov = 0;			/* 5.8 V */
+ 		else if (mv <= 10500)
+ 			ov = 2;			/* 11 V */
+ 		else
+ 			ov = 3;			/* 14.5 V */
+ 
+-		mivr_mv = round_down(clamp(mv - 800u, 3900u, 13400u), 100u);
++		mivr_mv = rounddown(clamp(mv - 800u, 3900u, 13400u), 100u);
+ 		mivr_code = (mivr_mv - 3900) / 100;
+ 
+-		aicr_ua = clamp(ma, 100u, 3225u) * 1000;
++		/* Never round the input limit above the source's budget. */
++		aicr_ua = rounddown(clamp(ma, 100u, 3225u), 25u) * 1000;
+ 		ret = mt6375_aicr_encode(aicr_ua, &aicr_code);
+ 		if (ret)
+ 			return ret;
+ 
+ 		ret = regmap_update_bits(regmap, MT6375_REG_CHG_TOP2,
+ 					 GENMASK(1, 0), ov);
+ 		if (ret)
+ 			return ret;
+ 	}
+ 
+ 	ret = regmap_write(regmap, MT6375_REG_CHG_MIVR, mivr_code);
+ 	if (!ret)
+ 		ret = regmap_write(regmap, MT6375_REG_CHG_AICR, aicr_code);
+ 	if (!ret && mv)
+ 		dev_info(mt6375_chg_bridge.dev,
+ 			 "PD contract: %u mV %u mA (MIVR %u mV, OVP %u mV)\n",
+ 			 mv, ma, mivr_mv, mt6375_vbus_ov_levels[ov]);
+ 	else if (!ret)
+ 		dev_info(mt6375_chg_bridge.dev,
+ 			 "PD detach: input stage back to policy defaults\n");
+ 	return ret;
+ }
+ EXPORT_SYMBOL_GPL(mt6375_charger_program_input);
+ 
+ static int mt6375_get_property(struct power_supply *psy,
+ 			       enum power_supply_property property,
+ 			       union power_supply_propval *val)
+ {
+ 	struct mt6375_charger *charger = power_supply_get_drvdata(psy);
+ 
+ 	switch (property) {
+ 	case POWER_SUPPLY_PROP_STATUS:
+ 		return mt6375_get_status(charger, &val->intval);
+ 	case POWER_SUPPLY_PROP_ONLINE:
+ 		return mt6375_get_online(charger, &val->intval);
+ 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
+ 		return mt6375_read_linear(charger, MT6375_REG_CHG_AICR,
+ 					   GENMASK(6, 0), 100, 25, 2, 127,
+ 					   &val->intval);
+ 	case POWER_SUPPLY_PROP_INPUT_VOLTAGE_LIMIT:
+ 		return mt6375_read_linear(charger, MT6375_REG_CHG_MIVR,
+ 					   GENMASK(6, 0), 3900, 100, 0, 95,
+ 					   &val->intval);
+ 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
+ 		return mt6375_read_linear(charger, MT6375_REG_CHG_ICHG,
+ 					   GENMASK(5, 0), 300, 50, 6, 63,
+ 					   &val->intval);
+ 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE:
