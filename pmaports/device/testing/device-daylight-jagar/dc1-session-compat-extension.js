@@ -60,6 +60,7 @@
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import St from 'gi://St';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
@@ -73,6 +74,19 @@ const REGISTER_RETRY_DELAY_MS = 1000;
 export default class Dc1SessionCompatExtension extends Extension {
     enable() {
         this._registerRetryId = 0;
+
+        // 48.mobile.0's native getter casts the StButton itself to a
+        // ClutterPressGesture, always returning false and logging a critical.
+        // Its pressed property and get_click_gesture() use the correct object.
+        // Route JS callers through the property until the native getter is
+        // fixed. Older shells without this gesture API need no workaround.
+        this._buttonGetPressed = null;
+        if (typeof St.Button.prototype.get_click_gesture === 'function') {
+            this._buttonGetPressed = St.Button.prototype.get_pressed;
+            St.Button.prototype.get_pressed = function () {
+                return this.pressed;
+            };
+        }
 
         this._actions = SystemActions.getDefault();
         // Shadow the prototype method; every call site reaches it through
@@ -108,6 +122,10 @@ export default class Dc1SessionCompatExtension extends Extension {
     }
 
     disable() {
+        if (this._buttonGetPressed) {
+            St.Button.prototype.get_pressed = this._buttonGetPressed;
+            this._buttonGetPressed = null;
+        }
         if (this._registerRetryId) {
             GLib.source_remove(this._registerRetryId);
             this._registerRetryId = 0;

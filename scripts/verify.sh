@@ -52,6 +52,7 @@ python3 "$script_dir/tests/test_verify_kernel_artifacts.py"
 python3 "$script_dir/tests/test_verify_kernel_modules.py"
 sh -n "$script_dir/kernel-local.sh"
 python3 "$script_dir/tests/test_kernel_local_install.py"
+python3 "$script_dir/tests/test_kernel_config.py"
 
 (
 	cd "$device_dir"
@@ -249,6 +250,8 @@ python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __
 python3 "$script_dir/tests/test_orientation.py"
 python3 "$script_dir/tests/test_gpu_settings_poll.py"
 gjs -m "$script_dir/tests/test_dc1_safe_area_locksheet.js"
+gjs -m "$script_dir/tests/test_dc1_button_pressed.js"
+python3 "$script_dir/tests/test_chromium_pwrite.py"
 sh -n "$device_dir/device-daylight-jagar.trigger"
 sh -n "$device_dir/device-daylight-jagar.post-install"
 sh -n "$device_dir/device-daylight-jagar.post-upgrade"

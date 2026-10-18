@@ -43,6 +43,7 @@ Build revisions come from `scripts/versions.env`, not measurement dates.
 | USB gadget, host, and Type-C roles | [USB](hw/usb.md) |
 | Fuel gauge, chargers, PD, and RTC | [Power hardware](hw/power.md) |
 | Suspend and wake | [Suspend](hw/suspend.md) |
+| Service CPU, I/O and process limits | [Resource controls](hw/resource-control.md) |
 | Thermal zones and cooling | [Thermal](hw/thermal.md) |
 | Accelerometer and other sensors | [Sensors](hw/sensors.md) |
 | UFS and microSD | [Storage](hw/storage.md) |

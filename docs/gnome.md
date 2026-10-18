@@ -53,6 +53,39 @@ mounting and physical-pose acceptance.
 | Mutter `kms-modifiers` | Allows tiled Panfrost intermediates. 60 Hz remains preferred; landscape requires a GPU blit. |
 | Native PDF viewer | Chromium downloads PDFs for Papers to avoid costly browser rendering. |
 
+The 48.mobile.0 native `St.Button.get_pressed()` getter passes the button to
+`clutter_press_gesture_get_pressed()` instead of its click gesture. It returns
+false and emits a critical even for valid buttons. `dc1-session-compat`
+routes JavaScript callers through the correctly implemented `pressed`
+property when the new click-gesture API is present, restoring the original
+method when disabled. This repairs pressed-state handling without changing
+touch calibration, gesture thresholds or event delivery. Remove the workaround
+when the mobile shell fixes its native getter.
+
+## Chromium positional writes
+
+Chromium 155's component file-patcher sandbox traps `pwritev2`. musl 1.2.6
+uses that syscall with `RWF_NOAPPEND` when applications call `pwrite()` or
+`pwritev()`, so the sandbox terminates the process before musl can fall back.
+The observed utility was `patch.mojom.FilePatcher`, not the browser process.
+
+`/etc/chromium/dc1-pwrite.conf` preloads a small compatibility library only
+for Chromium and its children. It uses the legacy positional-write syscalls
+already supported by the sandbox, preserves cancellation points and refuses
+`O_APPEND` descriptors with `EOPNOTSUPP`, matching musl's fallback rather than
+silently writing at the wrong offset. Component updates and seccomp remain
+enabled. Restart all Chromium processes to load it. Other applications use
+the normal libc implementation. Remove the configuration and library after
+the Chromium sandbox handles musl's new probe.
+
+`python3 scripts/tests/test_chromium_pwrite.py` tests real writes while
+seccomp traps `pwritev2`, including a fatal negative control, large offsets,
+descriptor errors, append handling and thread cancellation. This establishes
+syscall compatibility; a successful component-update transaction is a
+separate runtime check. The upstream implementations are
+[musl pwrite](https://git.musl-libc.org/cgit/musl/tree/src/unistd/pwrite.c) and
+[Chromium's service policy](https://github.com/chromium/chromium/blob/155.0.8059.39/sandbox/policy/linux/bpf_service_policy_linux.cc).
+
 ## Chromium WebGPU
 
 The device package installs `/etc/chromium/dc1-webgpu.conf`. Alpine's launcher
