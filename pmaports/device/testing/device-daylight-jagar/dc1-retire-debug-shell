@@ -1,0 +1,34 @@
+#!/bin/sh
+# Remove the retired installed-system root shells, including stale enablement
+# and a local /dev/null mask. The installer and failed-boot rescue are separate.
+set -eu
+ROOT=${DC1_RETIRE_ROOT:-}
+if [ -d "$ROOT/run/systemd/system" ]; then
+	# apk may already have removed the unit file. Stop the cached unit
+	# explicitly: disable --now can fail before stopping a missing unit.
+	systemctl stop dc1-debug-shell.service 2>/dev/null || true
+	if systemctl is-active --quiet dc1-debug-shell.service; then
+		echo "dc1-retire-debug-shell: service is still running; refusing removal" >&2
+		exit 1
+	fi
+	systemctl disable dc1-debug-shell.service 2>/dev/null || true
+elif [ -d "$ROOT/run/openrc" ] && [ -x "$ROOT/etc/init.d/dc1-debug-shell" ]; then
+	rc-service dc1-debug-shell stop 2>/dev/null || true
+fi
+
+for link in "$ROOT"/etc/runlevels/*/dc1-debug-shell \
+	"$ROOT"/etc/systemd/system/*.wants/dc1-debug-shell.service \
+	"$ROOT"/etc/systemd/system/*.requires/dc1-debug-shell.service; do
+	[ ! -L "$link" ] || rm -f "$link"
+done
+mask=$ROOT/etc/systemd/system/dc1-debug-shell.service
+if [ -L "$mask" ] && [ "$(readlink "$mask")" = /dev/null ]; then
+	rm -f "$mask"
+fi
+rm -f "$ROOT/usr/lib/systemd/system/dc1-debug-shell.service" \
+	"$ROOT/usr/libexec/dc1-debug-shell" "$ROOT/etc/init.d/dc1-debug-shell"
+
+if [ -d "$ROOT/run/systemd/system" ]; then
+	systemctl daemon-reload
+	systemctl reset-failed dc1-debug-shell.service 2>/dev/null || true
+fi

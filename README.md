@@ -89,12 +89,13 @@ model and records sourced board specifications.
   see [docs/power.md](docs/power.md).
 - **USB docks:** see the [docking guide](docs/usb-docking.md) for USB 2.0 peripheral coverage and compatibility limits. Optional drivers ship in the matching kernel modules APK.
 - **Offline use is supported.** Network loss does not trigger automatic reboots.
-- **Normal desktop boots expose the recovery channels.** SSH listens on port
-  22 over configured networks; USB SSH/ECM still awaits a host-side test. Raw
-  TCP 4444 and two USB serial ports are cable-only. Charging mode stops sshd
-  and Wi-Fi but keeps the raw USB channels. The full exposure matrix is in
-  [docs/security.md](docs/security.md); the
-  installer additionally offers read-only on-screen debug tools
+- **Installed-system access uses authenticated SSH.** SSH listens on port
+  22 over configured networks; USB SSH/ECM still awaits a host-side test.
+  Installed systems ship no raw TCP/USB root-shell service or USB kernel-log
+  stream. Charging mode excludes USB networking, sshd and Wi-Fi. Installer
+  and failed-boot rescue environments retain physical recovery access; see
+  [docs/security.md](docs/security.md). The installer additionally offers
+  read-only on-screen debug tools
   ([docs/debugging.md](docs/debugging.md)).
 
 ## When things go wrong

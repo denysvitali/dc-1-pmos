@@ -244,9 +244,8 @@ func mustOrder(t *testing.T, calls []string, steps ...string) {
 }
 
 // The ordering here is the part that was learned from failed boots, not from
-// reading code: kernel filesystems, then the debug channel (so a hang after
-// this point is visible from the host at all), then the watchdog owner, and
-// only then anything that touches storage.
+// reading code: kernel filesystems, then the watchdog owner, and only then
+// anything that touches storage. Healthy boots must expose no USB shells.
 func TestBootOrder(t *testing.T) {
 	f := newFake()
 	if !runBoot(t, f) {
@@ -256,10 +255,6 @@ func TestBootOrder(t *testing.T) {
 		"mount proc /proc proc",
 		"mount devtmpfs /dev devtmpfs",
 		"openkmsg",
-		"mount configfs /sys/kernel/config configfs",
-		"writesys "+gadgetRoot+"/UDC=musb-hdrc.4.auto",
-		"spawn /bin/dc1tools system-init -helper kmsg",
-		"spawn /bin/dc1tools system-init -helper shell",
 		"spawn /bin/dc1tools system-init -helper watchdog",
 		"proberoots",
 		"mount /dev/sdc57 /mnt/root ext4",
@@ -273,12 +268,18 @@ func TestBootOrder(t *testing.T) {
 	if indexOf(f.calls, "openkmsg") < indexOf(f.calls, "mount devtmpfs") {
 		t.Fatal("opened /dev/kmsg before devtmpfs was mounted")
 	}
+	for _, forbidden := range []string{"mount configfs", "-helper kmsg", "-helper shell"} {
+		if indexOf(f.calls, forbidden) >= 0 {
+			t.Fatalf("healthy boot exposed a debug channel: %s", forbidden)
+		}
+	}
 }
 
 // The helpers are the only processes allowed to skip the PID 1 test, so PID 1
 // has to mark them; without the marker they would refuse to start.
 func TestHelpersAreMarkedByPID1(t *testing.T) {
 	f := newFake()
+	f.rootsFails = rootWaitSeconds
 	runBoot(t, f)
 	for _, role := range []string{helperKmsg, helperShell, helperWatchdog} {
 		at := indexOf(f.calls, "-helper "+role)
@@ -451,15 +452,15 @@ func TestFsckRunsWhenStaged(t *testing.T) {
 	}
 }
 
-// A gadget that cannot bind is survivable; a boot that stops because of one is
-// not. It must still reach switch_root.
-func TestGadgetFailureDoesNotStopTheBoot(t *testing.T) {
+// USB rescue is best effort: even if it fails, local console rescue remains.
+func TestGadgetFailureDoesNotStopRescue(t *testing.T) {
 	f := newFake()
 	for _, udc := range udcCandidates() {
 		f.sysErr[gadgetRoot+"/UDC="+udc] = syscall.ENODEV
 	}
-	if !runBoot(t, f) {
-		t.Fatal("a failed UDC bind stopped the boot")
+	rescue(f, Config{Once: true}, "root unavailable")
+	if indexOf(f.calls, "spawn /bin/busybox sh </dev/console") < 0 {
+		t.Fatal("a failed UDC bind stopped console rescue")
 	}
 	if !strings.Contains(strings.Join(f.lines, "\n"), "UDC bind failed") {
 		t.Fatal("failed to bind a UDC silently")
@@ -469,7 +470,7 @@ func TestGadgetFailureDoesNotStopTheBoot(t *testing.T) {
 func TestGadgetBindsTheFirstUDCThatAccepts(t *testing.T) {
 	f := newFake()
 	f.sysErr[gadgetRoot+"/UDC=musb-hdrc.4.auto"] = syscall.ENODEV
-	runBoot(t, f)
+	gadget(f)
 	if indexOf(f.calls, "UDC=musb-hdrc.1.auto") < 0 {
 		t.Fatal("did not fall through to the next UDC candidate")
 	}
@@ -479,7 +480,7 @@ func TestGadgetBindsTheFirstUDCThatAccepts(t *testing.T) {
 }
 
 // Rescue is the terminal state: a shell on every console we can open, the
-// deadman armed, and nothing written anywhere.
+// deadman armed, USB recovery configured, and no storage mounted.
 func TestRescueOffersAShellOnEveryConsole(t *testing.T) {
 	f := newFake()
 	rescue(f, Config{Once: true}, "boot.sh equivalent failed")
@@ -489,9 +490,10 @@ func TestRescueOffersAShellOnEveryConsole(t *testing.T) {
 		}
 	}
 	mustOrder(t, f.calls, "touch "+leasePath, "touch "+deadmanPath)
+	mustOrder(t, f.calls, "touch "+deadmanPath, "mount configfs", "-helper shell")
 	for _, c := range f.calls {
-		if strings.HasPrefix(c, "mount ") || strings.HasPrefix(c, "writesys ") {
-			t.Errorf("rescue changed something: %q", c)
+		if strings.HasPrefix(c, "mount ") && !strings.HasPrefix(c, "mount configfs ") {
+			t.Errorf("rescue mounted storage: %q", c)
 		}
 	}
 }

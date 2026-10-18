@@ -344,10 +344,10 @@ control remains unavailable while the BQ78Z100 does not answer.
 | Press power briefly | Warm-reboots into the normal desktop |
 | Hold power until the PMIC hard-reset fires | Hard-resets into the normal desktop |
 
-While charging, systemd, the journal, udev, logind, and the USB gadget stay
-up, so the recovery channels keep working: the debug shell on TCP 4444 at
-`172.16.42.1` over the cable, and both USB serial ports. Everything else —
-GNOME, Wi-Fi, Bluetooth, sshd — is stopped. Network loss does not trigger
+While charging, systemd, the journal, udev and logind stay up. USB networking,
+its DHCP server, GNOME, Wi-Fi, Bluetooth and sshd are excluded; there are no
+installed-system raw root-shell services. Press power to boot normally for
+authenticated access. Network loss does not trigger
 a reboot, and the device package inhibits legacy reachability watchdogs
 left by older boot images. See [reboot watchdogs](debugging.md#reboot-watchdogs).
 

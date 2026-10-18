@@ -262,10 +262,9 @@ directly because logind ignores the power key globally on this device
 `/etc/systemd/logind.conf.d/10-dc1-power.conf`) and `/etc` drop-ins
 outrank `/run`, so no volatile logind override could take. Kept units:
 PID 1 with its `RuntimeWatchdogSec=30s` feed (mandatory — LK arms a ~31 s
-SoC watchdog), journald, udevd, logind, `dc1-usb-gadget` +
-`dc1-debug-shell` + `unudhcpd@usb0` (the USB recovery channel at
-172.16.42.x stays reachable), `dc1-link-apk-keys`, and
-`dc1-rtcsync.timer`; excluded are gdm/GNOME, NetworkManager,
+SoC watchdog), journald, udevd, logind, `dc1-link-apk-keys`, and
+`dc1-rtcsync.timer`; excluded are USB networking and its DHCP server,
+gdm/GNOME, NetworkManager,
 wpa_supplicant, sshd, Bluetooth, ModemManager, and the audio/display/
 frontlight/backlight/GPU/first-boot/boot-sync/update services.
 

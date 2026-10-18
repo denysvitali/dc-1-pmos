@@ -123,17 +123,15 @@ Collected files may contain identifiers and internal state:
 
 ### Channels in, ranked by usefulness
 
-1. **SSH on port 22** — verified over Wi-Fi, password as set at install. The
-   USB address is configured at `172.16.42.1`, but the host-side ECM/SSH test
-   is still pending.
-2. **USB serial** — `/dev/ttyGS0` streams the kernel log live (one-way);
-   `/dev/ttyGS1` is an interactive root shell. Requires the USB cable.
-3. **Raw root shell on TCP 4444** — `nc 172.16.42.1 4444`, USB cable
-   only (the listener binds the usb0 address and is never exposed over
-   Wi-Fi).
+Use **SSH on port 22** with the account configured at installation. Wi-Fi
+access is verified; USB is configured at `172.16.42.1`, but host-side ECM/SSH
+verification is still pending. Local firewall policy can restrict interfaces.
 
-What each channel is and how to close them is in
-[security.md](security.md).
+The installed-system raw TCP/USB root shells and USB kernel-log stream have
+been removed. Read logs through authenticated SSH (`journalctl`, `dmesg`).
+Installer-mode channels described above remain separate. The system boot
+initramfs offers USB rescue only if boot fails, not on a healthy boot.
+See [security.md](security.md) for the exposure boundaries.
 
 ### Evidence sources, and their traps
 
@@ -221,7 +219,6 @@ Units worth knowing (all from the device package unless noted):
 | `dc1-update.timer` | Post-boot + weekly `apk upgrade`, convergence parity report |
 | `dc1-boot-sync` | Writes the inactive A/B slot with a new kernel/boot image, read-back verified (the OTA path) |
 | `dc1-usb-gadget` | Owns the UDC; completes the ACM+ECM gadget tree in place |
-| `dc1-debug-shell` | ttyGS0 kmsg stream, ttyGS1 root shell, TCP 4444 root shell (usb0-only) |
 | `dc1-audio` | Applies the known-good ALSA mixer state at boot, in the `sound.target` transaction |
 | `dc1-bluetooth` | Dmesg-gated unbind/bind repair for the BT firmware race |
 | `dc1-charging.target` + `dc1-charging-generator`/`-monitor` | Headless charging mode ([installation.md](installation.md#charging-mode)) |

@@ -2,7 +2,6 @@
 # registered by the package's post-install (rc-update), which no-ops when
 # systemd is in use.
 enable dc1-usb-gadget.service
-enable dc1-debug-shell.service
 enable dc1-display-gate.service
 enable dc1-gpu.service
 enable dc1-audio.service

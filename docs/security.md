@@ -1,42 +1,34 @@
 # Security and exposure — what listens where
 
-This port deliberately keeps debug channels open: a tablet with no
-serial header and no general recovery channel is only serviceable if you
-can always get in. This page states exactly what is exposed, to whom,
-and how to close each channel if you do not want it. The matrix below
-was measured on a running installed system on 2026-08-26 (device pkgrel
-r76, kernel r37); the code that establishes each property is referenced.
-USB gadget configuration is measured device-side, but host-side ECM/SSH
-reachability remains a pending end-to-end check.
+Installed systems use authenticated login paths. Device package r109 removes
+the old raw TCP/USB root-shell service and USB kernel-log streamer, including
+their OpenRC and systemd enablement. Its upgrade helper stops the old service
+and removes its shipped files, stale links and any `/dev/null` mask.
+
+The current system initramfs source configures USB rescue only after a failed
+boot. Older boot images still contain their earlier pre-handoff serial debug
+channels until replaced; a userspace package upgrade cannot change a ramdisk.
+Installer mode remains a separate physical recovery environment.
+
+The table describes shipped defaults. Local SSH/Tailscale/firewall policy can
+restrict them further. USB gadget configuration is measured device-side, but
+host-side ECM/SSH reachability remains a pending end-to-end check.
 
 ## Exposure matrix — installed system
 
 | Channel | Binds to | Authentication | Reachable via | How to close |
 | --- | --- | --- | --- | --- |
 | sshd, TCP 22 | `0.0.0.0` + `[::]` (all interfaces) | Password of the account created at install (sshd defaults; no `PermitRootLogin`/`PasswordAuthentication` overrides are shipped) | Wi-Fi; USB is configured device-side but host reachability remains unverified | `systemctl disable --now sshd`, or restrict with a `ListenAddress`/firewall |
-| Root shell, TCP 4444 | `172.16.42.1` **only** (usb0) — never `0.0.0.0` | **None** (busybox `nc -lk -e /bin/sh`) | USB cable only | `systemctl disable --now dc1-debug-shell` |
-| kmsg stream, `/dev/ttyGS0` | USB ACM function | None (one-way log stream) | USB cable only | same unit as above |
-| Interactive root shell, `/dev/ttyGS1` | USB ACM function | **None** | USB cable only | same unit as above |
 | DNS `127.0.0.53`/`127.0.0.54:53`, LLMNR 5355 | loopback / all (LLMNR) | n/a (systemd-resolved) | LLMNR is link-local multicast | `LLMNR=no` in resolved.conf |
 
-Source: `dc1-debug-shell.service`/`.initd` in the device package — the
-TCP shell's usb0-only bind is deliberate ("never 0.0.0.0, so a later
-Wi-Fi connection cannot expose an unauthenticated root shell on the
-LAN"); sshd is enabled unconditionally by installer provisioning
-(`apply_sshd`) because when GNOME does not come up, SSH is the recovery
-path.
+SSHD is enabled by installer provisioning (`apply_sshd`) so authenticated
+access remains available if the desktop fails. Password quality and SSH
+authentication policy must be configured for the intended deployment.
 
-Caveats worth knowing:
-
-- The 4444 shell is safe from Wi-Fi **because of the bind address**. A
-  Wi-Fi network itself numbered `172.16.42.0/24` (or a route to it) would
-  make the USB link-local net reachable over the air — if you use such a
-  range, disable the unit.
-- The two USB ACM channels are physical-access channels. Anyone holding
-  the cable and the device holds root. That is the trade the recovery
-  argument makes; it is stated here so it is a decision, not a surprise.
-- Password quality of the sshd channel is whatever was set in the
-  installer; there is no rate limiting beyond sshd defaults.
+USB ACM functions may remain enumerated for compatibility with older gadget
+trees, but no installed-system shell or log-stream service opens them.
+Removing live configfs gadget objects can wedge this hardware; retirement
+does not tear down or rebuild a bound USB gadget.
 
 ## Exposure matrix — installer mode (installation initramfs)
 
@@ -75,17 +67,14 @@ installer credentials.
   user secret.
 - No proprietary blobs ship; firmware is fetched from upstream
   linux-firmware/wireless-regdb at build time under size + SHA-256 pins.
-- The charging-mode target (device pkgrel ≥ 79) keeps the USB recovery
-  channel (`dc1-usb-gadget` + `dc1-debug-shell` + `unudhcpd@usb0`) but
-  excludes NetworkManager, wpa_supplicant, and sshd — a docked device
-  has **no** Wi-Fi listeners at all.
+- Charging mode excludes USB networking, its DHCP server, NetworkManager,
+  wpa_supplicant and sshd. Press power to boot normally for authenticated
+  access; no raw USB login channel is provided while charging.
 
 ## If you want a quieter device
 
 ```sh
-# close the unauthenticated USB shells (keeps sshd):
-systemctl disable --now dc1-debug-shell
-# close sshd entirely (keeps USB serial shells if left enabled):
+# Close SSH only if another authenticated login path is available:
 systemctl disable --now sshd
 ```
 

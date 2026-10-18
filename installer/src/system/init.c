@@ -60,37 +60,6 @@ static pid_t g_petter_pid = -1;
 static volatile sig_atomic_t g_petter_handoff = 0;
 static void on_watchdog_handoff(int sig) { (void)sig; g_petter_handoff = 1; }
 
-/* Debug-channel handoff to systemd, for the same reason and by the same
- * mechanism as the watchdog handoff above. The channels below survive
- * switch_root, but dc1-debug-shell.service re-provides both of them in the
- * installed system, so keeping ours costs a duplicate owner of ttyGS0/ttyGS1
- * and -- the reason this exists -- a 90s stall on every reboot: the ttyGS1
- * shell has a tty on stdin, so busybox ash treats it as interactive and sets
- * SIGTERM to SIG_IGN. systemd-shutdown broadcasts SIGTERM, cannot reap it, and
- * waits DefaultTimeoutStopSec before escalating to SIGKILL ("Waiting for
- * process: 154 (busybox)"), with the panel still showing the last compositor
- * frame because this device has no fbcon. So exit on SIGUSR1 instead.
- *
- * The shell itself ignores SIGTERM, so the supervisor SIGKILLs it: uncatchable,
- * and there is nothing to clean up. Both actions are async-signal-safe, so the
- * handler does the work directly rather than setting a flag -- these children
- * block in read()/waitpid(), which musl's signal() restarts on return, and a
- * flag checked after a restarted waitpid() would never be looked at again.
- *
- * The supervisor blocks SIGUSR1 across fork() and the g_shell_child store. A
- * signal that lands in that window is delivered at the unblock, by which time
- * the handler can see the pid it has to kill; without the block it would exit
- * and leave behind exactly the process this is meant to remove. */
-static pid_t g_kmsg_pid = -1, g_shell_pid = -1;
-static volatile sig_atomic_t g_shell_child = 0;
-static void on_debug_handoff(int sig)
-{
-	(void)sig;
-	if (g_shell_child > 0)
-		kill((pid_t)g_shell_child, SIGKILL);
-	_exit(0);
-}
-
 static size_t slen(const char *s) { size_t n = 0; while (s[n]) n++; return n; }
 
 static int wr(const char *path, const char *val)
@@ -332,114 +301,12 @@ static void gadget(void)
 #undef P
 }
 
-/* Fork a one-way kmsg stream on ttyGS0 and an interactive root shell on
- * ttyGS1, best-effort. These make the boot diagnosable from the host
- * (/dev/ttyACM0 and /dev/ttyACM1) regardless of what boot.sh/switch_root do. */
-static void start_debug_channels(void)
-{
-	pid_t p;
-
-	p = fork();
-	if (p == 0) {
-		/* Reopen on error, forever. The gadget can be torn down and rebound
-		 * underneath us (adding a function re-enumerates the device), which
-		 * invalidates the old fd; a one-shot streamer would go silent for
-		 * the rest of the boot. */
-		char buf[4096];
-		signal(SIGUSR1, on_debug_handoff);
-		for (;;) {
-			int out = open("/dev/ttyGS0", O_WRONLY | O_NOCTTY);
-			int k = out >= 0 ? open("/dev/kmsg", O_RDONLY) : -1;
-			if (out < 0 || k < 0) {
-				if (out >= 0) close(out);
-				sleep(1);
-				continue;
-			}
-			for (;;) {
-				ssize_t n = read(k, buf, sizeof buf);
-				if (n <= 0) break;
-				if (write(out, buf, n) < 0)
-					break;      /* gadget went away; reopen */
-			}
-			close(k);
-			close(out);
-			sleep(1);
-		}
-	}
-	if (p > 0)
-		g_kmsg_pid = p;
-
-	p = fork();
-	if (p == 0) {
-		/* RESPAWN, like the installer's rc.sh does. This shell is the only
-		 * interactive way into a failed boot; losing it permanently (as a
-		 * one-shot exec does the moment the gadget re-enumerates) strands
-		 * the device with no way to drive it. */
-		sigset_t usr1, prev;
-		sigemptyset(&usr1);
-		sigaddset(&usr1, SIGUSR1);
-		signal(SIGUSR1, on_debug_handoff);
-		for (;;) {
-			int fd = open("/dev/ttyGS1", O_RDWR | O_NOCTTY);
-			pid_t c;
-			if (fd < 0) { sleep(1); continue; }
-			sigprocmask(SIG_BLOCK, &usr1, &prev);
-			c = fork();
-			if (c == 0) {
-				sigprocmask(SIG_SETMASK, &prev, NULL);
-				setsid();
-				dup2(fd, 0); dup2(fd, 1); dup2(fd, 2);
-				if (fd > 2) close(fd);
-				char *av[] = { (char *)"/bin/busybox", (char *)"sh", NULL };
-				execv("/bin/busybox", av);
-				_exit(127);
-			}
-			close(fd);
-			if (c > 0)
-				g_shell_child = (sig_atomic_t)c;
-			/* Unblock: a handoff that raced the fork lands here, with
-			 * g_shell_child already set for the handler to kill. */
-			sigprocmask(SIG_SETMASK, &prev, NULL);
-			if (c > 0) {
-				while (waitpid(c, NULL, 0) < 0 && errno == EINTR)
-					;
-				sigprocmask(SIG_BLOCK, &usr1, NULL);
-				g_shell_child = 0;
-				sigprocmask(SIG_SETMASK, &prev, NULL);
-			}
-			sleep(1);
-		}
-	}
-	if (p > 0)
-		g_shell_pid = p;
-}
-
-/* Stop the debug channels, mirroring the watchdog handoff: signal, then reap
- * with a bounded wait so the shells have released ttyGS0/ttyGS1 before the
- * installed system's dc1-debug-shell.service opens them. */
-static void stop_debug_channels(void)
-{
-	pid_t kid[2] = { g_kmsg_pid, g_shell_pid };
-
-	for (int i = 0; i < 2; i++)
-		if (kid[i] > 0)
-			kill(kid[i], SIGUSR1);
-	for (int i = 0; i < 2; i++) {
-		if (kid[i] <= 0)
-			continue;
-		for (int n = 0; n < 50; n++) {
-			if (waitpid(kid[i], NULL, WNOHANG) == kid[i])
-				break;
-			usleep(100000);
-		}
-	}
-}
-
 /* Rescue: a respawning shell on each plausible console. Never returns. */
 static void rescue(const char *why)
 {
-	static const char *tty[] = { "/dev/tty1", "/dev/ttyS0", "/dev/console" };
-	pid_t kid[3] = { 0, 0, 0 };
+	static const char *tty[] = { "/dev/tty1", "/dev/ttyS0", "/dev/console",
+				     "/dev/ttyGS1" };
+	pid_t kid[4] = { 0, 0, 0, 0 };
 
 	say2("RESCUE SHELL: ", why);
 	say("nothing was written; fix the problem or reflash from fastboot");
@@ -452,8 +319,14 @@ static void rescue(const char *why)
 	touch_file(WD_DEADMAN);
 	say("watchdog: deadman armed -- renew with: touch " WD_LEASE
 	    " (else the board resets)");
+	/* USB recovery is available only after failure. Arm the lease first so
+	 * a stuck gadget setup cannot leave the watchdog petting forever. */
+	mkdir("/sys/kernel/config", 0755);
+	mount("configfs", "/sys/kernel/config", "configfs", 0, NULL);
+	gadget();
+
 	for (;;) {
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < 4; i++) {
 			if (kid[i] > 0 && waitpid(kid[i], NULL, WNOHANG) == 0)
 				continue;   /* still running */
 			int fd = open(tty[i], O_RDWR | O_NOCTTY);
@@ -496,14 +369,6 @@ int main(void)
 
 	g_kmsg = open("/dev/kmsg", O_WRONLY);
 	say("init: proc/sys/dev mounted");
-
-	/* USB debug channel: configfs + ACM gadget + log/shell, BEFORE boot.sh,
-	 * so a hang there is observable from the host (/dev/ttyACM0 log,
-	 * /dev/ttyACM1 shell). This is what makes a boot failure diagnosable. */
-	mkdir("/sys/kernel/config", 0755);
-	mount("configfs", "/sys/kernel/config", "configfs", 0, NULL);
-	gadget();
-	start_debug_channels();
 
 	start_watchdog_petter();
 
@@ -552,30 +417,8 @@ int main(void)
 				usleep(100000);
 			}
 		}
-		/* Same gate, same reason: dc1-debug-shell.service re-provides both
-		 * channels, and ours would otherwise stall every reboot for
-		 * DefaultTimeoutStopSec. A switch_root that fails after this still
-		 * has the rescue shell on tty1/ttyS0, which is already the case --
-		 * the UDC unbind below drops ttyGS0/ttyGS1 regardless. */
-		say("debug channels: systemd root -- handing ttyGS0/ttyGS1 over");
-		stop_debug_channels();
 
 	}
-
-	/* Cleanly unbind the initramfs gadget's UDC before switch_root.
-	 *
-	 * switch_root deletes the configfs tree (MNT_DETACH) while this gadget is
-	 * still bound to the UDC, which leaves the UDC half-bound to a dangling
-	 * gadget. The installed system's dc1-usb-gadget.service then rebinds and
-	 * configures usb0 successfully on the device side, but the host never sees
-	 * a re-enumeration (no new 18d1:4ee7, no D+ re-assert) -- so the device
-	 * boots to a working system that is unreachable over USB. Unbinding here,
-	 * while the configfs tree still exists, leaves the UDC free for a clean
-	 * rebind. The debug serial channels (ttyGS0/ttyGS1) drop for the ~1s
-	 * switch_root window; the rescue shell is on tty1/ttyS0 and the deadman
-	 * watchdog still covers a failed switch_root, so nothing is stranded. */
-	wr("/sys/kernel/config/usb_gadget/g1/UDC", "\n");
-	say("gadget: unbound UDC for switch_root");
 
 	say2("init: switching root from verified device ", dev);
 	{

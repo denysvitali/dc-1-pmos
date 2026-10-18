@@ -314,12 +314,11 @@ func selfPath(exe string, err error) string {
 func Plan() []string {
 	return []string{
 		"mount proc on /proc, sysfs on /sys, devtmpfs on /dev",
-		"mount configfs and bring up the CDC-ACM debug gadget (ttyGS0 log, ttyGS1 shell)",
 		"spawn the watchdog petter: sole owner of /dev/watchdog, survives switch_root",
 		"resolve userdata by GPT PARTNAME, then require ext4 labelled " + rootLabel,
 		"run e2fsck -p if it is staged (exit 0 or 1 is success)",
 		"mount that device at " + rootMount + " and require an executable /sbin/init in it",
 		"move /dev /proc /sys into it, then exec busybox switch_root " + rootMount + " /sbin/init",
-		"on ANY failure: write nothing, arm the deadman lease, rescue shells on tty1/ttyS0/console",
+		"on ANY failure: write no storage, configure USB rescue, arm the deadman lease, console shells",
 	}
 }

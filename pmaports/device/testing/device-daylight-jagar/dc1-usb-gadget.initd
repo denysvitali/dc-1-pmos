@@ -1,7 +1,7 @@
 #!/sbin/openrc-run
 # dc1-usb-gadget -- bring up the DC-1 USB gadget (CDC-ECM ethernet + 2x CDC-ACM)
-# so a host over USB can reach the installed system: SSH and the TCP 4444 shell
-# over usb0, plus the kmsg stream (ttyGS0) and an interactive shell (ttyGS1).
+# so a host over USB can use authenticated SSH on usb0 when network policy
+# allows it. The ACM functions have no shell or kernel-log service attached.
 #
 # The gadget stack is built into the kernel (=y), so this is pure configfs --
 # no modules to load. The VID/PID and MACs match the installer initramfs

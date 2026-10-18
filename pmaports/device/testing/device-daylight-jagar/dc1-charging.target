@@ -6,9 +6,6 @@
 # Kept deliberately minimal -- panel dark, radios off, login paths shut:
 #
 #   dc1-charging-monitor       unplug -> poweroff, KEY_POWER -> warm reboot
-#   dc1-usb-gadget.service     the USB recovery channel (ECM + 2x ACM),
-#   dc1-debug-shell.service    so an attached bench host can always reach
-#   unudhcpd@usb0.service     a charging device
 #   dc1-link-apk-keys.service  restores the apk trust links (cheap no-op)
 #   dc1-rtcsync.timer          keeps the RTC honest while parked
 #   systemd-logind.service     stock session management
@@ -18,7 +15,8 @@
 #   gdm / graphical.target, NetworkManager, wpa_supplicant, sshd,
 #   tailscaled, happyd, routewrangler, oomd, avahi, ModemManager, getty --
 #   a parked, charging device needs no radio, no network daemons and no
-#   console or remote login surface.
+#   console or remote login surface. USB networking and its DHCP server
+#   are excluded too; press power to boot normally for authenticated access.
 #   dc1-display-gate, dc1-frontlight, dc1-screen-backlight, dc1-gpu,
 #   dc1-audio, dc1-bluetooth, dc1-first-boot -- panel and peripherals stay
 #   dark and quiet; the charging monitor force-offs the backlights itself.
@@ -40,4 +38,4 @@ Description=DC-1 headless charging mode (charger boot, panel and network off)
 Requires=basic.target
 After=basic.target
 AllowIsolate=yes
-Wants=dc1-charging-monitor.service dc1-usb-gadget.service dc1-debug-shell.service unudhcpd@usb0.service dc1-link-apk-keys.service dc1-rtcsync.timer systemd-logind.service systemd-udevd.service
+Wants=dc1-charging-monitor.service dc1-link-apk-keys.service dc1-rtcsync.timer systemd-logind.service systemd-udevd.service

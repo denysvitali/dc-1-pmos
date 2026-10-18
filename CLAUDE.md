@@ -159,6 +159,10 @@ and the LocalSearch musl `LD_LIBRARY_PATH` drop-in for confined extractors.
   ignores this key. Preserve `/var/lib/dc1/no-charging-mode` opt-out.
 - Network loss never triggers an automatic reboot. Keep the hardware watchdog
   and rescue lease, and retirement of legacy reachability watchdogs.
+- Installed systems ship no unauthenticated debug-shell service or USB log
+  streamer. Normal system initramfs boots start neither; physical USB rescue
+  is reserved for failed boots and installer mode. Charging mode excludes
+  USB networking and DHCP as well as remote login daemons.
 - Automatic updates and parity checks cover all four overlays. Respect
   `/var/lib/dc1/no-auto-update`. Upstream versions must strictly lose to ours;
   bump `pkgrel` rather than bypassing the comparison gates.

@@ -14,7 +14,6 @@ rc-update add dc1-frontlight default 2>/dev/null || true
 rc-update add dc1-screen-backlight default 2>/dev/null || true
 rc-update add dc1-rtcsync default 2>/dev/null || true
 rc-update add dc1-usb-gadget boot 2>/dev/null || true
-rc-update add dc1-debug-shell default 2>/dev/null || true
 # sshd: register it in the default runlevel directly. openssh-server is a hard
 # depends of this package, so apk installs it BEFORE this post-install runs --
 # /etc/init.d/sshd is guaranteed present, which removes the install-order
@@ -45,4 +44,7 @@ udevadm trigger /dev/input/event* 2>/dev/null || true
 	/usr/libexec/dc1-fix-wireplumber-alsa || true
 # Retire network-triggered reboots, including on systems with an older ramdisk.
 [ -x /usr/libexec/dc1-retire-reachability ] && /usr/libexec/dc1-retire-reachability
+if [ -x /usr/libexec/dc1-retire-debug-shell ]; then
+	/usr/libexec/dc1-retire-debug-shell || exit $?
+fi
 exit 0

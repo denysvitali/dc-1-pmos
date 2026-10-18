@@ -12,27 +12,25 @@
 //
 //  1. mount proc / sysfs / devtmpfs (devtmpfs is NOT auto-mounted on an
 //     initramfs boot)
-//  2. bring up a CDC-ACM gadget and a log+shell on it, BEFORE anything can
-//     hang, so a hang is observable from the host
-//  3. start a watchdog petter that keeps /dev/watchdog open and petted ACROSS
+//  2. start a watchdog petter that keeps /dev/watchdog open and petted ACROSS
 //     the switch_root, forever
-//  4. resolve userdata by GPT PARTNAME, require ext4 labelled jagar-root,
+//  3. resolve userdata by GPT PARTNAME, require ext4 labelled jagar-root,
 //     optional fsck, mount at /mnt/root
-//  5. verify, move /dev /proc /sys into the new root, and exec busybox
+//  4. verify, move /dev /proc /sys into the new root, and exec busybox
 //     switch_root /mnt/root /sbin/init
 //
-// ANY failure drops to a rescue shell on the consoles instead of writing
-// anything. The petter keeps running in rescue so the operator has more than
+// ANY failure sets up USB rescue and console shells instead of writing
+// storage. The petter keeps running in rescue so the operator has more than
 // one watchdog period to type.
 //
 // TWO DIFFERENCES FROM THE C, both forced:
 //
 //   - The C forked its watchdog petter and debug channels; Go cannot fork
 //     without exec, so each is a re-exec of this same binary in a helper role
-//     (-helper watchdog|kmsg|shell). They are all started BEFORE switch_root,
-//     which is what makes them survive it: a running process keeps its mapped
-//     binary even though the initramfs it came from is gone.
-//   - Step 4 was /etc/boot.sh. It is in-process here, over
+//     (-helper watchdog|kmsg|shell). Only the watchdog starts on a healthy
+//     boot; USB helpers run only in rescue. A running watchdog keeps its mapped
+//     binary across switch_root even though the initramfs is gone.
+//   - Root discovery was /etc/boot.sh. It is in-process here, over
 //     internal/partition (the same rules as partlib.sh) plus a direct read of
 //     the ext superblock, so the boot path no longer depends on which busybox
 //     applets happened to be staged. boot.sh remains the shipped
@@ -150,20 +148,8 @@ func boot(o Ops, cfg Config) int {
 	o.OpenKmsg()
 	say(o, "init: proc/sys/dev mounted")
 
-	// USB debug channel: configfs + ACM gadget + log/shell, BEFORE the rootfs
-	// hunt, so a hang there is observable from the host (/dev/ttyACM0 log,
-	// /dev/ttyACM1 shell). This is what makes a boot failure diagnosable: the
-	// rescue shell below writes only to tty1/ttyS0, which are not reachable
-	// over USB.
-	_ = o.Mkdir("/sys/kernel/config", 0o755)
-	_ = o.Mount("configfs", "/sys/kernel/config", "configfs", 0, "")
-	gadget(o)
-	spawnHelper(o, cfg, helperKmsg)
-	spawnHelper(o, cfg, helperShell)
-
-	// After the gadget, as in the C: the petter's own diagnostics are worth
-	// nothing if there is no channel to read them on, and LK's timer is ~31s
-	// against configfs writes that take milliseconds.
+	// No debug channels on a healthy boot. Keep the watchdog alive before
+	// storage discovery; USB rescue is configured only on failure below.
 	spawnHelper(o, cfg, helperWatchdog)
 
 	if st, err := o.Stat(busyboxPath); err != nil || !st.Executable() {
@@ -320,15 +306,8 @@ func gadget(o Ops) {
 // these replace init.c's fork()s, and they must be started before switch_root
 // because that is what makes them outlive the initramfs they came from.
 //
-// OWED BEFORE THIS BECOMES /init: the C now signals its kmsg and shell helpers
-// to exit at the systemd handoff (init.c stop_debug_channels), and this port
-// does not. Outliving switch_root is the point of these helpers, but the shell
-// one must not outlive the boot: it has a tty on stdin, so busybox ash treats
-// it as interactive and sets SIGTERM to SIG_IGN, and systemd-shutdown then
-// waits the full DefaultTimeoutStopSec on every reboot before escalating to
-// SIGKILL -- 90s of a panel frozen on the last compositor frame, measured on
-// hardware 2026-08-17. dc1-debug-shell.service re-provides both channels, so
-// there is nothing to lose by exiting.
+// Only the watchdog helper runs during a normal boot. USB helpers are confined
+// to rescue, which never hands control to the installed system.
 func spawnHelper(o Ops, cfg Config, role string) {
 	argv := []string{cfg.Self, "system-init", "-helper", role}
 	if role == helperShell {
@@ -453,6 +432,12 @@ func rescue(o Ops, cfg Config, why string) int {
 	_ = o.Touch(leasePath)
 	_ = o.Touch(deadmanPath)
 	say(o, "watchdog: deadman armed -- renew with: touch %s (else the board resets)", leasePath)
+	// The rescue lease must cover gadget setup too, in case a sysfs write hangs.
+	_ = o.Mkdir("/sys/kernel/config", 0o755)
+	_ = o.Mount("configfs", "/sys/kernel/config", "configfs", 0, "")
+	gadget(o)
+	spawnHelper(o, cfg, helperKmsg)
+	spawnHelper(o, cfg, helperShell)
 
 	kid := make([]int, len(rescueConsoles))
 	for {
