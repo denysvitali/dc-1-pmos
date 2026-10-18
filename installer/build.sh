@@ -104,7 +104,7 @@ REGDB_SIG_SIZE=1085
 REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e919179
 
 # Alpine edge/main aarch64 packages, pinned by exact version AND content hash
-# (verified 2026-10-10 against official artifacts with trusted Alpine signing
+# (verified 2026-10-18 against official artifacts with trusted Alpine signing
 # keys; replacement hashes confirmed by a second download). Edge removes
 # superseded builds, so audit every pin when refreshing unavailable packages.
 # A filename is not a content pin: mirrors may replace
@@ -132,7 +132,7 @@ libgcc-15.2.0-r9
 libstdc++-15.2.0-r9
 wpa_supplicant-2.11-r4
 dbus-libs-1.16.2-r4
-libnl3-3.11.0-r0
+libnl3-3.12.0-r0
 pcsc-lite-libs-2.5.2-r0
 dropbear-2026.94-r0
 utmps-libs-0.1.3.4-r0
@@ -166,7 +166,7 @@ a552fb542888b300e353c960be884d448e789e8fb96be5e12873f0102540c363 nghttp2-libs-1.
 36e8a2cee1ee14df5180c1f5737f0ffb59004ef92dd4f0bedff425968c4855ae libstdc++-15.2.0-r9
 7060615b397fd9ddca3b430fe98b6dd50494e09a6d7275a8fd0b255c0cd04a3e wpa_supplicant-2.11-r4
 4b0b2bcd31649a251276c7beb6041914e12fe091115c9951164c1a96f755a8e2 dbus-libs-1.16.2-r4
-49d92bf6e6c55da94fdd0dde05a66af761258458e6db3c7b87d773c4517a50e1 libnl3-3.11.0-r0
+462da328a92f1f5bd9089b8055e542afba3d91015a820191e36ad3a1fb2011a9 libnl3-3.12.0-r0
 fee7634ca4f4d9527ac5fb769ae7ca2dd7e1693d7fb3d647366c76d087d5642a pcsc-lite-libs-2.5.2-r0
 445c25a5cbd99ce1881df61fd1a191705e937e0c6e9963cbb8b04f2acf3541ac dropbear-2026.94-r0
 230e4a1749df6ece26852f552e84789fac750eef613e6f9cca0c5aedcd75514a utmps-libs-0.1.3.4-r0
