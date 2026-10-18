@@ -63,7 +63,10 @@ int main(int argc, char **argv)
 	assert(memcmp(data, "123", 3) == 0);
 	assert(pwrite(descriptor, "x", 1, -1) == -1 && errno == EINVAL);
 	assert(pwrite(-1, "x", 1, 0) == -1 && errno == EBADF);
-	assert(pwritev(descriptor, iov, -1, 0) == -1 && errno == EINVAL);
+	/* glibc annotates iovcnt for compile-time bounds checking. Keep this
+	 * deliberate invalid-argument check at runtime on both libc families. */
+	volatile int invalid_count = -1;
+	assert(pwritev(descriptor, iov, invalid_count, 0) == -1 && errno == EINVAL);
 	int flags = fcntl(descriptor, F_GETFL);
 	assert(fcntl(descriptor, F_SETFL, flags | O_APPEND) == 0);
 	assert(pwrite(descriptor, "x", 1, 0) == -1 && errno == EOPNOTSUPP);

@@ -77,15 +77,25 @@ export default class Dc1SessionCompatExtension extends Extension {
 
         // 48.mobile.0's native getter casts the StButton itself to a
         // ClutterPressGesture, always returning false and logging a critical.
-        // Its pressed property and get_click_gesture() use the correct object.
-        // Route JS callers through the property until the native getter is
-        // fixed. Older shells without this gesture API need no workaround.
+        // GJS also optimizes property reads through that native getter.
+        // Route both JS access paths through the real click gesture. Older
+        // shells without this gesture API need no workaround.
         this._buttonGetPressed = null;
+        this._buttonPressedDescriptor = null;
         if (typeof St.Button.prototype.get_click_gesture === 'function') {
             this._buttonGetPressed = St.Button.prototype.get_pressed;
-            St.Button.prototype.get_pressed = function () {
-                return this.pressed;
+            const getPressed = function () {
+                return this.get_click_gesture()?.get_pressed() ?? false;
             };
+            St.Button.prototype.get_pressed = getPressed;
+            const descriptor = Object.getOwnPropertyDescriptor(
+                St.Button.prototype, 'pressed');
+            if (descriptor?.configurable) {
+                this._buttonPressedDescriptor = descriptor;
+                Object.defineProperty(St.Button.prototype, 'pressed', {
+                    ...descriptor, get: getPressed,
+                });
+            }
         }
 
         this._actions = SystemActions.getDefault();
@@ -122,6 +132,11 @@ export default class Dc1SessionCompatExtension extends Extension {
     }
 
     disable() {
+        if (this._buttonPressedDescriptor) {
+            Object.defineProperty(St.Button.prototype, 'pressed',
+                this._buttonPressedDescriptor);
+            this._buttonPressedDescriptor = null;
+        }
         if (this._buttonGetPressed) {
             St.Button.prototype.get_pressed = this._buttonGetPressed;
             this._buttonGetPressed = null;

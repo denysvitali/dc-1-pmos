@@ -56,11 +56,19 @@ mounting and physical-pose acceptance.
 The 48.mobile.0 native `St.Button.get_pressed()` getter passes the button to
 `clutter_press_gesture_get_pressed()` instead of its click gesture. It returns
 false and emits a critical even for valid buttons. `dc1-session-compat`
-routes JavaScript callers through the correctly implemented `pressed`
-property when the new click-gesture API is present, restoring the original
-method when disabled. This repairs pressed-state handling without changing
+routes both JavaScript method and property reads through the real click
+gesture when that API is present, restoring the original descriptors when
+disabled. GJS's optimized property access would otherwise call the same
+broken native getter. This repairs pressed-state handling without changing
 touch calibration, gesture thresholds or event delivery. Remove the workaround
 when the mobile shell fixes its native getter.
+
+Run `gjs -m scripts/tests/test_dc1_button_pressed.js` for the offline state
+and cleanup checks. On the tablet,
+`sh scripts/tests/test_dc1_button_pressed_native.sh` compares both access
+paths against an actual Clutter click gesture in an isolated headless Mutter
+context. It does not replace the owner compositor. On the affected build the
+negative control emits two criticals; the patched reads emit none.
 
 ## Chromium positional writes
 
