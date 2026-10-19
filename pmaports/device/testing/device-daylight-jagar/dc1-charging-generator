@@ -164,17 +164,54 @@ if [ "${DC1_CHARGING_LIB:-0}" = 1 ]; then
 	return 0 2>/dev/null || exit 0
 fi
 
-if decide; then
-	# argv[1] is the normal generator directory (/run/systemd/generator),
-	# which outranks the packaged /usr/lib/systemd/system/default.target
-	# in the unit search path (systemd.unit(5), system-mode load path:
-	# generator.early > /etc > /run > generator > /usr/lib > late).
+# basic.target also pulls in timers.target and sockets.target. Merely omitting
+# desktop/network units from charging.target cannot stop globally enabled
+# timers, sockets or D-Bus activation. Mask them for this boot only, before
+# /etc enablement/aliases in systemd's search path. A normal boot emits none.
+stage_charging_boot() {
 	OUT=${1:-/run/systemd/generator}
-	mkdir -p "$OUT" 2>/dev/null || {
-		echo "dc1-charging-generator: cannot create $OUT; booting normally" >&2
-		exit 0
-	}
-	ln -sfn /usr/lib/systemd/system/dc1-charging.target "$OUT/default.target" ||
-		echo "dc1-charging-generator: could not stage default.target; booting normally" >&2
+	EARLY=${2:-"$OUT.early"}
+	mkdir -p "$OUT" "$EARLY" || return 1
+	staged=
+	for unit in \
+		dc1-update.timer dc1-update.service dc1-boot-sync.service \
+		dc1-usb-gadget.service usb-gadget.target unudhcpd@.service unudhcpd@usb0.service \
+		usb-signaller.service usb-signaller-tethering-mode.service \
+		usb-signaller-developer-mode.service usb-signaller-mtp-mode.service \
+		NetworkManager.service NetworkManager-wait-online.service \
+		wpa_supplicant.service wpa_supplicant@.service \
+		systemd-networkd.service systemd-networkd-wait-online.service \
+		sshd.service sshd@.service sshd.socket sshd-unix-local.socket \
+		tailscaled.service happyd.service routewrangler.service \
+		avahi-daemon.service avahi-daemon.socket ModemManager.service bluetooth.service \
+		gdm.service display-manager.service graphical.target \
+		getty.target getty@.service serial-getty@.service \
+		dc1-display-gate.service dc1-frontlight.service dc1-screen-backlight.service \
+		dc1-gpu.service dc1-audio.service dc1-bluetooth.service dc1-first-boot.service \
+		systemd-oomd.service systemd-oomd.socket debug-shell.service dc1-debug-shell.service
+	do
+		if [ -d "$EARLY/$unit" ] || ! ln -sfn /dev/null "$EARLY/$unit"; then
+			for unit in $staged; do rm -f "$EARLY/$unit"; done
+			return 1
+		fi
+		staged="$staged $unit"
+	done
+	# The early default also outranks a desktop default.target under /etc.
+	# Publish it only after every exclusion succeeded. On failure, remove our
+	# masks so normal boot does not inherit a partially disabled desktop.
+	if [ ! -d "$OUT/default.target" ] && [ ! -d "$EARLY/default.target" ] &&
+		ln -sfn /usr/lib/systemd/system/dc1-charging.target "$OUT/default.target" &&
+		ln -sfn /usr/lib/systemd/system/dc1-charging.target "$EARLY/default.target"; then
+		return 0
+	fi
+	[ ! -L "$OUT/default.target" ] || rm -f "$OUT/default.target"
+	[ ! -L "$EARLY/default.target" ] || rm -f "$EARLY/default.target"
+	for unit in $staged; do rm -f "$EARLY/$unit"; done
+	return 1
+}
+
+if decide; then
+	stage_charging_boot "$@" ||
+		echo "dc1-charging-generator: cannot stage charging isolation; booting normally" >&2
 fi
 exit 0

@@ -223,8 +223,14 @@ with a decimal 100 mV step. Kernel r67 replaces it with `rounddown()`: the
 5/9/12 V contracts now compute MIVR floors of exactly 4.2/8.2/11.2 V.
 The current request is rounded down to the chip's 25 mA step so encoding
 cannot exceed a source budget between steps. Offline tests execute the
-patched policy with an observing regmap backend. This is not yet a
-hardware-validated kernel deployment or a demonstrated charge-rate fix.
+patched policy with an observing regmap backend. A guarded kernel-only r67
+deployment booted and passed slot/package confirmation on 2026-10-19. At a
+12 V/2.5 A contract, register `0x23` read `0x49` (11.2 V MIVR) and the MIVR
+regulation flag was clear. With a local 500 mA charge cap retained for the
+heat investigation, the PMIC gauge measured +457 mA, the board NTC 32.2 °C
+and the hottest readable chip sensor 38.0 °C. These readings confirm the
+deployed threshold and low-current charging, not a high-current rate fix or
+independent pack-temperature enforcement.
 
 Writable owner levers (confirmed present 2026-08-26):
 `/sys/class/power_supply/mt6375-charger/{constant_charge_current,

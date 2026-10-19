@@ -272,7 +272,7 @@ run_gen_e2e() {
 	e2e_out=$(PATH=/bin:/usr/bin \
 		DC1_VAR_DIR="$var_dir" DC1_SUPPLY_ONLINE="$supply" \
 		DC1_RING_FILE="$ring" \
-		sh "$GEN" "$1" 2>/dev/null) || e2e_rc=$?
+		sh "$GEN" "$1" "${2:-$1.early}" "$1.late" 2>/dev/null) || e2e_rc=$?
 }
 
 newtree e2epos
@@ -286,6 +286,43 @@ run_gen_e2e "$outpos"
 got=$(readlink "$outpos/default.target")
 [ "$got" = "/usr/lib/systemd/system/dc1-charging.target" ] ||
 	fail "default.target resolves to '$got', want dc1-charging.target"
+[ "$(readlink "$outpos.early/default.target")" = "$got" ] ||
+	fail "charging default does not override /etc/default.target"
+for unit in dc1-update.timer dc1-update.service dc1-boot-sync.service \
+	NetworkManager.service avahi-daemon.socket sshd-unix-local.socket \
+	happyd.service gdm.service dc1-usb-gadget.service unudhcpd@usb0.service \
+	usb-signaller.service bluetooth.service systemd-oomd.socket; do
+	[ "$(readlink "$outpos.early/$unit")" = /dev/null ] ||
+		fail "charging boot leaves $unit activatable through global dependencies"
+done
+for unit in basic.target systemd-journald.service systemd-logind.service \
+	dc1-charging-monitor.service dc1-charging-test-limit.service; do
+	[ ! -e "$outpos.early/$unit" ] && [ ! -L "$outpos.early/$unit" ] ||
+		fail "charging boot masked required unit $unit"
+done
+
+# Use a separate early directory, as PID 1 does, rather than assuming the
+# normal output directory's name ends in generator.
+newtree e2eexplicit
+ring_reason 1
+run_gen_e2e "$tmp/normal-output" "$tmp/priority-output"
+[ "$(readlink "$tmp/priority-output/dc1-update.timer")" = /dev/null ] ||
+	fail "generator ignored its explicit early-output argument"
+
+# An incomplete set of masks must never strand the normal desktop. A
+# directory collision also checks that ln does not silently put a symlink
+# inside a directory instead of masking the named unit.
+for blocked in dc1-update.service default.target; do
+	newtree "e2efailure-$blocked"
+	ring_reason 1
+	outbad="$tmp/failure-$blocked"
+	mkdir -p "$outbad.early/$blocked"
+	run_gen_e2e "$outbad"
+	[ "$e2e_rc" -eq 0 ] || fail "output failure aborted generator"
+	[ ! -L "$outbad/default.target" ] || fail "partial masks selected charging mode"
+	[ ! -L "$outbad.early/dc1-update.timer" ] || fail "partial masks survived failure"
+	[ ! -L "$outbad.early/NetworkManager.service" ] || fail "desktop remained masked after failure"
+done
 
 newtree e2eneg
 ring_reason 3
@@ -295,6 +332,7 @@ run_gen_e2e "$outneg"
 [ -z "$e2e_out" ] || fail "generator wrote to stdout on a normal boot: $e2e_out"
 [ ! -e "$outneg/default.target" ] && [ ! -L "$outneg/default.target" ] ||
 	fail "normal boot staged a default.target"
+[ ! -d "$outneg.early" ] || fail "normal boot staged charging-only unit masks"
 
 # A real PD attach can momentarily remove VBUS while generators run.
 # An eligible charger boot waits for it, but still fails closed if absent.

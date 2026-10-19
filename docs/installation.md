@@ -351,6 +351,13 @@ authenticated access. Network loss does not trigger
 a reboot, and the device package inhibits legacy reachability watchdogs
 left by older boot images. See [reboot watchdogs](debugging.md#reboot-watchdogs).
 
+The charging generator masks update, network, login and desktop units in
+the early generator directory for that boot. This also blocks globally
+enabled timers and sockets pulled in through `basic.target`; omitting a
+service from the charging target alone would not prevent its activation.
+These masks disappear on a normal boot and do not change the owner's
+persistent service enablement.
+
 Detection reads why the device powered on. Every boot, the bootloader
 leaves a fresh console log in reserved memory (kept mapped by the device
 tree), and its last `BOOT_REASON:` line names the cause — charger insert,
