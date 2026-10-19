@@ -78,12 +78,12 @@ model and records sourced board specifications.
   Charging Profile** (or use `/var/lib/dc1/no-auto-update`).
 - **Charging while powered off is experimental.** The shipped logic is
   designed so plugging USB power into a cleanly powered-off DC-1 boots a
-  silent headless charging mode instead of the
-  desktop — unplug to power it off again, press power briefly to continue
-  to the desktop. The real charger-insert code and exit cycle still need one
-  calibration session; darkness alone is not proof of charging. Toggle the
-  feature in **Settings → Charging Profile**;
-  details in
+  headless charging mode instead of the desktop — unplug to power it off
+  again, press power briefly to continue
+  to the desktop. Charger entry, charging current and both exit paths have
+  been tested on the validation unit. A firmware battery image can remain
+  visible with the frontlights off; full panel power-off remains unverified.
+  Toggle the feature in **Settings → Charging Profile**; details in
   [docs/installation.md](docs/installation.md#charging-mode). For charge
   rates, the battery percentage's caveats, and the fast-charge lever,
   see [docs/power.md](docs/power.md).

@@ -240,12 +240,11 @@ the charging-mode/auto-update opt-out markers through the authenticated
 Charging Profile panel; this packages existing policy and is not new hardware
 evidence.
 
-## Charging mode (packaged 2026-08-25, device pkgrel>=79 — not yet
-hardware-verified)
+## Charging mode
 
 Plugging USB power into a cleanly-powered-off device boots a minimal
-headless `dc1-charging.target` instead of the full desktop: panel,
-network and desktop stay off while the battery charges autonomously —
+headless `dc1-charging.target` instead of the full desktop: frontlights,
+network services and desktop stay off while the battery charges autonomously —
 the MT6375 runs CC/CV to the pack's 4350 mV CV point in hardware, the
 kernel's VBUS one-shot raises AICR to 1.5 A and the fast-charge target
 to 3.15 A once VBUS appears, and PD contracts are negotiated in-kernel — so
@@ -296,7 +295,7 @@ seconds for VBUS to become ready during initial PD negotiation. Opt-out,
 unprovisioned and watchdog/warm-reboot paths do not wait. Missing VBUS after
 that bounded wait still selects the desktop.
 
-Inside the target the monitor holds `bl_power=4` on all frontlight channels
+Inside the target the monitor sets `bl_power=4` on all frontlight channels
 as insurance,
 and runs `/usr/sbin/dc1-pwrkey`, which reads KEY_POWER evdev events
 directly because logind ignores the power key globally on this device
@@ -313,26 +312,33 @@ frontlight/backlight/GPU/first-boot/boot-sync/update services.
 Electrical facts worth keeping: there is **no in-kernel
 battery-temperature throttling of charge current** (see
 [thermal.md](thermal.md)); the device has **no charging LED**; and the
-panel is physically dark without `dc1-display-gate`, so charging mode
-adds nothing to make the screen dark. A port that suspends its VBUS for
+frontlight setting does not establish panel power-off. The validation unit
+retained a firmware battery image while the panel probe stayed deferred
+before VDDI. A port that suspends its VBUS for
 longer than the ~6 s unplug debounce reads as unplugged; the resulting
 slow off/on cycle is harmless and by design.
 
-Verification state: the ring mechanism itself is verified live on-device
-— one boot printed `BOOT_REASON: 4` with the warm-reboot-bypass marker,
-and five historical cold power-key boots recovered from `expdb` logs all
-show `BOOT_REASON: 0`. Still owed is one hardware calibration session:
-power off, plug USB, confirm the ring really shows the charger code
-(optionally pinning the MT6358 CHRIN bit via the `000c:` line of the
-PMIC regmap under debugfs); until then the feature stays
-`hardware_verified=false`. Remaining candidates beyond that are
-second-opinion boot-cause sources (MT6358 PONSTS/CHRIN power-on-status
-registers) or plumbing the reason through the dtbswap stub's trace-word
-channel (`TRACE_PA 0xff0c1000`) — the latter explicitly discouraged,
-because stub changes are the highest-risk class in this repository (the
-fail-safe returns stock DT behavior, and three past bugs in that class
-surfaced only on hardware). The calibration runbook is in
-[../roadmap.md](../roadmap.md).
+**2026-10-19 local-helper acceptance:** kernel r67, installed device APK r105,
+and the current charging helpers (including the r114 generator at `06708a0`)
+completed two real charger-insert boots. Both fresh LK rings reported reason
+`1` with the handoff marker. At 12 V and a local 500 mA charge cap, the first
+boot's twelve samples measured +466.9 to +489.0 mA into the battery. Both
+captures showed the charging target/monitor active and update, boot-sync,
+desktop, NetworkManager, remote login, USB gadget/DHCP and relevant sockets
+masked and inactive. Both frontlight channels read `bl_power=4`; the board
+NTC peaked at 28.7 °C and the hottest readable chip sensor at 37.5 °C.
+
+The journal recorded unplug-triggered poweroff after six offline ticks and
+successful clean-poweroff recording. Reconnection entered charging mode
+again. A physical KEY_POWER event then requested a warm reboot; the normal
+desktop returned with reason `4` and no clean-poweroff flag left behind.
+The owner reported the standard Android/MediaTek battery image and boot
+text before that key press. Full panel power-off therefore remains open.
+These measurements validate the local charging and exit paths at the low
+cap, not high-current thermals, pack-temperature enforcement, or a complete
+published artifact set. Keep release `hardware_verified=false` until the
+[published-release acceptance](../roadmap.md#published-release-acceptance)
+is completed.
 
 ## RTC
 

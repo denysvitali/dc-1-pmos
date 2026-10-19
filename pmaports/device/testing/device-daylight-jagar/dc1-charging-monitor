@@ -5,8 +5,8 @@
 #
 #   1. Best-effort insurance: write FB_BLANK_POWERDOWN (4) to every
 #      writable /sys/class/backlight/*/bl_power -- the same knob
-#      dc1-screen-backlight uses -- so nothing leaves a light burning
-#      behind the dark panel.
+#      dc1-screen-backlight uses. This blanks the frontlights; it does not
+#      establish panel power-off or clear an inherited firmware image.
 #
 #   2. Watch charger and power key:
 #        unplug (debounced: OFFLINE_LIMIT consecutive offline ticks)
@@ -16,11 +16,11 @@
 #          between.
 #        KEY_POWER (via /usr/sbin/dc1-pwrkey exiting 0)
 #          -> sync + `systemctl reboot`. A warm reboot skips the flag
-#          recording (reboot markers), so the next boot is the normal
-#          desktop.
+#          recording, which only poweroff.target requests, so the next boot
+#          is the normal desktop.
 #
 #   Battery percentage comes from mt6358-fg, the live fuel gauge; the
-#   bq78z100 pack gauge is known-dead on this hardware, so logs degrade to
+#   bq78z100 pack gauge does not answer on this unit, so logs degrade to
 #   "unknown" instead of trusting it.
 #
 # Exit discipline: TERM/INT exit quietly. The unit stops on isolation and
@@ -85,7 +85,7 @@ if [ "${DC1_CHARGING_LIB:-0}" = "1" ]; then
 	return 0 2>/dev/null || exit 0
 fi
 
-# 1. Panel-dark insurance (FB_BLANK_POWERDOWN; see dc1-screen-backlight).
+# 1. Frontlight-off insurance (see dc1-screen-backlight).
 for mo_bl in /sys/class/backlight/*/bl_power; do
 	[ -w "$mo_bl" ] || continue
 	printf '%s\n' 4 >"$mo_bl" 2>/dev/null || :

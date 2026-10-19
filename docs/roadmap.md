@@ -18,7 +18,7 @@ running image has exercised a change.
 | Bluetooth | Cold boot completes controller setup without repair; peer pairing and A2DP work | [Wireless](hw/wireless.md) |
 | USB gadget | A host gets ECM carrier and can SSH to the installed account at 172.16.42.1; initramfs binds the correct UDC without failed candidates | [USB](hw/usb.md) |
 | USB host | Matching modules, sink-host peripherals, Ethernet/storage/audio/UVC, repeated hotplug and gadget return pass the acceptance procedure | [Docking](usb-docking.md#hardware-acceptance-session) |
-| Charging boot | Clean poweroff then USB insertion enters charging mode; LK's last BOOT_REASON is 1 with handoff marker; unplug and power-key exits work | [Power hardware](hw/power.md) |
+| Charging display | Power off the inherited panel state; verify the firmware image clears and panel TE stops with frontlights off, then repeat charging entry/exits on an exact published release | [Power hardware](hw/power.md) |
 | Audio route | With owner approval, a controlled physical PCM0/DL1 probe confirms both speaker channels | [Audio](hw/audio.md) |
 
 Do not close a whole subsystem row from a narrower result. Controller-up is

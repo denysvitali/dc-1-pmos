@@ -49,7 +49,7 @@ measurement was made. "Pending" items live in
 | Charge rate at the 3.15 A ceiling (~40 %/h) | running r2x build | 2026-08-23 | [hw/power.md](hw/power.md) |
 | Charger: independent ADC/PMIC current comparison under all-core load; 12 V PD recovers after cable reconnect; RT9471 remains inactive | linux r65 / device r105 | 2026-10-18; neither thermal-regulation isolation nor secondary-charge acceptance | [hw/power.md](hw/power.md) |
 | Charging mode: ring mechanism (BOOT_REASON readout) | device r79 | 2026-08-25 | [hw/power.md](hw/power.md) |
-| Charging mode: reason 1 on real charger insert | — | **pending calibration** | [hw/power.md](hw/power.md) |
+| Charging mode: two reason-1 charger boots, positive current, masked desktop/network/update units, unplug poweroff and physical power-key desktop return | linux r67 / local r114 helpers over device r105 | 2026-10-19; 500 mA cap, retained firmware image; full panel power-off and published-set acceptance pending | [hw/power.md](hw/power.md) |
 | Suspend: one clean s2idle cycle | pre-pin build | 2026-08-19 | [hw/suspend.md](hw/suspend.md) |
 | Suspend: freezer clean under `pm_test freezer` | kernel r24 (`CONFIG_PM_DEBUG`) | 2026-08-17 | [hw/suspend.md](hw/suspend.md) |
 | Audio: speakers, L/R, balance | kernel ≤r20 fixes, device r48 | 2026-08-20 | [hw/audio.md](hw/audio.md) |
@@ -81,7 +81,7 @@ record; each open check and the claim it gates are called out explicitly here.
 | --- | --- |
 | Published-release installer → provisioning → first login → first update | The repository-wide `hardware_verified=true` claim and fresh-install desktop delivery |
 | Next boot: confirm initramfs binds the observed UDC without failed attempts | Clean system-init USB gadget handoff |
-| Power off, plug USB, confirm the ring shows `BOOT_REASON: 1` (optionally pin CHRIN via debugfs regmap) | Charging mode's authoritative detection — the one calibration owed by the shipped feature |
+| Charging mode: verify full panel power-off and repeat the enter/exit checks on one exact published artifact set | Firmware image remained visible during the validated local-helper cycle; its result does not cover every published artifact |
 | Short/long power-key feel, lock/wake, and menu exercise | Phone-like power-key behavior rather than kernel-event presence alone |
 | GNOME logout → Wayland greeter/OSK → login | Session lifecycle and extension/orientation recovery after compositor replacement |
 | USB host reaches `ssh <user>@172.16.42.1` over ECM | Host-side USB Ethernet/SSH claim |

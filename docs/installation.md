@@ -323,14 +323,16 @@ normal `dc1-update.timer` path takes over.
 
 ## Charging mode
 
-**Experimental / not yet hardware-verified:** the boot-reason reader works,
-but a real charger-insert boot still owes the calibration that confirms code
-`1` and the complete enter/exit cycle. A dark panel is not proof of charging.
+**Experimental:** charger-insert reason `1`, positive battery current, unplug
+poweroff and power-key return to the desktop have been verified with the
+current helpers on the validation unit. Full published-release acceptance
+and panel power-off remain pending; see the [measurement record](hw/power.md).
 
 The feature is designed so plugging USB power into a cleanly-powered-off DC-1 boots it into a minimal
 headless **charging mode** instead of the full desktop (device package
-pkgrel >= 79). The panel, frontlight, network, and desktop all stay off;
-the device is dark and silent. Charging itself never depends on any of
+pkgrel >= 79). Desktop and network services stay off and the frontlights
+are blanked, but an inherited firmware battery image can remain visible.
+Charging itself never depends on any of
 that: the MT6375 charger runs its CC/CV profile to the pack's 4.35 V limit
 in hardware, the kernel raises the input limit to 1.5 A and the charge
 target to 3.15 A as soon as VBUS appears, and USB-PD contracts are negotiated
@@ -339,7 +341,7 @@ control remains unavailable while the BQ78Z100 does not answer.
 
 | You do | The device does |
 | --- | --- |
-| Plug USB power into a cleanly powered-off device | Boots silently into charging mode |
+| Plug USB power into a cleanly powered-off device | Boots into charging mode with frontlights off; a firmware image may remain |
 | Unplug while in charging mode | Powers off cleanly after a few seconds |
 | Press power briefly | Warm-reboots into the normal desktop |
 | Hold power until the PMIC hard-reset fires | Hard-resets into the normal desktop |
@@ -395,11 +397,11 @@ touch /var/lib/dc1/no-charging-mode
 
 The same switch is available in **Settings → Charging Profile**.
 
-Diagnose with `journalctl -t dc1-charging`. The boot-cause readout itself
-is verified on hardware, but confirming that real charger boots report
-the charger code is still owed one calibration session — so charging mode
-ships **not yet hardware-verified** until a real charger boot has been
-cycled.
+Diagnose with `journalctl -t dc1-charging`. The measured cycle used kernel
+r67 and locally installed charging helpers, including the device r114
+generator. This establishes those enter/exit paths, not acceptance of an
+entire published artifact set. Full panel power-off and pack-temperature
+enforcement remain unverified.
 
 ## Recovery notes
 

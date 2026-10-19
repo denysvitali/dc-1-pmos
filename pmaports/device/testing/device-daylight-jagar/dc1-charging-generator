@@ -21,11 +21,10 @@
 # 8=kpanic. The ring is plain DRAM, so only root can read it, with dd(1)
 # from /dev/mem (CONFIG_STRICT_DEVMEM is off on this kernel precisely so
 # this LK log stays reachable); nothing exposes it elsewhere. BOOT_REASON: 1
-# is treated as an authoritative charger verdict, but ONE CALIBRATION IS
-# STILL OWED: a hardware session that powers off, plugs USB, and confirms
-# the ring really shows 1 (optionally pinning the MT6358 CHRIN bit via the
-# `000c:` line of /sys/kernel/debug/regmap/10026000.pmic-wrapper/registers).
-# Until then the flag+VBUS path below stays in as the FALLBACK:
+# is treated as an authoritative charger verdict. Two charger-insert boots
+# on the validation unit reported 1 and the power-key exit reported 4; see
+# docs/hw/power.md for the measured scope and remaining acceptance work.
+# The flag+VBUS path below remains the FALLBACK for other boot reasons:
 #
 #	reason == 1              -> charging mode (flag not required)
 #	reason 3/4/5             -> never charging mode, even with a fresh flag

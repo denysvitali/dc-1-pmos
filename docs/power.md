@@ -11,9 +11,10 @@ Plug any USB-C source. Power Delivery is negotiated in the kernel (the
 port declares 5 V/3 A, 9 V/3 A, 12 V/3 A sink capabilities; a 12 V
 contract has been verified end-to-end), and the charger autonomously
 runs CC/CV to the pack's 4.35 V limit — no userspace required. There is
-no charging LED; check the battery icon once booted. Charging mode's real
-charger-insert calibration is still pending, so a dark powered-off device is
-not by itself proof that the expected path ran.
+no charging LED; check the battery icon once booted. Charging-mode entry,
+positive battery current and the unplug/power-key exits have been tested.
+The firmware's battery image can remain visible after the frontlights turn
+off; an icon alone does not establish current flow or panel power-off.
 
 Open **Settings → Charging Profile** to see the negotiated profile, the
 source's advertised fixed/PPS profiles, the programmed input and pack
