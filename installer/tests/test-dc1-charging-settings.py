@@ -14,8 +14,9 @@ nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and nod
 namespace = {"CHARGE_PROFILES": (("Conservative", 2_000_000), ("Default", 3_150_000)), "glob": glob, "os": os}
 window = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ChargingSettingsWindow")
 methods = [node for node in window.body if isinstance(node, ast.FunctionDef) and node.name in {"_refresh_controls", "_on_profile"}]
-nodes.append(ast.ClassDef(name="Controls", bases=[], keywords=[], body=methods, decorator_list=[]))
-ast.fix_missing_locations(nodes[-1])
+controls_class = ast.parse("class Controls: pass").body[0]
+controls_class.body = methods
+nodes.append(controls_class)
 exec(compile(ast.Module(body=nodes, type_ignores=[]), str(SOURCE), "exec"), namespace)
 
 
