@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=115
+pkgrel=116
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -39,7 +39,7 @@ depends="
 # linux-headers: build-time only, for dc1-pwrkey's kernel input UAPI includes
 # and dc1-mn29-probe's I2C UAPI includes. Nothing is added to the installed
 # image.
-makedepends="devicepkg-dev linux-headers"
+makedepends="devicepkg-dev linux-headers libdrm-dev pkgconf"
 # This package ships its own /etc/gdm/custom.conf (autologin to dc1), which
 # gdm's meson install also installs as a default. `replaces` lets our file
 # win the apk conflict without removing gdm -- the same pattern
@@ -150,6 +150,8 @@ source="
 	dc1-charging.target
 	dc1-charging-monitor
 	dc1-charging-monitor.service
+	dc1-charging-display.c
+	dc1-charging-display.service
 	dc1-poweroff-flag
 	dc1-poweroff-flag.service
 	dc1-poweroff-record.service
@@ -177,6 +179,9 @@ build() {
 		"$srcdir"/dc1-pwrkey.c
 	${CC:-gcc} $CFLAGS $LDFLAGS -o "$srcdir"/dc1-mn29-probe \
 		"$srcdir"/dc1-mn29-probe.c
+	${CC:-gcc} $CFLAGS $LDFLAGS $(pkg-config --cflags libdrm) \
+		-o "$srcdir"/dc1-charging-display "$srcdir"/dc1-charging-display.c \
+		$(pkg-config --libs libdrm)
 }
 
 package() {
@@ -517,6 +522,10 @@ package() {
 		"$pkgdir"/usr/libexec/dc1-poweroff-flag
 	install -Dm644 "$srcdir"/dc1-charging.target \
 		"$pkgdir"/usr/lib/systemd/system/dc1-charging.target
+	install -Dm755 "$srcdir"/dc1-charging-display \
+		"$pkgdir"/usr/libexec/dc1-charging-display
+	install -Dm644 "$srcdir"/dc1-charging-display.service \
+		"$pkgdir"/usr/lib/systemd/system/dc1-charging-display.service
 	install -Dm644 "$srcdir"/dc1-charging-monitor.service \
 		"$pkgdir"/usr/lib/systemd/system/dc1-charging-monitor.service
 	install -Dm644 "$srcdir"/dc1-poweroff-flag.service \
@@ -570,7 +579,7 @@ e9f0a80372e63be8a04a027326af59e565760c8f97640e2a6627cdf6386fedae2be4e25f4c888890
 cabf678f400ed149742de871e19d86807b06a032b9b18fd7d31b05891df2e686e4e74d4881c155f9e48752ac995eda2b463954a57e8088db1a6c7420d3f73290  dc1-gpu-freq
 f75939a23b820eeb0cc0181eb2e66ad38e88308d0034e46ea98578f0faa45c4392743b3484d7afbb47359814fbf61d349b046b5b08b44f84835e996555edfd40  dc1-gpu-settings
 bd4eb77fda2be0f5423fff7e652442b772b236a9fb65be4a0f327d54f9bb46e0572c0898975ce49355276ef3910597d84ce53e66a8efb2b8b7ca868318fd005f  dc1-gpu-settings.desktop
-06eedf9ddbae4015649058e39359dbd789ab08c88262f56b59a21ba4a3c954feaaa2373612ef4cbbdd6c66c954f860530e04f5a777bb73dde43ef402af300400  dc1-charging-settings
+62a030be0861cb499b52c09f2f2ce0a8a0aa509b7f58491147056af69f6fe7f10fd12955b6a3c49ed81836119032ad5f304ccdd316144c07ec58798284498e1e  dc1-charging-settings
 4695a2905225f3499d0373b3dde270e8b2f26eb5cd6bf42b4153874a1f922ce2128da5a63f6344365a2886f6c2e73649516eb95b1e777f1166fc68ea902f8ca3  dc1-charging-settings.desktop
 bd11da80534ff885bd050ffd532c06191283ed77ae7f77044cc536d2511e13dc5897766fe0073dc3359ea56a2a4f141d396c46fa7ce9f010e5bcc53280b53f1f  dc1-owner-settings
 67276f4b763925066e2266b9d0de298bbaa8f57e1bacce751a821f09731e62adb38d64e7e2f391ea0148bcea9952aca276af3deab59e948218a9da44b4779083  it.denv.dc1.gpufreq.policy
@@ -629,10 +638,12 @@ f3e3ef43fe119e376ce3462d69cabd5ce6b4907b5135736c99792b2d35c4be5136f7f8d170e17c09
 bdc18c75a9ce9a48e1e56430ec313595b19af537f69f0d7112be884c80cfdd6716d5cb163346e12f008e503065145913255a8823e2326a541df73292b96e31cf  dc1-update
 c82499840dadc121164874a8cc3050ac7a1f6e12a551b0cf154bc0af562fb883d0d5cdd48f9f92047e7b78ae3cf521011922ebe7c86cb3ca1701aa6d7893a8b8  dc1-update.service
 133f5dda6febe7682f1650584886c672847796d865f3e5d87bc6e52b5ef822d3ca368d5352a96e59853ed9f324bf1a65a8a88ff4252b1e5aeefa01efc329ec91  dc1-update.timer
-847540be49ba05483824cb1cdfe35cf6f1795cb3b768b145c4c76ca0a28064abd79a4cfa4dbd35493e09b8669e62daa357645192f1f2a071f8f2f71e343fd139  dc1-charging-generator
-b0ade6ea1dc2b0f10c12e12d6403336a8079ba3903c264ae5b29e441fa9c222cb27838efe382b5fe90aba9a28c30bfbc1c4fe78b91e8c775df8b7484ce15b51e  dc1-charging.target
+f3ccbd72a9c3eae9c55ecdfee5e3176474c39a0521ed0249c0d57e71898dc05bcfef25b9dd4a0bc82084d8c1e78131b335ecebd30fbc5839cbdedc5cd73a8d74  dc1-charging-generator
+8bd157434167966be1136add3f5fc405b6f41aab0c0fc253a46dbbb23be591a95e73357a684d6d58c45a65e167861008f145bc4b5670b5260467a87df4160e07  dc1-charging.target
 0eddb5ffd3f8cc63962477a699591e4e99a7726388a54f095518afb04cd6828793d072b9265f34173b42c2163b785ccead29dac41c00c73cc9b8a127bf4fdad1  dc1-charging-monitor
 13a4b4c086f733906e8641c489fdbf20b12bc29c4038cdcf7e6dafb04ce084080eb4f53c0e770d459be5a9f15b040ecefad9425d84b2dd02b8350693590e2fca  dc1-charging-monitor.service
+b1324b96412935c2bc209d422d87cf36310461c9ed7271599535bbee731148f12909756ca730fc1dc42a220bb930bd52d77d155730aee1dc11dd3576f63bc585  dc1-charging-display.c
+0bbf8ca0a125668360bd78230f76251cb70033f6d7cdc14313017fe643a0869fc148ebdb6a246006dde3a091ae7d2906b4129dcabf0e7b5f865d5fe545e78e5a  dc1-charging-display.service
 bd2481dc6d36781add6d3e5a1c52671e4abccc9594800269d0da9734418b0df24c90e7783e863ec22f9286b7c024b78f26610034b3d27cc445fda505a674128c  dc1-poweroff-flag
 b9862652e701c83d3c527a9ca70451ae734032c93833225772846f71295ccb902eee8cbd52bb33991fea521dfb6fb7fa373429b99b81ed73965249f4fddebd35  dc1-poweroff-flag.service
 b8b79b29382d67f07dad61a97290f8f47db495a18218a7ac4a6c81c2c03d768e3d0aa22fdf8f80608ca79ac8ff65c7e32cea64ecb03c2fae5b1c3bae587737ec  dc1-poweroff-record.service

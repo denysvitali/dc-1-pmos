@@ -59,21 +59,34 @@ establish behavior at today's bus speed. The vendor 5.10
 tree was compared line by line — same bq27xxx glue, same pad tuning
 (RSEL_111 1k pull-up, applied and read back in hardware), byte-identical
 pinctrl rsel tables, equivalent controller quirks and AC timing — so
-nothing in software distinguishes us from the kernel that read `capacity
-100` from that address. `mt6358-fg` stands aside automatically if the
-pack gauge ever reports `present=1`. Now a hardware item: the pack
-connector's SMBus pair, or the gauge's own I²C block. Consequences while
-it stays dead: cold/stale boots seed SoC from voltage, there is no learned
-full-charge capacity, no battery-temperature-informed charge current
-(only chip-side JEITA-ish behavior plus the 110/113.5 °C critical
-shutdowns — see [thermal.md](thermal.md)), and the owner-selected charge
-policy. The shipped default is now the 3.15 A charger target (~2.94 A measured
-into the pack, about 40 %/h); Settings → Charging Profile can reduce it.
+nothing in that comparison isolated the failure. `mt6358-fg` stands aside
+automatically if the pack gauge ever reports `present=1`. The connector's
+SMBus pair, gauge interface mode and electrical path remain candidates;
+the NAKs do not establish a broken pack. While it does not answer,
+cold/stale boots seed SoC from voltage, learned full-charge capacity is
+unavailable, and Linux has no live pack temperature for charge-current
+control. Board/SoC critical shutdowns ([thermal.md](thermal.md)) do not
+measure cell temperature or establish the factory pack's protection state.
+The shipped default is the 3.15 A charger target; Settings → Charging Profile
+can reduce it.
 
 A 2026-10-18 charging-side recheck still found no response at either `0x55`
 or the alternate `0x0b` on any exposed AP I2C bus. Standard gauge word reads
 on i2c7 also failed. This does not establish a connector fault: a controlled
 100 kHz session and the electrical path remain to be checked.
+
+On 2026-10-20 (linux r67 / device r105 with local charging helpers), a
+controlled slow GPIO-I2C session released only the i2c7 controller, then
+selected the known temperature (`0x06`) and voltage (`0x08`) registers at
+`0x55` and `0x0b`. All four reads NAKed. A positive control read of RT9471
+ID `0x0b` returned `0x69` through the same GPIO path. The tool used 5 µs
+minimum sleeps; its actual clock was not measured, so this is not a
+100 kHz controller qualification. The controller was rebound, GPIO144/145
+returned to I2C function 1, and RT9471 ID and ~3.03 A main-charge current
+were verified afterwards. No gauge configuration/manufacturer command or
+secondary-charger enable was issued. Further restoration needs electrical
+or gauge-interface evidence; keep the BQ node disabled until a real ACK
+and plausible protocol readings exist.
 
 Cosmetic suppression landed in kernel `15fd2e78b746` (pkgrel 50): the
 production DT keeps the gauge node disabled while it NAKs, so it cannot

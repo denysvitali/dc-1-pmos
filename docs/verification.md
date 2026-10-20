@@ -47,6 +47,8 @@ measurement was made. "Pending" items live in
 | Charger: former r23 fast-charge default ~1.8 A | kernel r23 (`6a12a0831485`) | 2026-08-21 | [hw/power.md](hw/power.md) |
 | USB-PD: 12 V PDO contract end-to-end | kernel r25 (`5e36dfcd3193`+`55509d09d028`) | 2026-08-22/23 | [hw/power.md](hw/power.md) |
 | Charge rate at the 3.15 A ceiling (~40 %/h) | running r2x build | 2026-08-23 | [hw/power.md](hw/power.md) |
+| Normal 3.15 A target: ~3.02 A measured through 10 min light activity and 5 min bounded CPU0 load; board ≤37.5 °C, charger junction ≤56 °C | linux r67 / device r105 with local r116 helpers | 2026-10-20; no pack-temperature or all-core-load qualification | [hw/thermal.md](hw/thermal.md#charging-at-the-normal-target) |
+| Pack gauge: slow GPIO-I2C temperature/voltage reads NAK at 0x55/0x0b; RT9471 positive control replies; normal controller restored | linux r67 / device r105 | 2026-10-20; gauge restoration remains open | [hw/power.md](hw/power.md) |
 | Charger: independent ADC/PMIC current comparison under all-core load; 12 V PD recovers after cable reconnect; RT9471 remains inactive | linux r65 / device r105 | 2026-10-18; neither thermal-regulation isolation nor secondary-charge acceptance | [hw/power.md](hw/power.md) |
 | Charging mode: ring mechanism (BOOT_REASON readout) | device r79 | 2026-08-25 | [hw/power.md](hw/power.md) |
 | Charging mode: two reason-1 charger boots, positive current, masked desktop/network/update units, unplug poweroff and physical power-key desktop return | linux r67 / local r114 helpers over device r105 | 2026-10-19; 500 mA cap, retained firmware image; full panel power-off and published-set acceptance pending | [hw/power.md](hw/power.md) |

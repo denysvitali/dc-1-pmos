@@ -76,6 +76,31 @@ def amps(microamps):
     return f"{microamps / 1_000_000:.2f} A" if microamps else "—"
 
 
+def profile_choices(current):
+    choices = list(CHARGE_PROFILES)
+    if current > 0 and all(value != current for _label, value in choices):
+        choices.append((f"Custom · {amps(current)} (active)", current))
+    return choices
+
+
+def rate_explanation(status):
+    if not status["charger_online"]:
+        return "Running on battery"
+    target = status["charge_target_ua"]
+    current = status["battery_ua"]
+    custom = target > 0 and all(value != target for _label, value in CHARGE_PROFILES)
+    prefix = f"Custom {amps(target)} limit is active. " if custom else ""
+    if status["battery_status"] == "Full":
+        return prefix + "Battery reports full; little or no charge current is expected."
+    if target and current >= target * .9:
+        return prefix + "Charging near the configured current target."
+    if (status["charge_voltage_uv"] > 0 and
+            status["battery_uv"] >= status["charge_voltage_uv"] - 50_000):
+        return prefix + "Near the charge-voltage limit; normal taper may reduce current."
+    return prefix + "Below target; source capacity, system load or charger regulation " \
+        "may reduce the rate. The cause is not measured here."
+
+
 def watts(microvolts, microamps):
     if not microvolts or not microamps:
         return "—"
@@ -163,6 +188,20 @@ def run_helper(args, privileged=False):
     return completed.returncode, completed.stdout, completed.stderr
 
 
+def read_pack_temperature():
+    for supply in glob.glob(os.path.join(SYSFS, "class/power_supply/bq*")):
+        if read_text(supply, "present") != "1" or read_text(supply, "type") != "Battery":
+            continue
+        try:
+            value = int(read_text(supply, "temp"))
+        except ValueError:
+            continue
+        if -400 <= value <= 1000:
+            return f"{value / 10:.1f} °C"
+    return "Unavailable: the pack gauge does not answer. Board and " \
+        "charger temperatures do not measure the battery cells."
+
+
 def read_status():
     pd_online = read_int(PD_SUPPLY, "online") == 1
     charger_online = read_int(CHARGER, "online") == 1
@@ -184,6 +223,7 @@ def read_status():
 
     return {
         "headline": headline,
+        "charger_online": charger_online,
         "detail": detail,
         "pd_type": active_choice(read_text(PD_SUPPLY, "usb_type")),
         "contract_uv": contract_uv,
@@ -192,6 +232,7 @@ def read_status():
         "battery_ua": battery_ua,
         "capacity": read_int(BATTERY, "capacity"),
         "battery_status": read_text(BATTERY, "status", "Unknown"),
+        "pack_temperature": read_pack_temperature(),
         "charge_target_ua": read_int(CHARGER, "constant_charge_current"),
         "charge_voltage_uv": read_int(CHARGER, "constant_charge_voltage"),
         "input_limit_ua": read_int(CHARGER, "input_current_limit"),
@@ -223,7 +264,10 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
         self._contract = Adw.ActionRow(title="Negotiated profile")
         self._battery = Adw.ActionRow(title="Battery")
         self._rate = Adw.ActionRow(title="Into the battery")
-        for row in (self._connection, self._contract, self._battery, self._rate):
+        self._rate_reason = Adw.ActionRow(title="Charge rate")
+        self._pack_temperature = Adw.ActionRow(title="Pack temperature")
+        for row in (self._connection, self._contract, self._battery, self._rate,
+                    self._rate_reason, self._pack_temperature):
             now.add(row)
 
         policy = Adw.PreferencesGroup(
@@ -250,15 +294,17 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
             title="Charge rate",
             subtitle="3.15 A is the measured default; 2.00 A charges more slowly.",
         )
-        self._profile.set_model(
-            Gtk.StringList.new([label for label, _value in CHARGE_PROFILES])
-        )
+        self._profile_choices = list(CHARGE_PROFILES)
+        self._profile.set_model(Gtk.StringList.new(
+            [label for label, _value in self._profile_choices]
+        ))
         self._profile.connect("notify::selected", self._on_profile)
         controls.add(self._profile)
 
         self._charging_mode = Adw.SwitchRow(
             title="Charging mode",
-            subtitle="On the next charger-started boot, keep the desktop and panel off.",
+            subtitle="On the next charger-started boot, stop the desktop and "
+            "network, and shut down the display.",
         )
         self._charging_mode.connect("notify::active", self._on_switch)
         controls.add(self._charging_mode)
@@ -321,7 +367,11 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
         was_building = self._building
         self._building = True
         selected = Gtk.INVALID_LIST_POSITION
-        for index, (_label, value) in enumerate(CHARGE_PROFILES):
+        choices = profile_choices(status["charge_current"])
+        if choices != self._profile_choices:
+            self._profile_choices = choices
+            self._profile.set_model(Gtk.StringList.new([label for label, _ in choices]))
+        for index, (_label, value) in enumerate(choices):
             if value == status["charge_current"]:
                 selected = index
                 break
@@ -395,6 +445,8 @@ class ChargingSettingsWindow(Adw.PreferencesWindow):
             f"{amps(status['battery_ua'])} · "
             f"{watts(status['battery_uv'], status['battery_ua'])} measured"
         )
+        self._rate_reason.set_subtitle(rate_explanation(status))
+        self._pack_temperature.set_subtitle(status["pack_temperature"])
         self._selection.set_subtitle(
             "Highest-power compatible PDO · prefers higher voltage on a tie"
         )

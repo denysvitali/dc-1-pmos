@@ -29,12 +29,23 @@ The same panel selects the live **Measured default (3.15 A)** or
 and the opt-in Automatic sleep policy. These policy changes require
 authorization.
 
+Custom targets set outside the two presets are shown explicitly as
+**Custom**, including the active current limit. The rate explanation
+compares measured current with that target and flags possible voltage
+taper without guessing a thermal cause. Pack temperature is shown only
+when a present BQ gauge supplies it; an unavailable reading is explicit.
+Board and charger temperatures are not battery-cell measurements.
+
 **Default target:** 3.15 A. An earlier 12 V audit measured ~2.94 A into the
 pack, roughly 40 %/h on the 8 Ah pack, with the hottest board zone at 46 °C.
 This is a measured operating point, not a guaranteed rate. A later loaded
 12 V session measured substantially less battery current and a 99–100 °C
 charger junction. System load and charger temperature must be measured
 alongside the rate; see the [measurement record](hw/power.md).
+The 2026-10-20 bounded recheck held ~3.02 A through ten minutes of light
+activity and five minutes of limited CPU0 load, with board NTC ≤37.5 °C
+and charger junction ≤56 °C. This does not qualify all-core builds or
+pack-cell temperature; see [the thermal record](hw/thermal.md#charging-at-the-normal-target).
 Until the pack gauge answers, this
 default cannot use live pack temperature as an independent control.
 

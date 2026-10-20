@@ -63,7 +63,7 @@ jobs:
         timeout-minutes: 12
         run: |
           packages=()
-          for package in e2fsprogs zstd gjs; do
+          for package in e2fsprogs zstd gjs libdrm-dev pkg-config; do
             if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null \
                 | grep -qx 'install ok installed'; then
               packages+=("$package")

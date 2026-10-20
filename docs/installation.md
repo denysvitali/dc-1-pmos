@@ -332,6 +332,12 @@ The feature is designed so plugging USB power into a cleanly-powered-off DC-1 bo
 headless **charging mode** instead of the full desktop (device package
 pkgrel >= 79). Desktop and network services stay off and the frontlights
 are blanked, but an inherited firmware battery image can remain visible.
+Device r116 adds a dedicated display handoff: with frontlights off it
+submits a white frame at the preferred 60 Hz mode, then disables the DRM
+pipeline. This is intended to replace inherited firmware scanout through the
+normal panel power sequence. The physical glass/TE acceptance is still pending;
+software readback alone does not close that check. Its one-shot service
+does not block the charging monitor or its unplug/power-key exits.
 Charging itself never depends on any of
 that: the MT6375 charger runs its CC/CV profile to the pack's 4.35 V limit
 in hardware, the kernel raises the input limit to 1.5 A and the charge
@@ -357,6 +363,7 @@ The charging generator masks update, network, login and desktop units in
 the early generator directory for that boot. This also blocks globally
 enabled timers and sockets pulled in through `basic.target`; omitting a
 service from the charging target alone would not prevent its activation.
+Plymouth startup is also masked so it cannot repaint the charging display.
 These masks disappear on a normal boot and do not change the owner's
 persistent service enablement.
 

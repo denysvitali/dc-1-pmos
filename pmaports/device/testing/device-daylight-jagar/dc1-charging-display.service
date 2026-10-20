@@ -1,0 +1,10 @@
+[Unit]
+Description=Clear the firmware image and shut down the DC-1 charging display
+Requires=dc1-display-gate.service
+After=dc1-display-gate.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/dc1-charging-display --off
+TimeoutStartSec=30
+RemainAfterExit=yes

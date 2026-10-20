@@ -291,12 +291,12 @@ got=$(readlink "$outpos/default.target")
 for unit in dc1-update.timer dc1-update.service dc1-boot-sync.service \
 	NetworkManager.service avahi-daemon.socket sshd-unix-local.socket \
 	happyd.service gdm.service dc1-usb-gadget.service unudhcpd@usb0.service \
-	usb-signaller.service bluetooth.service systemd-oomd.socket; do
+	usb-signaller.service bluetooth.service systemd-oomd.socket plymouth-start.service; do
 	[ "$(readlink "$outpos.early/$unit")" = /dev/null ] ||
 		fail "charging boot leaves $unit activatable through global dependencies"
 done
 for unit in basic.target systemd-journald.service systemd-logind.service \
-	dc1-charging-monitor.service dc1-charging-test-limit.service; do
+	dc1-charging-monitor.service dc1-charging-display.service dc1-display-gate.service; do
 	[ ! -e "$outpos.early/$unit" ] && [ ! -L "$outpos.early/$unit" ] ||
 		fail "charging boot masked required unit $unit"
 done
@@ -570,6 +570,16 @@ assert record['Install']['WantedBy'] == 'poweroff.target'
 assert 'enable dc1-poweroff-record.service' in (device / '80-device-daylight-jagar.preset').read_text()
 assert 'systemctl reenable dc1-poweroff-record.service' in (device / 'device-daylight-jagar.post-upgrade').read_text()
 recipe = (device / 'APKBUILD').read_text()
+display = unit('dc1-charging-display.service')
+target = unit('dc1-charging.target')
+monitor = unit('dc1-charging-monitor.service')
+assert display['Unit']['Requires'] == 'dc1-display-gate.service'
+assert display['Unit']['After'] == 'dc1-display-gate.service'
+assert display['Service']['ExecStart'] == '/usr/libexec/dc1-charging-display --off'
+assert display['Service']['TimeoutStartSec'] == '30'
+assert 'dc1-charging-display.service' in target['Unit']['Wants'].split()
+assert 'dc1-charging-display.service' not in target['Unit'].get('Requires', '').split()
+assert 'dc1-charging-display' not in str(dict(monitor['Unit']))
 assert '"$pkgdir"/usr/lib/systemd/system/dc1-poweroff-record.service' in recipe
 PY
 

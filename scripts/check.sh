@@ -58,6 +58,13 @@ require() {
 	done
 }
 
+require_libdrm() {
+	if ! command -v pkg-config >/dev/null 2>&1 || ! pkg-config --exists libdrm; then
+		printf '%s: missing libdrm development headers (libdrm-dev) or pkg-config\n' "$group" >&2
+		missing=yes
+	fi
+}
+
 # Preflight every requested group before spending time on any of them. In
 # particular, installer tests must not silently skip their compiler/ext4 cases.
 for group do
@@ -67,8 +74,8 @@ for group do
 			require sh python3 gjs git openssl zstd tar gzip sha256sum sha512sum \
 				mkfs.ext4 e2fsck dumpe2fs debugfs
 			;;
-		installer) require sh python3 gcc "${CC:-cc}" openssl mkfs.ext4 blkid ;;
-		c) require gcc ;;
+		installer) require sh python3 gcc "${CC:-cc}" openssl mkfs.ext4 blkid pkg-config; require_libdrm ;;
+		c) require gcc pkg-config; require_libdrm ;;
 		go) require go ;;
 		dtbswap) require make "${stub_llvm}clang" "${stub_llvm}llvm-objcopy" "$stub_lld" ;;
 	esac
@@ -120,6 +127,12 @@ for group do
 				gcc -Wall -Wextra -Os -o "$scratch/$tool" "$device/$tool.c"
 				printf 'compiled %s\n' "$tool"
 			done
+			# pkg-config flags are intentionally compiler argument lists.
+			# shellcheck disable=SC2046
+			gcc -Wall -Wextra -Werror -Os $(pkg-config --cflags libdrm) \
+				-o "$scratch/dc1-charging-display" "$device/dc1-charging-display.c" \
+				$(pkg-config --libs libdrm)
+			printf 'compiled dc1-charging-display\n'
 			;;
 		go)
 			mkdir -p "$scratch/go"

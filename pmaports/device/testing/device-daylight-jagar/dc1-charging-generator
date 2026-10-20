@@ -185,7 +185,10 @@ stage_charging_boot() {
 		avahi-daemon.service avahi-daemon.socket ModemManager.service bluetooth.service \
 		gdm.service display-manager.service graphical.target \
 		getty.target getty@.service serial-getty@.service \
-		dc1-display-gate.service dc1-frontlight.service dc1-screen-backlight.service \
+		plymouth-start.service plymouth-read-write.service plymouth-switch-root.service \
+		plymouth-quit.service plymouth-quit-wait.service plymouth-poweroff.service \
+		plymouth-reboot.service plymouth-halt.service \
+		dc1-frontlight.service dc1-screen-backlight.service \
 		dc1-gpu.service dc1-audio.service dc1-bluetooth.service dc1-first-boot.service \
 		systemd-oomd.service systemd-oomd.socket debug-shell.service dc1-debug-shell.service
 	do

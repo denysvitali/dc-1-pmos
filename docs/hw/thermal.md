@@ -40,3 +40,31 @@ Panfrost uses `simple_ondemand`, with thermal devfreq cooling. The GPU's
 36-OPP transition table exceeds PAGE_SIZE, so an unreadable `trans_stat` is
 not proof of failed scaling. GPU floor control belongs to `dc1-gpu-freq`;
 see [display](display.md) for defaults and latency measurement.
+
+## Charging at the normal target
+
+On 2026-10-20, linux r67 / device r105 with local r116 charging helpers
+was measured at the unchanged 3.15 A target and a 12 V/1.5 A PD contract.
+The temporary 500 mA test service had been removed. A ten-minute light-activity
+run was followed by five minutes of CPU0 load bounded by `CPUQuota=50%`,
+`Nice=19`, with 15 seconds of post-load collection. Brief verification
+compiles/tests also ran on CPU0; this was not an all-core build.
+
+| Run | Mean / range of calibrated pack current | Maximum board NTC | Maximum charger junction | Maximum LVTS |
+| --- | --- | --- | --- | --- |
+| Light activity, 600 s / 41 samples | 3.02 A / 2.99–3.04 A | 36.9 °C | 55 °C | 43.8 °C |
+| Bounded CPU0 load + recovery, 315 s / 22 samples | 3.02 A / 2.99–3.04 A | 37.5 °C | 56 °C | 45.8 °C |
+
+The main charger's single-shot ADC provided junction temperature and an
+independent current measurement; these are chip measurements, not an external
+meter. There were no ADC errors; intermittent unreadable LVTS samples were
+kept as missing values. The load completed its time bound without reaching
+the test's 42 °C board / 70 °C junction stop conditions. The temperature
+guard controlled the test load; charging policy remained unchanged.
+
+This establishes ~3 A charging under these bounded conditions. It does not
+qualify all-core builds, longer/hotter operation, or pack-cell temperature:
+the BQ gauge still does not answer. No thermal trip or secondary-charge
+setting was raised. Reproduce collection with
+[`tools/power/charge-monitor.py`](../../tools/power/README.md); raw captures
+stay outside Git.

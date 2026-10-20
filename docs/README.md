@@ -59,6 +59,7 @@ Build revisions come from `scripts/versions.env`, not measurement dates.
 | [`tools/performance/`](../tools/performance/README.md) | GPU throughput, idle-gap latency, and compositor measurement tools |
 | [`tools/usb/`](../tools/usb/README.md) | Read-only USB hub and Billboard diagnostics, with offline request tests |
 | [`tools/i2c-survey/`](../tools/i2c-survey/README.md) | Read-only RT9471, pack-gauge and `0x49` sensor survey, with an offline command-list test |
+| [`tools/power/`](../tools/power/README.md) | Bounded charging and thermal measurements, including opt-in main-charger ADC conversions |
 | [`tools/i2cbb/`](../tools/i2cbb/README.md) | Controlled hardware re-measurement utility; not a build dependency |
 | [Build workflow](../.github/workflows/build.yml) | Complete public-runner verification, build, and release contract |
 

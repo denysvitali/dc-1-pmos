@@ -35,6 +35,9 @@ Install the reported tools using your host's package manager. Go requirements
 come from the repository's `go.mod` files; the first Go run may download its
 toolchain or module dependencies.
 
+The C and installer groups also require `libdrm-dev` and `pkg-config`
+(`pkgconf` on Alpine) for the charging-display helper and its mock DRM tests.
+
 Full image builds have additional dependencies and need pmbootstrap chroot
 privileges; follow the [build guide](docs/building.md#host-and-dependencies).
 Preparing pmaports or building a rootfs is unnecessary for documentation and

@@ -6,6 +6,8 @@
 # Kept deliberately minimal -- frontlights off, network/login paths shut:
 #
 #   dc1-charging-monitor       unplug -> poweroff, KEY_POWER -> warm reboot
+#   dc1-charging-display       clear LK scanout, then disable the DRM pipeline
+#   dc1-display-gate           bind the normal display pipeline for that handoff
 #   dc1-link-apk-keys.service  restores the apk trust links (cheap no-op)
 #   dc1-rtcsync.timer          keeps the RTC honest while parked
 #   systemd-logind.service     stock session management
@@ -17,9 +19,10 @@
 #   a parked, charging device needs no radio, no network daemons and no
 #   console or remote login surface. USB networking and its DHCP server
 #   are excluded too; press power to boot normally for authenticated access.
-#   dc1-display-gate, dc1-frontlight, dc1-screen-backlight, dc1-gpu,
+#   dc1-frontlight, dc1-screen-backlight, dc1-gpu,
 #   dc1-audio, dc1-bluetooth, dc1-first-boot -- the charging monitor force-offs
-#   the frontlights. A firmware image can remain; panel power-off is unverified.
+#   the frontlights. Display shutdown is independent of the exit monitor:
+#   even a failed display handoff must leave unplug/power-key handling alive.
 #   dc1-boot-sync, dc1-update.timer -- power + boot-sync must NEVER flash
 #   slots or reboot while the user believes the device is "just charging":
 #   boot-sync downloads release images, arms the inactive slot and reboots
@@ -38,4 +41,4 @@ Description=DC-1 headless charging mode (charger boot, frontlights and network o
 Requires=basic.target
 After=basic.target
 AllowIsolate=yes
-Wants=dc1-charging-monitor.service dc1-link-apk-keys.service dc1-rtcsync.timer systemd-logind.service systemd-udevd.service
+Wants=dc1-charging-monitor.service dc1-charging-display.service dc1-link-apk-keys.service dc1-rtcsync.timer systemd-logind.service systemd-udevd.service
