@@ -174,8 +174,7 @@ The upstream r68 APK still needs a hardware test.
 | Timed fallback and manual rollback | Restored the original r67 kernel and packages |
 | Aurora 4.8.4 and F-Droid 2.0.2 | Installed; Aurora reached sign-in. Store downloads untested. |
 
-The first kernel4 boot fell back without recording a Linux journal; later boots
-succeeded. The cause is unknown. Physical touch/gestures, audio, camera, suspend,
+Physical touch/gestures, audio, camera, suspend,
 DRM, Play Integrity and long-term stability remain untested.
 
 Update the pinned Android images manually; automatic image updates are not configured.
