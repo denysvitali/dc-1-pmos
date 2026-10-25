@@ -297,7 +297,14 @@ package() {
 	# accountsservice probes the optional TCB shadow layout even though this
 	# image uses /etc/shadow. An empty directory accurately represents that
 	# there are no TCB users and avoids a warning on every login.
-	install -dm700 "$pkgdir"/etc/tcb
+	# It must be traversable (0711): musl's getspnam() opens
+	# /etc/tcb/<user>/shadow first and falls back to /etc/shadow only on
+	# ENOENT/ENOTDIR. A 0700 directory makes that open fail with EACCES for
+	# every non-root caller, so setgid-shadow unix_chkpwd reports "check
+	# pass; user unknown" and any user-space screen locker (kscreenlocker,
+	# swaylock) rejects the correct password. Root callers (gdm, sudo, sshd)
+	# read /etc/shadow directly and never noticed. Measured 2026-10-25.
+	install -dm711 "$pkgdir"/etc/tcb
 	# D-Bus activation for iio-sensor-proxy, which Alpine's aport omits -- see
 	# the file's header. Without it the accelerometer reaches no compositor.
 	install -Dm644 "$srcdir"/net.hadess.SensorProxy.service \

@@ -21,6 +21,11 @@ fi
 
 glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true
 
+# /etc/tcb shipped 0700 before pkgrel 117, which breaks musl getspnam() for
+# non-root callers (user-space screen lockers). apk does not re-apply a
+# changed directory mode on upgrade, so fix it here; see the APKBUILD.
+[ -d /etc/tcb ] && chmod 711 /etc/tcb 2>/dev/null || true
+
 # dc1-audio moved from multi-user.target to sound.target (pkgrel 59) so its
 # After=alsa-restore.service finally holds: both units are wanted by
 # sound.target, which udev pulls when the card registers -- often after

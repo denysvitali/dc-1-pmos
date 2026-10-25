@@ -20,6 +20,7 @@ measurement was made. "Pending" items live in
 | Chromium WebGPU compatibility: 64 compute values, 16 rendered pixels and canvas completion on Mali/Panfrost; core features unavailable | Chromium `154.0.8037.92-r0`, Mesa `26.2.3-r1`, linux r65 / device r105 with r108 launch flags | 2026-10-03 | [hw/display.md](hw/display.md#chromium-webgpu-compatibility-mode) |
 | Frontlight warmth crossfade slider | device r66 | 2026-08-24 | [hw/display.md](hw/display.md) |
 | Plasma Mobile session: gdm autologin into KWin/plasmashell, auto-rotation, Plasma Keyboard toggle, orientation bridge stands down; owner reports it works well (additive, GNOME default unchanged) | device r117 candidate on a r116 install (files deployed by hand), plasma-mobile 6.8.1 | 2026-10-25 | [plasma-mobile.md](plasma-mobile.md) |
+| Non-root PAM password check (`unix_chkpwd` as the user) returns 0 for the account password once `/etc/tcb` is 0711; returned `user unknown` at 0700 | device r116 + live chmod, musl 1.2.6, linux-pam 1.7.1 | 2026-10-25 | [plasma-mobile.md](plasma-mobile.md) |
 | Touchscreen multitouch | earlier bring-up | pre-2026-08-17 | [hw/input.md](hw/input.md) |
 | Pen: kernel events (proximity/touch/barrel/eraser/pressure) | linux r31 | 2026-08-23 | [hw/input.md](hw/input.md) |
 | Pen: axis resolution, orientation, pressure scale, visible-area map | linux r32–r35 | 2026-08-23 | [hw/input.md](hw/input.md) |

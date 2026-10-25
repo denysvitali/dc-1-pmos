@@ -63,8 +63,8 @@ Record results in this section as they are taken on hardware.
 | Session starts from gdm autologin after `dc1-session --now plasma-mobile` | 2026-10-25: yes; kwin_wayland + plasmashell on seat0, first login landed on the lock screen (fixed above) |
 | Touch, pen and auto-rotation (KWin via iio-sensor-proxy) | 2026-10-25: rotation applied by KWin (`Rotation: 2`, landscape geometry); owner reports the session works well; no per-input measurement yet |
 | Scale (KWin auto-scale vs. the 1.5× GNOME default) | 2026-10-25: KWin picked 1.25× and the 120 Hz mode (`kscreen-doctor -o`); the port prefers 60 Hz, not yet changed |
-| Plasma Keyboard appears for text fields; lock screen unlock by touch | 2026-10-25: Plasma Keyboard configured by envmanager (`InputMethod=org.kde.plasma.keyboard`), toggle in the nav bar; owner reports it works well |
+| Plasma Keyboard appears for text fields; lock screen unlock by touch | 2026-10-25: keyboard works. Unlock **failed** with the correct password until `/etc/tcb` was made traversable (device package shipped it 0700; musl `getspnam()` then fails with EACCES for non-root callers and `unix_chkpwd` logs `check pass; user unknown`). Fixed in 1-r117; after the fix `unix_chkpwd` returns 0/7 for correct/wrong. The same bug would hit swaylock under the Sway session |
 | Wi-Fi, Bluetooth, audio from quick settings | pending |
-| Waydroid container toggle and app cards in the task switcher | pending |
+| Waydroid container toggle and app cards in the task switcher | 2026-10-25: cards work (Play Store, launcher). Waydroid sizes its display once at container start and does not follow later KWin rotation or scale/mode changes; the owner saw a portrait Android inside a landscape session until the container was stopped and started again. Try `waydroid prop set persist.waydroid.multi_windows true` before treating this as a port bug |
 | `dc1-orientation` stopped (exit 3), no restart loop in `journalctl --user` | 2026-10-25: yes via the `org.kde.KWin` bus check; `ActiveState=inactive`, `NRestarts=0` |
 | Return with `dc1-session --now gnome`; GNOME extensions and rotation recover | pending |
