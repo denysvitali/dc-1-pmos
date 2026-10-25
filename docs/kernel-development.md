@@ -48,7 +48,8 @@ the PMIC alarm RTC as a module, preserving the built-in boot-time RTC. The recip
 verifies the resolved values from the storage, latency, suspend, USB, resource
 control and Waydroid fragments, and packages the resulting configuration.
 `waydroid.config` enables Android IPC, ARM32 compatibility and container
-networking; see [Waydroid](waydroid.md) for setup and test scope.
+networking. It also exposes the running configuration at `/proc/config.gz`
+for diagnostics and prerequisite checks. Android userspace is installed separately.
 
 The kernel recipe emits a separate `-modules` APK and requires its exact
 version. Keep both APKs together for local installation. `usb-host.config`
