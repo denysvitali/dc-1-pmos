@@ -45,8 +45,10 @@ the pinned defconfig; `latency.config` requires high-resolution timers for
 GPU wake and desktop scheduling precision. `suspend.config` enables the
 shallow WFI cpuidle driver required to freeze s2idle timekeeping and packages
 the PMIC alarm RTC as a module, preserving the built-in boot-time RTC. The recipe
-verifies the resolved values from all four fragments, including
-`usb-host.config`, and packages the resulting configuration.
+verifies the resolved values from the storage, latency, suspend, USB, resource
+control and Waydroid fragments, and packages the resulting configuration.
+`waydroid.config` enables Android IPC, ARM32 compatibility and container
+networking; see [Waydroid](waydroid.md) for setup and test scope.
 
 The kernel recipe emits a separate `-modules` APK and requires its exact
 version. Keep both APKs together for local installation. `usb-host.config`

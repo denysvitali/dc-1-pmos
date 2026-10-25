@@ -10,6 +10,7 @@ measurement was made. "Pending" items live in
 
 | Claim | Verified at | Date | Record |
 | --- | --- | --- | --- |
+| Waydroid: Android boot, Mali rendering, DNS/HTTPS, Brydge typing and original-kernel recovery | local `7.2.0-rc5-waydroid4` / r71 with Waydroid 1.6.3-r0 and interpreter flags; not the upstream r68 artifact | 2026-10-25 | [Waydroid test scope](waydroid.md#test-scope) |
 | dtbswap boots the mainline DT (model string, DRM, GNOME atomic) | pre-pin bring-up | 2026-08-19 | [dtbswap README](../boot/dtbswap/README.md) |
 | installer-boot dtbswap reaches installation mode on a stock-DT-affected unit | issue #1 affected-unit build (exact release hash not recorded) | 2026-08-24 | [installation architecture](installation.md#how-the-flow-works) |
 | Autonomous OTA cycle (apk → slot write → first-try boot) | linux r31 era | 2026-08-23 | [README.md](../README.md#living-with-it) |

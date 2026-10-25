@@ -19,7 +19,7 @@ REQUIRED = [
     "CONFIG_LLD_VERSION=200108",
 ]
 for fragment in ("sdcard.config", "latency.config", "suspend.config", "usb-host.config",
-                 "resource-control.config"):
+                 "resource-control.config", "waydroid.config"):
     REQUIRED.extend(line for line in (OVERLAY / fragment).read_text().splitlines()
                     if line.startswith("CONFIG_") and line.endswith(("=y", "=m")))
 VALID = "\n".join(dict.fromkeys(REQUIRED)) + "\n"
