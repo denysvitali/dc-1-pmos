@@ -19,7 +19,7 @@ BACKEND = str(HERE/'backend.py')
 
 class SetupApp(Gtk.Application):
     def __init__(self):
-        super().__init__(application_id='io.github.muness.WaydroidSetup', flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+        super().__init__(application_id='io.github.muness.WaydroidManager', flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.busy = False
         self.operation_process = None
         self.paused = False

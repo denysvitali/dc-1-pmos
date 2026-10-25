@@ -18,15 +18,23 @@ chmod 755 /usr/local/bin/dc1-waydroid-setup
 ln -sf dc1-waydroid-setup /usr/local/bin/dc1-waydroid-manager
 install -d -m755 /usr/local/share/icons/hicolor/scalable/apps
 install -m644 "$here/setup/waydroid-manager.svg" /usr/local/share/icons/hicolor/scalable/apps/io.github.muness.WaydroidManager.svg
-cat > /usr/local/share/applications/io.github.muness.WaydroidSetup.desktop <<'DESKTOP'
+cat > /usr/local/share/applications/io.github.muness.WaydroidManager.desktop <<'DESKTOP'
 [Desktop Entry]
 Type=Application
 Name=Waydroid Manager
 Comment=Install, open and remove Android; diagnose problems
 Exec=/usr/local/bin/dc1-waydroid-manager
-Icon=io.github.muness.WaydroidManager
+Icon=/usr/local/share/icons/hicolor/scalable/apps/io.github.muness.WaydroidManager.svg
 Terminal=false
 Categories=System;Settings;
 StartupNotify=true
 DESKTOP
+# Retire the original launcher after the replacement is installed.
+rm -f /usr/local/share/applications/io.github.muness.WaydroidSetup.desktop
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/local/share/applications
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache --force --ignore-theme-index /usr/local/share/icons/hicolor
+fi
 printf 'Installed Waydroid Manager. Open it from Applications as your desktop user.\n'
