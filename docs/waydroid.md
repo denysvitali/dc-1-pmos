@@ -170,6 +170,7 @@ The upstream r68 APK still needs a hardware test.
 
 | Check | Result |
 | --- | --- |
+| Config export (`7.2.0-rc5-waydroid5`, local r72) | Booted; `/proc/config.gz` matches the packaged config; setup check passes |
 | Android boot and graphics | Passed; Mali-G57 MC2 / Panfrost / Mesa 26.0.8 |
 | Android DNS and HTTPS | Passed |
 | GNOME, host networking and Tailscale | Kept working |
