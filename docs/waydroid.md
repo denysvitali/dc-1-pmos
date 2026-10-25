@@ -33,6 +33,12 @@ before you test Android.
 
 ## Install Android
 
+The separate experimental [Waydroid Setup app](https://github.com/muness/alpine-desktop-apps/tree/main/experiments/waydroid#setup-app)
+provides image selection, progress, a copyable diagnostic report and removal.
+It requires the Waydroid-capable kernel to be installed and booted first.
+The instructions below install **Vanilla Android without Google Play services**.
+The app also offers GApps, which has not been tested on the DC-1.
+
 Use a Wayland desktop session. Install the native packages as root:
 
 ```sh
