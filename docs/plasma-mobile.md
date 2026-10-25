@@ -33,12 +33,16 @@ dc1-session --now plasma-mobile            # ends the current desktop session
 never shows its chooser. `dc1-session --now gnome` returns; `--list` shows
 the installed sessions. `scripts/plasma-mobile-remove.sh` uninstalls.
 
-## What the device package changes
+## Device and installer changes
 
 - `dc1-orientation` exits under KWin, which handles sensor rotation itself.
   It checks both the desktop environment and the `org.kde.KWin` bus name:
   the service can start before Plasma imports its environment. Exit status 3
   prevents systemd from restarting the bridge.
+- The installer disables the unused fingerprint PAM service with `pam_deny.so`.
+  The DC-1 has no fingerprint reader. Password authentication is unchanged;
+  removal restores the saved profile. This does not establish a fix for the
+  separate password-authenticator hang.
 - `/usr/bin/dc1-session` selects the next login session and can switch immediately.
 - Unless a user already has `~/.config/kscreenlockerrc`, the installer creates
   it with locking disabled at login, after idle time and on resume. This

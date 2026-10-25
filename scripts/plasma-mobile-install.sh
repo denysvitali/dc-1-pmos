@@ -12,6 +12,23 @@ set -eu
 # lock-on-start). plasma-keyboard: the touch keyboard Plasma Mobile 6.8 uses.
 apk add postmarketos-ui-plasma-mobile plasma-keyboard
 
+# The DC-1 has no fingerprint reader. Keep an explicit deny-only PAM service:
+# deleting kde-fingerprint could fall back to PAM's "other" service.
+# Preserve the original so removing this optional desktop restores it.
+fingerprint=/etc/pam.d/kde-fingerprint
+backup=/etc/pam.d/kde-fingerprint.dc1-original
+if [ -f "$fingerprint" ] && [ ! -e "$backup" ]; then
+    cp -p "$fingerprint" "$backup"
+fi
+cat > "$fingerprint" <<'PAM'
+# DC-1: no fingerprint reader; password authentication uses /etc/pam.d/kde.
+auth requisite pam_deny.so
+account requisite pam_deny.so
+password requisite pam_deny.so
+session requisite pam_deny.so
+PAM
+chmod 644 "$fingerprint"
+
 # The orientation bridge (device package >= 1-r117) exits with status 3 under
 # KWin; older units keep restarting once a second during a Plasma session.
 if ! grep -q RestartPreventExitStatus=3 /usr/lib/systemd/user/dc1-orientation.service; then
