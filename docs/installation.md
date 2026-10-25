@@ -31,12 +31,11 @@ Two ways to install. The first is the default.
 Both paths write the same filesystem to the same place; they differ only in
 who asks the questions and how the image reaches the device.
 
-Both are implemented and offline-tested. A second DC-1 completed the touch
-installer, provisioning, first GNOME login and a subsequent reboot on
-2026-10-25; see the [installation record](hw/installation.md). The network
-installer selected its own payload, whose exact release hash was not captured.
-The full exact-published-artifact path through first update and A/B fallback
-remains unverified.
+Both paths are implemented and offline-tested. On 2026-10-25, an owner used
+the touch installer on another DC-1, completed Wi-Fi and account setup, logged
+into GNOME and rebooted successfully. The downloaded rootfs hash was not
+recorded; testing one exact release through its first update and A/B fallback
+remains open. See the [installation record](hw/installation.md).
 
 ## What you need
 
@@ -61,11 +60,10 @@ The on-device installer fetches everything else it needs over Wi-Fi itself.
 
 The DC-1 boots via MediaTek LK with A/B slots, and LK provides `fastboot`.
 
-An **installer boot image** is flashed to `boot_a`. It boots into
-"installation mode": the panel runs a touch UI (`dc1-ask`) drawn by the
-installer's PID 1, and USB gadget networking plus a serial console are intended
-to come up in parallel. The touch UI is the front door; when available, the
-USB link lets a host take over during installation.
+Flash the **installer boot image** to `boot_a` to start installation mode.
+The installer runs a touch UI (`dc1-ask`) on the panel and attempts to bring
+up USB networking and a serial console alongside it. When the USB link is
+available, a host can take over during installation.
 
 The recommended path is **Install from network**: the device scans Wi-Fi,
 connects, then downloads `jagar-rootfs.ext4.zst` and `jagar-boot.img` from the
@@ -144,10 +142,9 @@ Check the bootloader lock state:
 fastboot getvar unlocked
 ```
 
-Use this fastboot response to decide whether unlocking is needed. On one
-LineageOS device, Android reported locked/green boot properties while
-fastboot reported `unlocked: yes`; installing LineageOS alone is not evidence
-of either lock state. Do not unlock again when fastboot already reports `yes`.
+Use the fastboot response to decide whether to unlock. On one DC-1 running
+LineageOS, Android reported locked/green boot properties while fastboot
+reported `unlocked: yes`. If fastboot reports `yes`, skip unlocking.
 
 If it reports `no`, unlocking is required:
 
@@ -284,10 +281,9 @@ of `installer/host/dc1-install.sh` for the full usage.
   [docs/debugging.md](debugging.md) for what each tool shows and how to
   pull the files off the device.
 
-Check the panel before treating missing USB serial or Ethernet as a failed
-boot. On one device the touch installer was visible and completed over Wi-Fi
-without the host seeing either USB interface. This does not establish that
-the USB fallback works; see the [installation record](hw/installation.md).
+If USB serial or Ethernet is missing, check the panel first. On one DC-1,
+the touch installer worked over Wi-Fi even though neither USB interface
+appeared on the host. See the [installation record](hw/installation.md).
 
 If a download or transfer aborts partway, rerun the installer. The target
 filesystem becomes mountable only after verification, but installation may
