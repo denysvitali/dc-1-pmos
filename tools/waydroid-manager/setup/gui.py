@@ -225,11 +225,16 @@ class SetupApp(Gtk.Application):
         self.choice.set_visible(not present)
         self.choice.set_sensitive(not self.paused and not self.busy)
         self.choice_note.set_visible(not present)
-        setup, launch, _, remove, stop = self.buttons
+        setup, launch, report_button, remove, stop = self.buttons
         stop.set_sensitive(present and packaged and not self.busy)
         setup.set_visible(not ready)
-        self.actions.remove(launch)
-        self.actions.attach(launch, 0 if ready else 1, 0, 2 if ready else 1, 1)
+        for button in self.buttons:
+            self.actions.remove(button)
+        self.actions.attach(setup, 0, 0, 3, 1)
+        action_row = 0 if ready else 1
+        for column, button in enumerate((launch, stop, remove)):
+            self.actions.attach(button, column, action_row, 1, 1)
+        self.actions.attach(report_button, 0, action_row + 1, 3, 1)
         setup.set_label('Resume setup' if self.paused else 'Retry setup' if present else 'Set up Android')
         setup.set_sensitive(kernel and not self.busy)
         launch.set_sensitive(present and packaged and not self.busy)
