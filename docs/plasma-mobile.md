@@ -33,6 +33,10 @@ dc1-session --now plasma-mobile            # ends the current desktop session
 never shows its chooser. `dc1-session --now gnome` returns; `--list` shows
 the installed sessions. `scripts/plasma-mobile-remove.sh` uninstalls.
 
+If Plasma's lock screen asks for a **PIN**, enter your **Linux account password**
+—the one created during installation. It does not use a separate numeric PIN.
+Tap the keyboard icon to switch from the number pad to the full keyboard.
+
 ## Device and installer changes
 
 - `dc1-orientation` exits under KWin, which handles sensor rotation itself.
