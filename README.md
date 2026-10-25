@@ -51,7 +51,7 @@ model and records sourced board specifications.
 
 | Area | State | Notes |
 | --- | --- | --- |
-| Desktop / fresh install | 🟡 | Touch installation, GNOME first login and reboot confirmed on another DC-1; downloaded rootfs hash, first update and A/B fallback remain unverified ([record](docs/hw/installation.md)) |
+| Desktop / fresh install | 🟡 | Touch installation, GNOME first login and reboot confirmed on the DC-1; downloaded rootfs hash, first update and A/B fallback remain unverified ([record](docs/hw/installation.md)) |
 | Display & touch | ✅ | 1200×1600 @ 60 Hz over DSI, GPU-accelerated (Panfrost), reliable blank/wake |
 | Pen digitizer | 🟡 | Wacom EMR events, pressure, and barrel button verified; mid-hover eraser flips and edge alignment await a final hands-on pass |
 | Screen auto-rotation | 🟡 | Accelerometer/SensorProxy plus bridge-driven Mutter transforms are live and honor rotation lock; native Mutter claim/animation and four-pose sign-off remain |

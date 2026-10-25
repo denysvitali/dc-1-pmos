@@ -12,7 +12,7 @@ measurement was made. "Pending" items live in
 | --- | --- | --- | --- |
 | dtbswap boots the mainline DT (model string, DRM, GNOME atomic) | pre-pin bring-up | 2026-08-19 | [dtbswap README](../boot/dtbswap/README.md) |
 | installer-boot dtbswap reaches installation mode on a stock-DT-affected unit | issue #1 affected-unit build (exact release hash not recorded) | 2026-08-24 | [installation architecture](installation.md#how-the-flow-works) |
-| Touch installation on another DC-1: Wi-Fi/account setup, GNOME first login and reboot; downloaded rootfs hash not recorded | build-410 installer; installed linux/modules r67, device r116, mutter r6 | 2026-10-25 | [installation record](hw/installation.md) |
+| Touch installation on the DC-1: Wi-Fi/account setup, GNOME first login and reboot; downloaded rootfs hash not recorded | build-410 installer; installed linux/modules r67, device r116, mutter r6 | 2026-10-25 | [installation record](hw/installation.md) |
 | Autonomous OTA cycle (apk → slot write → first-try boot) | linux r31 era | 2026-08-23 | [README.md](../README.md#living-with-it) |
 | Display: DPMS off/on relight (`DSI_SW_CTL_EN` fix, TE + DCS ground truth) | linux r37 (`2466a7f6`) | 2026-08-24 | [hw/display.md](hw/display.md) |
 | GPU: Panfrost native on mainline DT, devfreq cooling | kernel `981870b`/`0f6e730c92d6` builds | 2026-08-19 / 08-22 | [hw/display.md](hw/display.md) |

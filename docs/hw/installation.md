@@ -1,6 +1,6 @@
 # Installation — measurement record
 
-## 2026-10-25: touch installation on another DC-1
+## 2026-10-25: touch installation on the DC-1
 
 The owner installed Linux over Wi-Fi on a DC-1 previously running LineageOS.
 They saw the installer on the panel, completed Wi-Fi and account setup, and

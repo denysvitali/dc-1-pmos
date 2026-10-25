@@ -1,20 +1,17 @@
 # Plasma Mobile session (experimental)
 
-An optional touch-first session next to the shipped GNOME desktop. It is
-additive: GNOME stays installed and remains the default; the owner switches
-sessions with `dc1-session` and can remove Plasma Mobile again. Nothing here
-is wired into the rootfs build or CI.
+Install Plasma Mobile alongside GNOME and switch sessions with `dc1-session`.
+GNOME remains the default. Plasma installation is optional and separate from
+the rootfs build.
 
-## Why
+## Why Plasma Mobile
 
-GNOME Mobile's phone layout never activates on this panel: 1200×1600 at the
-shipped 1.5× scale is 800×1067 logical pixels, above the fork's 500/1000
-`_checkIsPhone()` thresholds, so the tablet runs the desktop layout with
-mobile OSK/rotation patches. Plasma Mobile is the only interface in
-postmarketOS (systemd edition) whose shell, settings, lock screen and window
-management are designed for fingers: edge-swipe navigation, maximized
-undecorated apps, a task switcher with live cards, Waydroid setup and a
-container toggle in quick settings, and Plasma Keyboard.
+At 1.5× scaling, the DC-1's 1200×1600 panel is 800×1067 logical pixels,
+above GNOME Mobile's `_checkIsPhone()` thresholds (500/1000). GNOME therefore
+uses its desktop layout with mobile keyboard and rotation patches.
+
+Plasma Mobile provides touch navigation, maximized apps, a card-based task
+switcher, Plasma Keyboard and Waydroid controls in quick settings.
 
 ![Plasma Mobile first-run screen on the DC-1, landscape, 2026-10-25](images/plasma-mobile/welcome.jpg)
 
@@ -28,8 +25,8 @@ landscape, scaled to 900 px wide.
 ## Install (on the tablet)
 
 ```sh
-sudo sh scripts/plasma-mobile-install.sh   # apk add postmarketos-ui-plasma-mobile plasma-keyboard
-dc1-session --now plasma-mobile            # as the owner; ends the GNOME session
+pkexec /bin/sh "$(pwd)/scripts/plasma-mobile-install.sh"   # apk add postmarketos-ui-plasma-mobile plasma-keyboard
+dc1-session --now plasma-mobile            # ends the current desktop session
 ```
 
 `dc1-session` writes the AccountsService `Session` key because gdm autologin
@@ -38,24 +35,14 @@ the installed sessions. `scripts/plasma-mobile-remove.sh` uninstalls.
 
 ## What the device package changes
 
-- `dc1-orientation` stands down with exit status 3 under KWin, which
-  follows `net.hadess.SensorProxy` itself; the unit's
-  `RestartPreventExitStatus=3` then leaves it stopped instead of restarting
-  once a second for the whole session. Two detections, because the unit
-  starts at `default.target` before `startplasma-wayland` has imported
-  `XDG_CURRENT_DESKTOP` into the user manager: the environment check in
-  `main()`, and `org.kde.KWin` appearing on (or already owning) the session
-  bus. Observed on 2026-10-25: the environment check alone missed the first
-  Plasma login and the bridge sat waiting for Mutter.
-- `/usr/bin/dc1-session` (above).
-- The install script writes `~/.config/kscreenlockerrc` with
-  `LockOnStart=false`, `Autolock=false` and `LockOnResume=false` for each
-  owner account: pmOS's `/etc/xdg` default starts every Plasma login at the
-  lock screen, and kscreenlocker then locks again after five idle minutes
-  and on resume. The lock screen asks for the account password as a PIN
-  (the keypad icon switches to a full keyboard). gdm autologin already
-  decides who gets the session, and the GNOME session does not lock on its
-  own, so Plasma matches that. Re-enable in Settings › Screen Locking.
+- `dc1-orientation` exits under KWin, which handles sensor rotation itself.
+  It checks both the desktop environment and the `org.kde.KWin` bus name:
+  the service can start before Plasma imports its environment. Exit status 3
+  prevents systemd from restarting the bridge.
+- `/usr/bin/dc1-session` selects the next login session and can switch immediately.
+- Unless a user already has `~/.config/kscreenlockerrc`, the installer creates
+  it with locking disabled at login, after idle time and on resume. This
+  matches the current GNOME setup. Enable locking in **Settings → Screen Locking**.
 
 The GNOME-only pieces — `dc1-safe-area`, `dc1-session-compat`,
 `dc1-warmth`, the Mutter `kms-modifiers` setting and the gschema overrides —

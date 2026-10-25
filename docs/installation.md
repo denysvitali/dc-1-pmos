@@ -32,7 +32,7 @@ Both paths write the same filesystem to the same place; they differ only in
 who asks the questions and how the image reaches the device.
 
 Both paths are implemented and offline-tested. On 2026-10-25, an owner used
-the touch installer on another DC-1, completed Wi-Fi and account setup, logged
+the touch installer on the DC-1, completed Wi-Fi and account setup, logged
 into GNOME and rebooted successfully. The downloaded rootfs hash was not
 recorded; testing one exact release through its first update and A/B fallback
 remains open. See the [installation record](hw/installation.md).
