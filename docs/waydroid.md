@@ -131,7 +131,12 @@ waydroid session stop
 waydroid show-full-ui
 ```
 
-To hide Android's screen keyboard while using hardware input, run as root:
+To hide Android's screen keyboard, open **Android Settings → System →
+Languages & input → Physical keyboard** and turn **Use on-screen keyboard**
+off. Turn it back on to restore the screen keyboard. This is separate from
+GNOME's screen keyboard.
+
+For scripts, the equivalent command is (run as root):
 
 ```sh
 waydroid shell -- settings put secure show_ime_with_hard_keyboard 0
