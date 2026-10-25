@@ -40,7 +40,8 @@ The separate experimental [Waydroid Setup app](https://github.com/muness/alpine-
 provides image selection, progress, a copyable diagnostic report and removal.
 It requires the Waydroid-capable kernel to be installed and booted first.
 The instructions below install **Vanilla Android without Google Play services**.
-The app also offers GApps, which has not been tested on the DC-1.
+The app also offers GApps with Google Play. The owner has confirmed both images
+work on the DC-1.
 
 Use a Wayland desktop session. Install the native packages as root:
 
