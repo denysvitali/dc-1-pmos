@@ -1,0 +1,51 @@
+#!/bin/sh
+# Select the Wayland session gdm autologin starts for the calling user.
+#
+# gdm with AutomaticLoginEnable skips the greeter, so the session chooser is
+# never shown; the choice lives in AccountsService instead. This writes it
+# through the Accounts D-Bus API (own-user change, no polkit prompt for an
+# active local session) and optionally ends the current session so gdm
+# re-enters the new one. The GNOME session, packages and user data are
+# untouched; "dc1-session gnome" returns.
+set -eu
+
+usage() {
+	echo "usage: dc1-session [--now] {gnome|plasma-mobile|sway|<session>}" >&2
+	echo "       dc1-session --list" >&2
+	exit 2
+}
+
+now=0
+case "${1:-}" in
+	--now) now=1; shift ;;
+	--list)
+		ls /usr/share/wayland-sessions | sed -n 's/\.desktop$//p'
+		exit 0 ;;
+esac
+[ $# -eq 1 ] || usage
+session=$1
+[ -f "/usr/share/wayland-sessions/$session.desktop" ] || {
+	echo "dc1-session: no /usr/share/wayland-sessions/$session.desktop" >&2
+	exit 1
+}
+
+uid=$(id -u)
+busctl --system call org.freedesktop.Accounts "/org/freedesktop/Accounts/User$uid" \
+	org.freedesktop.Accounts.User SetSession s "$session"
+busctl --system call org.freedesktop.Accounts "/org/freedesktop/Accounts/User$uid" \
+	org.freedesktop.Accounts.User SetSessionType s wayland
+echo "dc1-session: next login uses $session"
+
+if [ "$now" -eq 1 ]; then
+	# Not XDG_SESSION_ID: over SSH that is the SSH login. End the user's
+	# wayland session, whichever login this runs from.
+	sid=
+	for s in $(loginctl list-sessions --no-legend | awk -v u="$(id -un)" '$3==u {print $1}'); do
+		if [ "$(loginctl show-session "$s" -p Type --value)" = wayland ]; then
+			sid=$s; break
+		fi
+	done
+	[ -n "$sid" ] || { echo "dc1-session: no wayland session to end" >&2; exit 1; }
+	echo "dc1-session: ending session $sid; gdm autologin restarts into $session"
+	exec loginctl terminate-session "$sid"
+fi

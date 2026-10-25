@@ -13,6 +13,7 @@ and the measurements supporting them. A successful build is not hardware validat
 | [Battery and charging](power.md) | Charge profiles, battery percentage limitations, and owner controls |
 | [Waydroid Manager](waydroid.md) | Install, open, diagnose and remove Android |
 | [GNOME desktop](gnome.md) | Desktop components, settings, integration, and remaining session checks |
+| [Plasma Mobile session](plasma-mobile.md) | Optional touch-first session: install, `dc1-session` switching, device-package changes, acceptance checks |
 | [Debugging](debugging.md) | Installer diagnostics, USB consoles, boot failures, and safe collection of evidence |
 | [Security and debug channels](security.md) | Which channels are exposed in each boot mode and what access they grant |
 | [Last-resort preloader recovery](preloader-recovery.md) | The limited `misc` repair path; requires vendor files not distributed here |
