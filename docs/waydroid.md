@@ -58,6 +58,17 @@ to finish booting. **Copy report** produces diagnostics for an issue or Discord.
 images stay unless you explicitly select their deletion. Kernel and recovery
 files stay in place. Changing image variants requires removal first.
 
+### Screenshots
+
+Captured from Waydroid Manager on the DC-1. The install screen uses a preview
+of the pre-install state; Android was not removed for the capture.
+
+![Install screen with GApps selected, setup controls and diagnostic report](images/waydroid/install.png)
+
+After installation, Open Android becomes the primary action:
+
+![Installed Android with Open Android, removal and diagnostic controls](images/waydroid/installed.png)
+
 ### Manual installation
 
 The following commands install Vanilla without the manager.
