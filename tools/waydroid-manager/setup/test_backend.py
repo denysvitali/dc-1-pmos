@@ -14,6 +14,13 @@ spec = importlib.util.spec_from_file_location('backend', Path(__file__).with_nam
 b = importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
 
 class BackendTests(unittest.TestCase):
+    def test_stop_requires_stopped_status(self):
+        with patch.object(b, 'run', side_effect=['', 'Session:\tSTOPPED\n']), patch.object(b, 'emit'):
+            b.stop_android()
+        for status in ['Session:\tRUNNING\n', '']:
+            with patch.object(b, 'run', side_effect=['', status]), patch.object(b, 'emit'):
+                with self.assertRaises(b.SetupError): b.stop_android()
+
     def test_required_builtins_cannot_be_modules(self):
         self.assertEqual(b.missing_config({'CONFIG_BINDER':'m'}, {'CONFIG_BINDER':'y'}), ['CONFIG_BINDER'])
         self.assertEqual(b.missing_config({'CONFIG_LOOP':'y'}, {'CONFIG_LOOP':'m'}), [])

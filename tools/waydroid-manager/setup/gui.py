@@ -86,12 +86,13 @@ class SetupApp(Gtk.Application):
         content.append(actions)
         self.actions = actions
         self.buttons = []
-        for index, (label, callback) in enumerate([('Set up Android', self.setup), ('Open Android', self.launch), ('Check / report', self.check), ('Remove Android…', self.confirm_remove)]):
+        for index, (label, callback) in enumerate([('Set up Android', self.setup), ('Open Android', self.launch), ('Check / report', self.check), ('Remove Android…', self.confirm_remove), ('Stop Android', self.stop_android)]):
             button = Gtk.Button(label=label, hexpand=True)
             button.set_size_request(-1, 64)
             button.connect('clicked', callback)
             if label == 'Set up Android': button.add_css_class('suggested-action')
             self.buttons.append(button); actions.attach(button, index % 2, index // 2, 1, 1)
+        self.buttons[4].set_tooltip_text('Close Android apps and stop the session. Installed apps and data are kept.')
         info = Gtk.Expander(label='Help and requirements')
         info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         info_box.append(Gtk.Label(label='Requires the Waydroid kernel and 6 GiB free. Downloads 1–1.5 GB. Interpreter mode avoids the Android crash but slows apps. Existing Android data is left alone.', xalign=0, wrap=True))
@@ -188,9 +189,11 @@ class SetupApp(Gtk.Application):
                     message = next((line.removeprefix('ERROR: ') for line in reversed(lines) if line.startswith('ERROR: ')), 'Operation stopped. Copy the report for help, then retry.')
                 else:
                     message = 'Setup complete. Open Android to start your session.' if action == 'setup' else ('Android removed. See the report for what was retained.' if action == 'remove' else 'Report ready. Review it before sharing.')
+                if action == 'stop' and code == 0:
+                    message = 'Android stopped. Open Android to start it again.'
                 if action == 'launch' and code == 0:
                     message = 'Android has finished booting. Switch to its window to continue.'
-                if action in ('setup', 'remove', 'launch'):
+                if action in ('setup', 'remove', 'launch', 'stop'):
                     # Backend output consists only of authored status lines.
                     self.last_operation = '\n'.join(lines[-12:]) or message
                     diagnostic = subprocess.run(['/usr/bin/python3', BACKEND, 'report'], capture_output=True, text=True, timeout=30)
@@ -222,7 +225,8 @@ class SetupApp(Gtk.Application):
         self.choice.set_visible(not present)
         self.choice.set_sensitive(not self.paused and not self.busy)
         self.choice_note.set_visible(not present)
-        setup, launch, _, remove = self.buttons
+        setup, launch, _, remove, stop = self.buttons
+        stop.set_sensitive(present and packaged and not self.busy)
         setup.set_visible(not ready)
         self.actions.remove(launch)
         self.actions.attach(launch, 0 if ready else 1, 0, 2 if ready else 1, 1)
@@ -281,6 +285,9 @@ class SetupApp(Gtk.Application):
                 self.task(command, 'remove')
         dialog.connect('response', response)
         dialog.present()
+
+    def stop_android(self, *_):
+        self.task(['/usr/bin/python3', BACKEND, 'stop'], 'stop')
 
     def launch(self, *_):
         self.task(['/usr/bin/python3', BACKEND, 'launch'], 'launch')

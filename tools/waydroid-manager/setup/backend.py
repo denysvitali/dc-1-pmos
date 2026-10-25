@@ -404,6 +404,14 @@ def report():
             lines.append('Interpreter settings: unreadable')
     return '\n'.join(lines)
 
+def stop_android():
+    emit('Closing Android apps and stopping the session…')
+    run(['waydroid', 'session', 'stop'], timeout=30)
+    status = run(['waydroid', 'status'], timeout=10)
+    if not re.search(r'^Session:\s+STOPPED\s*$', status, re.MULTILINE):
+        raise SetupError('Android has not confirmed it stopped. Check the report and retry.')
+    emit('Android stopped. Your installed apps and data are retained. Open Android to start it again.')
+
 def launch_android(timeout=180):
     if not os.environ.get('WAYLAND_DISPLAY'):
         raise SetupError('Open the manager from your Wayland desktop session.')
@@ -429,7 +437,7 @@ def launch_android(timeout=180):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['setup', 'check', 'report', 'remove', 'launch'])
+    parser.add_argument('action', choices=['setup', 'check', 'report', 'remove', 'launch', 'stop'])
     parser.add_argument('--variant', choices=['vanilla', 'gapps'], default='vanilla', help='Image choice for a new installation only')
     parser.add_argument('--erase-data', action='store_true', help='With remove: also delete Android apps/data for the invoking user and images')
     args = parser.parse_args()
@@ -441,6 +449,7 @@ def main():
                 threading.Thread(target=listen_for_stop, daemon=True).start()
             setup(args.variant)
         elif args.action == 'launch': launch_android()
+        elif args.action == 'stop': stop_android()
         elif args.action == 'remove': remove(args.erase_data)
         elif args.action == 'check':
             preflight(); emit('Kernel and host requirements passed.')

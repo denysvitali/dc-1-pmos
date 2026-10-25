@@ -213,3 +213,7 @@ Physical touch/gestures, audio, camera, suspend,
 DRM, Play Integrity and long-term stability remain untested.
 
 Update the pinned Android images manually; automatic image updates are not configured.
+
+**Stop Android** closes Android apps and stops the session without removing
+installed apps or data. Save work in Android apps first. Use **Open Android**
+to start it again; no administrator prompt is needed.
