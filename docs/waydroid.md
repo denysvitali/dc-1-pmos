@@ -1,14 +1,11 @@
 # Waydroid on the DC-1
 
-Waydroid runs Android apps inside the Linux desktop. The kernel recipe includes
-its Binder, compatibility and networking requirements in
-[`waydroid.config`](../pmaports/device/testing/linux-postmarketos-mediatek-mt6789/waydroid.config).
-Android installation is opt-in; the system image does not install or start it.
+Run Android apps inside the DC-1's Linux desktop with Waydroid. Install it
+separately using the steps below.
 
-**The tested Android image needs interpreter mode to avoid a system-server
-crash.** Startup took about two minutes, and apps can be slow. GPU rendering,
-Android web browsing and Brydge keyboard input worked on one DC-1 running Nura
-edge; GNOME and Tailscale kept working.
+**The tested Android image crashes unless it uses interpreter mode.** Startup
+took about two minutes; expect slower apps. The [test results](#test-results)
+list what worked and what remains unchecked.
 
 ## Kernel requirements
 
@@ -22,18 +19,17 @@ edge; GNOME and Tailscale kept working.
 | IPv4/IPv6 policy routing | Android's per-network routing tables |
 | Legacy xtables, matches and targets | Android netd filtering, NAT, marking and accounting |
 
-The fragment records all explicit settings and their built-in/module values.
-These were tested together, not minimized one option at a time. Binder is
-built-in-only in this kernel; auxiliary drivers are modules. The package checks
-that Kconfig preserves every requested value. Kernel C, device trees and the
-pinned source revision are unchanged by this configuration addition.
+[`waydroid.config`](../pmaports/device/testing/linux-postmarketos-mediatek-mt6789/waydroid.config)
+contains the exact settings. Binder is built in; auxiliary drivers are modules.
+The package checks that Kconfig preserves those values. We tested the settings
+as a set, without measuring which individual options could be removed.
 
-If building a local kernel, follow [kernel development](kernel-development.md).
-Keep matching kernel and modules APKs together and preserve a proven fallback
-slot. The [original experiment](https://github.com/muness/alpine-desktop-apps/tree/13dd331/experiments/waydroid)
-contains the separately tested timed-recovery procedure and manual rollback
-helper. Those scripts and installer adjustments are not part of this repository.
-Do not assume the ordinary kernel confirmation service waits for an Android test.
+For a local build, follow [kernel development](kernel-development.md). Keep the
+kernel and matching modules APKs together and preserve a proven fallback slot.
+The [original experiment](https://github.com/muness/alpine-desktop-apps/tree/13dd331/experiments/waydroid)
+provides timed recovery and manual rollback scripts. They require its installer
+adjustments. This repository's normal confirmation service confirms the kernel
+before you test Android.
 
 ## Install Android
 
@@ -44,8 +40,7 @@ apk add waydroid waydroid-systemd waydroid-nftrules unzip
 systemctl mask waydroid-container.service
 ```
 
-The trial used Waydroid `1.6.3-r0` and these official Android 13 / Lineage 20
-images:
+We used Waydroid `1.6.3-r0` with these official Android 13 / Lineage 20 images:
 
 | Image | Filename | SHA256 |
 | --- | --- | --- |
@@ -72,8 +67,7 @@ dalvik.vm.extra-opts = -Xint
 dalvik.vm.usejit = false
 ```
 
-Both flags are required for the working interpreter configuration. Default ART
-and JIT-off alone crashed `system_server`. [Waydroid issue #2040](https://github.com/waydroid/waydroid/issues/2040)
+Keep both flags: disabling JIT alone still crashed `system_server`. [Waydroid issue #2040](https://github.com/waydroid/waydroid/issues/2040)
 reports a related ARM64 Alpine crash; the cause is unresolved.
 
 Make the config readable by the desktop user and regenerate it as root:
@@ -117,15 +111,14 @@ Hidden=true
 ## Check the installation
 
 As root, check `waydroid shell getprop sys.boot_completed` returns `1` and
-`waydroid shell -- dumpsys SurfaceFlinger` reports the GPU renderer. The trial
-reported Mali-G57 MC2 / Panfrost / Mesa 26.0.8. Open an HTTPS page inside Android,
+`waydroid shell -- dumpsys SurfaceFlinger` reports the GPU renderer. Open an HTTPS page inside Android,
 test touch and typing, then check host browsing and any VPN.
 
-Read command output: `waydroid shell` did not reliably return an Android command's
-failure status to the host.
+Read the output, not just the exit status: `waydroid shell` sometimes returned
+success when the Android command failed.
 
-A mode `600` config prevented the desktop Binder helper from reading it. After
-fixing permissions, restarting the Android session restored Brydge typing:
+If the Brydge does not type, check that `waydroid.cfg` has mode `644`, then
+restart the session. This restored typing after a Binder helper permission error:
 
 ```sh
 waydroid session stop
@@ -138,9 +131,8 @@ To hide Android's screen keyboard while using hardware input, run as root:
 waydroid shell -- settings put secure show_ime_with_hard_keyboard 0
 ```
 
-Set it to `1` to restore the screen keyboard. Waydroid exposes a persistent
-virtual hardware keyboard, so Bluetooth disconnection does not reliably switch
-this preference back.
+Set it to `1` to restore the screen keyboard. Waydroid keeps its virtual
+hardware keyboard present even when the Brydge disconnects.
 
 ## Install apps
 
@@ -150,22 +142,29 @@ As your desktop user:
 waydroid app install /path/to/application.apk
 ```
 
-[Aurora Store](https://f-droid.org/packages/com.aurora.store/) and
-[F-Droid](https://f-droid.org/) provide app stores. Aurora 4.8.4 and F-Droid 2.0.2
-installed in the trial; Aurora reached sign-in. Downloads through the stores
-were not tested. Aurora supports anonymous access to Google Play apps but does
-not install Google Play services. GApps requires a separate setup.
+[Aurora Store](https://f-droid.org/packages/com.aurora.store/) offers Google Play
+apps, including anonymous access. [F-Droid](https://f-droid.org/) offers
+open-source apps. Neither supplies Google Play services; install GApps
+separately if your apps need them.
 
-## Test scope
+## Test results
 
-On 2026-10-25, a local `7.2.0-rc5-waydroid4` kernel, packaged as
-`7.2_rc5_git20260819-r71`, booted with this config fragment. It used the pinned
-kernel source plus the existing recipe patches and original device trees.
-It was not the upstream r68 APK produced by this change.
+Tested on one DC-1 running Nura edge on 2026-10-25, with local kernel
+`7.2.0-rc5-waydroid4` / APK `7.2_rc5_git20260819-r71`. That build used this
+fragment, the pinned source and existing patches, and the original device trees.
+The upstream r68 APK still needs a hardware test.
 
-GPU rendering, Android DNS/HTTPS, host networking, Tailscale health, keyboard
-typing and rollback to the original r67 kernel passed. The first kernel4 boot
-fell back without a Linux journal; later boots succeeded. The cause is unknown.
-Physical touch/gesture confirmation, audio, camera, suspend, DRM, Play Integrity
-and long-term stability remain untested. Updates to the pinned Android images
-are manual.
+| Check | Result |
+| --- | --- |
+| Android boot and graphics | Passed; Mali-G57 MC2 / Panfrost / Mesa 26.0.8 |
+| Android DNS and HTTPS | Passed |
+| GNOME, host networking and Tailscale | Kept working |
+| Brydge typing | Passed after the session restart above |
+| Timed fallback and manual rollback | Restored the original r67 kernel and packages |
+| Aurora 4.8.4 and F-Droid 2.0.2 | Installed; Aurora reached sign-in. Store downloads untested. |
+
+The first kernel4 boot fell back without recording a Linux journal; later boots
+succeeded. The cause is unknown. Physical touch/gestures, audio, camera, suspend,
+DRM, Play Integrity and long-term stability remain untested.
+
+Update the pinned Android images manually; automatic image updates are not configured.
