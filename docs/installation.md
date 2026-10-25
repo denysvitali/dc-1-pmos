@@ -141,6 +141,9 @@ Check the bootloader lock state:
 fastboot getvar unlocked
 ```
 
+Use the fastboot response, not Android's locked/green boot properties, to
+check the bootloader state. If it reports `yes`, skip unlocking.
+
 If it reports `no`, unlocking is required:
 
 ```sh
@@ -275,6 +278,10 @@ of `installer/host/dc1-install.sh` for the full usage.
   read-only and lands in `/tmp/debug`. See
   [docs/debugging.md](debugging.md) for what each tool shows and how to
   pull the files off the device.
+
+If USB serial or Ethernet does not appear on the host, check the tablet's
+screen before assuming it failed to boot. The touch installer can still
+complete installation over Wi-Fi.
 
 If a download or transfer aborts partway, rerun the installer. The target
 filesystem becomes mountable only after verification, but installation may
