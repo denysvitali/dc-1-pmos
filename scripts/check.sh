@@ -109,7 +109,9 @@ for group do
 			done
 			;;
 		packaging) sh scripts/verify.sh ;;
-		installer) sh installer/tests/run-tests.sh ;;
+		installer)
+			python3 -m unittest discover -s tools/waydroid-manager/setup -v
+			sh installer/tests/run-tests.sh ;;
 		c)
 			# Match installer/build.sh's static builds and vendored DRM UAPI.
 			for source in installer/src/init.c installer/src/system/init.c; do
