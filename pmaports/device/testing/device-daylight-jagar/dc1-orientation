@@ -17,6 +17,8 @@ DISPLAY_IFACE = "org.gnome.Mutter.DisplayConfig"
 PROPERTIES_IFACE = "org.freedesktop.DBus.Properties"
 SESSION_PATH = "/org/gnome/SessionManager"
 SESSION_IFACE = "org.gnome.SessionManager"
+# A compositor that applies sensor orientation itself (KWin, Plasma Mobile).
+KWIN_NAME = "org.kde.KWin"
 ORIENTATION_SCHEMA = "org.gnome.settings-daemon.peripherals.touchscreen"
 
 # Mutter's transforms are clockwise. The sensor names describe which edge is
@@ -40,6 +42,7 @@ class OrientationBridge:
     def __init__(self, system, session, settings, loop):
         self.system = system
         self.session = session
+        self.exit_code = 0
         self.settings = settings
         self.loop = loop
         self.sensor = None
@@ -70,7 +73,8 @@ class OrientationBridge:
                 path=path, arg0=name))
         for bus, name in ((self.system, SENSOR_IFACE),
                           (self.session, DISPLAY_IFACE),
-                          (self.session, SESSION_IFACE)):
+                          (self.session, SESSION_IFACE),
+                          (self.session, KWIN_NAME)):
             self.matches.append(bus.add_signal_receiver(
                 self.owner_changed, signal_name="NameOwnerChanged",
                 dbus_interface="org.freedesktop.DBus",
@@ -78,7 +82,22 @@ class OrientationBridge:
                 arg0=name))
         self.settings_id = self.settings.connect(
             "changed::orientation-lock", lambda *_args: self.queue())
+        if self.session.name_has_owner(KWIN_NAME):
+            self.stand_down()
+            return
         self.queue()
+
+    def stand_down(self):
+        """KWin owns the session: it rotates from SensorProxy itself.
+
+        The unit starts at default.target, usually before the session has
+        imported XDG_CURRENT_DESKTOP, so the environment check in main()
+        cannot see Plasma yet; the bus name can. Exit 3 stops the restarts.
+        """
+        print("dc1-orientation: %s owns the session; standing down"
+              % KWIN_NAME, file=sys.stderr)
+        self.exit_code = EXIT_FOREIGN_DESKTOP
+        self.loop.quit()
 
     def sensor_changed(self, interface, changed, invalidated):
         if interface == SENSOR_IFACE and any(
@@ -86,9 +105,13 @@ class OrientationBridge:
                 for key in ("AccelerometerOrientation", "HasAccelerometer")):
             self.queue()
 
-    def owner_changed(self, name, _old, _new):
+    def owner_changed(self, name, _old, new):
         # A ProxyObject refers to the old unique owner. Drop it on restart,
         # and reclaim the accelerometer when SensorProxy returns.
+        if name == KWIN_NAME:
+            if new:
+                self.stand_down()
+            return
         if name == SENSOR_IFACE:
             self.sensor = None
         elif name == DISPLAY_IFACE:
@@ -202,7 +225,28 @@ class OrientationBridge:
         return GLib.SOURCE_REMOVE
 
 
+# Exit status that tells the unit's RestartPreventExitStatus= to stop
+# restarting: the running desktop rotates on its own.
+EXIT_FOREIGN_DESKTOP = 3
+
+
+def foreign_desktop():
+    """True when the session's compositor applies sensor orientation itself.
+
+    KWin (Plasma Mobile) follows net.hadess.SensorProxy natively, so this
+    Mutter bridge must stay out of the way. The user manager only learns
+    XDG_CURRENT_DESKTOP once the session imports its environment, so early
+    restarts still see an empty value and keep probing for Mutter.
+    """
+    current = os.environ.get("XDG_CURRENT_DESKTOP", "")
+    return "KDE" in current.split(":")
+
+
 def main():
+    if foreign_desktop():
+        print("dc1-orientation: compositor rotates natively; standing down",
+              file=sys.stderr)
+        return EXIT_FOREIGN_DESKTOP
     session_address = os.environ.get("DBUS_SESSION_BUS_ADDRESS")
     if not session_address:
         print("dc1-orientation: no graphical session bus", file=sys.stderr)
@@ -216,7 +260,7 @@ def main():
     for signum in (signal.SIGTERM, signal.SIGINT):
         GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signum, bridge.stop)
     loop.run()
-    return 0
+    return bridge.exit_code
 
 
 if __name__ == "__main__":

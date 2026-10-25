@@ -13,6 +13,10 @@ Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
 ExecStart=/usr/libexec/dc1-orientation
 Restart=always
 RestartSec=1
+# Exit 3 = the session's compositor (KWin under Plasma Mobile) rotates on
+# its own; see foreign_desktop() in dc1-orientation.
+RestartPreventExitStatus=3
+SuccessExitStatus=3
 
 [Install]
 WantedBy=default.target

@@ -100,6 +100,9 @@ class Bus:
         self.receivers = []
         self.manager = SessionManager()
 
+    def name_has_owner(self, name):
+        return name in getattr(self, 'owned', ())
+
     def get_object(self, *args):
         if args[0] == 'org.gnome.SessionManager':
             return self.manager
@@ -293,6 +296,25 @@ class OrientationTests(unittest.TestCase):
         self.sources.dispatch()
         self.assertEqual(self.display.transform, 3)
         self.assertEqual(len(self.display.applies), 1)
+
+    def test_kwin_appearing_stands_down_with_foreign_desktop_exit(self):
+        self.bridge.owner_changed('org.kde.KWin', '', ':1.9')
+        self.assertTrue(self.stopped)
+        self.assertEqual(self.bridge.exit_code, 3)
+
+    def test_kwin_vanishing_is_ignored(self):
+        self.bridge.owner_changed('org.kde.KWin', ':1.9', '')
+        self.assertFalse(self.stopped)
+        self.assertEqual(self.bridge.exit_code, 0)
+
+    def test_kwin_already_owning_session_stands_down_at_start(self):
+        self.session.owned = ('org.kde.KWin',)
+        self.stopped = False
+        loop = types.SimpleNamespace(quit=lambda: setattr(self, 'stopped', True))
+        bridge = type(self.bridge)(self.system, self.session, self.settings, loop)
+        bridge.start()
+        self.assertTrue(self.stopped)
+        self.assertEqual(bridge.exit_code, 3)
 
     def test_session_manager_restart_rechecks_visibility(self):
         self.session.manager.active = False
