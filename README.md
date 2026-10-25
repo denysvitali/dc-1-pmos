@@ -51,7 +51,7 @@ model and records sourced board specifications.
 
 | Area | State | Notes |
 | --- | --- | --- |
-| Desktop / fresh install | 🟡 | GNOME Mobile runs on the converged development unit; fresh published-rootfs delivery, provisioning, and first login remain unverified |
+| Desktop / fresh install | 🟡 | GNOME Mobile first login and reboot confirmed after a second-unit touch install; exact published-rootfs delivery, first update and A/B acceptance remain unverified ([record](docs/hw/installation.md)) |
 | Display & touch | ✅ | 1200×1600 @ 60 Hz over DSI, GPU-accelerated (Panfrost), reliable blank/wake |
 | Pen digitizer | 🟡 | Wacom EMR events, pressure, and barrel button verified; mid-hover eraser flips and edge alignment await a final hands-on pass |
 | Screen auto-rotation | 🟡 | Accelerometer/SensorProxy plus bridge-driven Mutter transforms are live and honor rotation lock; native Mutter claim/animation and four-pose sign-off remain |

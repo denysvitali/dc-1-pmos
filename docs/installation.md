@@ -31,9 +31,12 @@ Two ways to install. The first is the default.
 Both paths write the same filesystem to the same place; they differ only in
 who asks the questions and how the image reaches the device.
 
-Both are implemented and offline-tested. The full published-release path from
-installer flash through provisioning, first login, and first update has not
-yet been exercised end-to-end on hardware.
+Both are implemented and offline-tested. A second DC-1 completed the touch
+installer, provisioning, first GNOME login and a subsequent reboot on
+2026-10-25; see the [installation record](hw/installation.md). The network
+installer selected its own payload, whose exact release hash was not captured.
+The full exact-published-artifact path through first update and A/B fallback
+remains unverified.
 
 ## What you need
 
@@ -60,9 +63,9 @@ The DC-1 boots via MediaTek LK with A/B slots, and LK provides `fastboot`.
 
 An **installer boot image** is flashed to `boot_a`. It boots into
 "installation mode": the panel runs a touch UI (`dc1-ask`) drawn by the
-installer's PID 1, and USB gadget networking plus a serial console come up in
-parallel. The touch UI is the front door; the USB link stays up the whole time
-so a host can always take over.
+installer's PID 1, and USB gadget networking plus a serial console are intended
+to come up in parallel. The touch UI is the front door; when available, the
+USB link lets a host take over during installation.
 
 The recommended path is **Install from network**: the device scans Wi-Fi,
 connects, then downloads `jagar-rootfs.ext4.zst` and `jagar-boot.img` from the
@@ -140,6 +143,11 @@ Check the bootloader lock state:
 ```sh
 fastboot getvar unlocked
 ```
+
+Use this fastboot response to decide whether unlocking is needed. On one
+LineageOS device, Android reported locked/green boot properties while
+fastboot reported `unlocked: yes`; installing LineageOS alone is not evidence
+of either lock state. Do not unlock again when fastboot already reports `yes`.
 
 If it reports `no`, unlocking is required:
 
@@ -266,8 +274,8 @@ of `installer/host/dc1-install.sh` for the full usage.
 ## Watching progress and debugging
 
 - The device paints download and write progress on its panel.
-- The install log is streamed on the first USB serial port
-  (`/dev/ttyACM0` on the host).
+- When USB gadget enumeration succeeds, the install log is streamed on the
+  first USB serial port (`/dev/ttyACM0` on the host).
 - A debug shell listens on TCP port 4444 (`nc 172.16.42.1 4444`) and on the
   second USB serial port.
 - The installer's main menu has a **Debug tools** entry (device info,
@@ -275,6 +283,11 @@ of `installer/host/dc1-install.sh` for the full usage.
   read-only and lands in `/tmp/debug`. See
   [docs/debugging.md](debugging.md) for what each tool shows and how to
   pull the files off the device.
+
+Check the panel before treating missing USB serial or Ethernet as a failed
+boot. On one device the touch installer was visible and completed over Wi-Fi
+without the host seeing either USB interface. This does not establish that
+the USB fallback works; see the [installation record](hw/installation.md).
 
 If a download or transfer aborts partway, rerun the installer. The target
 filesystem becomes mountable only after verification, but installation may
