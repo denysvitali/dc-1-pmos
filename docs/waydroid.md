@@ -31,6 +31,9 @@ provides timed recovery and manual rollback scripts. They require its installer
 adjustments. This repository's normal confirmation service confirms the kernel
 before you test Android.
 
+The kernel exposes its build configuration at `/proc/config.gz`, so the setup
+app can check requirements directly.
+
 ## Install Android
 
 The separate experimental [Waydroid Setup app](https://github.com/muness/alpine-desktop-apps/tree/main/experiments/waydroid#setup-app)
