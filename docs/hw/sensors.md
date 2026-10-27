@@ -111,6 +111,23 @@ readback. A failed restoration latches a fault and blocks further activation.
 It does not enable the proximity emitter, claim an interrupt, expose buffered
 samples or report lux, distance or threshold events.
 
+The public [Daylight Android kernel](https://github.com/LineageOS/android_kernel_daylight_mt6789/tree/62de19484ce6866ff51fa71558f26d6df3cbb135)
+also includes a [sensor-hub ALS/PS adapter](https://github.com/LineageOS/android_kernel_daylight_mt6789/blob/62de19484ce6866ff51fa71558f26d6df3cbb135/drivers/misc/mediatek/sensors-1.0/alsps/alspshub/alspshub.c#L94-L106)
+that requests `ID_LIGHT` from the hub and returns its light value; its
+[jagar configuration](https://github.com/LineageOS/android_kernel_daylight_mt6789/blob/62de19484ce6866ff51fa71558f26d6df3cbb135/arch/arm64/configs/jagar.config#L526-L527)
+enables MediaTek sensor and sensor-hub support. That adapter neither identifies
+the part nor documents its register protocol: the identity above comes from the
+AP i2c1 path. Other ALS drivers present in that tree are not evidence that
+jagar uses them.
+
+The hub is a separate possible route, not a drop-in driver: the current
+MT6789 SCP driver only provides mailbox setup and its wake test times out;
+there is no working sensor-hub transport or demonstrated running firmware.
+Bringing it up requires compatible firmware and mailbox/transport handling,
+and exactly one owner per sensor bus — the AP accelerometer on i2c6 cannot
+share its pins with an active SCP sensor driver. Vendor firmware is not a
+redistributable build input under the repository's public-data policy.
+
 Read raw counts by discovering the IIO device by name:
 
 ```sh
