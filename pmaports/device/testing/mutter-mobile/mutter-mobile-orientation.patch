@@ -1,6 +1,8 @@
+Subject: [PATCH] backends: retain the DC-1 orientation handoff on Mutter 51
+
 --- a/src/backends/meta-monitor-manager.c
 +++ b/src/backends/meta-monitor-manager.c
-@@ -57,6 +57,8 @@
+@@ -58,6 +58,8 @@
  #include "backends/meta-virtual-monitor.h"
  #include "clutter/clutter.h"
  #include "core/util-private.h"
@@ -9,11 +11,10 @@
  #include "meta/main.h"
  #include "meta/meta-enum-types.h"
  #include "meta/meta-orientation-manager.h"
-@@ -1004,6 +1006,141 @@ create_fallback (MetaMonitorConfigManager *config_manager)
-   return config;
+@@ -911,6 +913,141 @@
  }
  
-+static void
+ static void
 +orientation_snapshot_fade_out_completed (ClutterTimeline *timeline,
 +                                        gboolean         is_finished,
 +                                        gpointer         user_data)
@@ -71,7 +72,7 @@
 +    .width = (int) roundf (*width),
 +    .height = (int) roundf (*height),
 +  };
-+  content = clutter_stage_paint_to_content (stage, &rect, 1.0,
++  content = clutter_stage_paint_to_content (stage, &rect, 1.0, NULL,
 +                                             CLUTTER_PAINT_FLAG_NONE,
 +                                             &error);
 +  if (!content)
@@ -148,19 +149,20 @@
 +    clutter_actor_destroy (snapshot);
 +}
 +
- static void
++static void
  handle_orientation_change (MetaOrientationManager *orientation_manager,
                             MetaMonitorManager     *manager)
-@@ -1015,6 +1151,8 @@ handle_orientation_change (MetaOrientationManager *orientation_manager,
-   MetaMonitor *laptop_panel;
-   MetaLogicalMonitor *laptop_logical_monitor;
+ {
+@@ -922,6 +1059,8 @@
+   MetaMonitor *builtin_monitor;
+   MetaLogicalMonitor *builtin_logical_monitor;
    MetaMonitorsConfig *current_config;
 +  ClutterActor *snapshot;
 +  float snapshot_width, snapshot_height;
  
-   laptop_panel = meta_monitor_manager_get_laptop_panel (manager);
-   g_return_if_fail (laptop_panel);
-@@ -1044,6 +1182,9 @@ handle_orientation_change (MetaOrientationManager *orientation_manager,
+   builtin_monitor = meta_monitor_manager_get_builtin_monitor (manager);
+   g_return_if_fail (builtin_monitor);
+@@ -951,6 +1090,9 @@
    if (!config)
      return;
  
@@ -170,10 +172,10 @@
    if (!meta_monitor_manager_apply_monitors_config (manager,
                                                     config,
                                                     META_MONITORS_CONFIG_METHOD_TEMPORARY,
-@@ -1052,6 +1193,13 @@ handle_orientation_change (MetaOrientationManager *orientation_manager,
+@@ -958,6 +1100,13 @@
+     {
        g_warning ("Failed to use orientation monitor configuration: %s",
                   error->message);
-       g_error_free (error);
 +      if (snapshot)
 +        clutter_actor_destroy (snapshot);
 +    }
@@ -182,5 +184,5 @@
 +      animate_orientation_snapshot (manager, snapshot, snapshot_width,
 +                                    snapshot_height, transform);
      }
+ 
    g_object_unref (config);
- }

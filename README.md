@@ -123,7 +123,8 @@ Each release contains:
 - `jagar-boot.img` — the installed system's boot image;
 - `jagar-rootfs.ext4.zst` / `.tar.gz` — the root filesystem (ext4, label
   `jagar-root`);
-- the four APKs (kernel, matching kernel modules, device and Mutter), plus the signed
+- the ten runtime APKs (kernel/modules, device, and the matched GNOME Mobile
+  stack with its schemas and service support), plus the signed
   `APKINDEX.tar.gz`;
 - `dc1-install.sh` and `dc1-repair-apk.sh` (host-side helpers),
   `dc1-apk.rsa.pub`, `PROVENANCE`, `SOURCES`, `FILES.tsv`, the exact installed

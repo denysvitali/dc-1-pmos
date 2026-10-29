@@ -1,13 +1,15 @@
+// GNOME 51 targets are routed through NativeBrightnessBridge, preserving
+// the native brightness and dimming policy while mixing both frontlights.
+// The D-Bus path below remains for rollback to the 48-based mobile shell.
 // DC-1 frontlight temperature -- a second quick-settings slider that mixes
 // the two frontlights as a colour temperature over one shared luminance.
 //
 // The DC-1 has two independent RT4539 frontlights on separate i2c buses:
 // "lcd-backlight" (white, i2c-5) and "lcd-backlight-amber" (amber, i2c-2).
-// GNOME models exactly one backlight per internal display: gsd-power resolves
-// a single udev device (firmware > platform > raw, first match wins), which
-// here is always the white one, and both the Settings brightness slider and
-// the quick-settings one are views of that single device. Nothing upstream
-// has a concept of a second backlight, so the amber channel is invisible.
+// GNOME 51's brightness manager calculates one target for the internal
+// display. NativeBrightnessBridge passes that target to the mixer, including
+// automatic brightness and idle dimming. The white-channel echo handling
+// below is used only by the older GSD API when rolling back to Shell 48.
 //
 // Two channels over one panel are physically a luminance and a mix, so the
 // controls are factored that way: GNOME's brightness slider is the luminance,
@@ -69,6 +71,8 @@
 // connector's dpms state onto bl_power for *every* backlight device, and
 // bl_power leaves the brightness value untouched, so both channels survive a
 // screen-off and come back with it.
+
+import {NativeBrightnessBridge} from './dc1-frontlight-bridge.js';
 
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
@@ -443,6 +447,19 @@ export default class DC1WarmthExtension extends Extension {
         this._indicator = new WarmthIndicator(this._settings, this._controller);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
 
+        if (Main.brightnessManager) {
+            // The old saved luminance is needed only for the first 48-to-51
+            // transition. Later logins use GNOME's own saved monitor scales.
+            this._nativeBridge = new NativeBrightnessBridge(
+                Main.brightnessManager, this._controller, {
+                    initialLuminance: this._settings.get_boolean('native-brightness-migrated')
+                        ? null : this._controller.luminance,
+                    onMigrated: () => this._settings.set_boolean('native-brightness-migrated', true),
+                    onUserChange: value => this._settings.set_double('luminance', value),
+                });
+            return;
+        }
+
         // Follow GNOME's own brightness: gsd writes the white channel, the
         // extension adopts it as the new luminance. The percent in the signal
         // payload drives the immediate reaction (followGsdPercent); the
@@ -465,6 +482,8 @@ export default class DC1WarmthExtension extends Extension {
     }
 
     disable() {
+        this._nativeBridge?.destroy();
+        this._nativeBridge = null;
         // Both channels are left where the user put them: this runs on screen
         // lock too, and shifting the light at the lock screen would read as a
         // hardware fault rather than a disabled extension.

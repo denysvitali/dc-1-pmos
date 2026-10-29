@@ -24,6 +24,29 @@ modem users can opt in with `/var/lib/dc1/enable-modemmanager`. The device's
 NetworkManager override preserves WWAN routing policy while omitting an
 unsupported key.
 
+## Matched GNOME Mobile packages
+
+The local overlays pin Shell, Mutter and settings-daemon to the public
+`51.1.mobile.21` source cohort. Their APK version is `999951.1.21`; the prefix
+keeps these systemd/mobile builds ahead of Alpine's packages. The rootfs
+builder, exporter and updater include all required schema and service
+subpackages. Settings remains the upstream `gnome-control-center` package.
+
+Settings 51 checks `org.gnome.Shell.Brightness.HasBrightnessControl`. The
+48-based mobile shell had no owner for this interface, so Settings hid
+Automatic Screen Brightness even when SensorProxy reported a light sensor.
+The 51 shell supplies the native interface. It still reports real monitor
+capability; the device integration does not force the property to true.
+See [frontlight policy](hw/display.md#frontlight) for the reflective response
+and two-channel warmth integration.
+
+The power-key default is `toggle-blank`; GNOME's automatic suspend timers
+remain disabled and the separate DC-1 sleep service remains opt-in. Existing
+explicit user preferences override schema defaults. Upgrades from 48 should
+check for an explicitly saved `power-button-action='nothing'`, which meant
+blank in that fork, and migrate it to `toggle-blank` if the owner wants to
+retain that behavior.
+
 ## Orientation and session lifecycle
 
 The device package supplies `gnome-settings-daemon-mobile`, a SensorProxy
@@ -46,29 +69,17 @@ mounting and physical-pose acceptance.
 | Component | Purpose / constraint |
 | --- | --- |
 | `dc1-safe-area` | Insets UI from the bezel and rounded corners; lifts the unlock sheet above the OSK by padding the parent of `_stack`, not the background actor. Physical lock-screen acceptance remains pending. |
-| `dc1-session-compat` | Reads the shutdown capability through a signature-tolerant GDBus call. Recheck whether the installed shell/session pair still needs it before removal. |
+| `dc1-session-compat` | Retained for rollback to Shell 48, but no longer enabled by default. Shell 51 implements the current session interfaces and fixes its native button getter. |
 | Greeter schema override | Enables the on-screen keyboard so logout does not require a physical keyboard. |
 | GPU settings | Uses the helper/polkit path for min/max changes; periodic current-frequency reads run in a background worker. See [display](hw/display.md). |
 | Charging Profile | Shows PD and charger state, selects charge current, and controls charging mode, automatic updates and opt-in automatic sleep. Contract selection remains in kernel TCPM. See [power](power.md). |
 | Mutter `kms-modifiers` | Allows tiled Panfrost intermediates. 60 Hz remains preferred; landscape requires a GPU blit. |
 | Native PDF viewer | Chromium downloads PDFs for Papers to avoid costly browser rendering. |
 
-The 48.mobile.0 native `St.Button.get_pressed()` getter passes the button to
-`clutter_press_gesture_get_pressed()` instead of its click gesture. It returns
-false and emits a critical even for valid buttons. `dc1-session-compat`
-routes both JavaScript method and property reads through the real click
-gesture when that API is present, restoring the original descriptors when
-disabled. GJS's optimized property access would otherwise call the same
-broken native getter. This repairs pressed-state handling without changing
-touch calibration, gesture thresholds or event delivery. Remove the workaround
-when the mobile shell fixes its native getter.
-
-Run `gjs -m scripts/tests/test_dc1_button_pressed.js` for the offline state
-and cleanup checks. On the tablet,
-`sh scripts/tests/test_dc1_button_pressed_native.sh` compares both access
-paths against an actual Clutter click gesture in an isolated headless Mutter
-context. It does not replace the owner compositor. On the affected build the
-negative control emits two criticals; the patched reads emit none.
+Shell 51's `St.Button.get_pressed()` reads the actual click gesture. The
+48-only compatibility extension remains packaged for rollback and is rejected
+by Shell 51's version check. Its offline regression checks remain available
+with `gjs -m scripts/tests/test_dc1_button_pressed.js`.
 
 ## Chromium positional writes
 

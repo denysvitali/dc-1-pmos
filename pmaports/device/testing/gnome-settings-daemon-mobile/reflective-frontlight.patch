@@ -1,0 +1,57 @@
+Subject: [PATCH] power: allow an inverse ambient response for reflective displays
+
+Keep the existing native sensor claim, smoothing, dimming and slider bias.
+The default remains unchanged; the DC-1 device package opts in.
+
+--- a/data/org.gnome.settings-daemon.plugins.power.gschema.xml.in
++++ b/data/org.gnome.settings-daemon.plugins.power.gschema.xml.in
+@@ -31,6 +31,11 @@
+       <summary>Whether to hibernate, suspend or do nothing when inactive</summary>
+       <description>The type of sleeping that should be performed when the computer is inactive.</description>
+     </key>
++    <key name="ambient-inverted" type="b">
++      <default>false</default>
++      <summary>Reduce frontlight output as ambient light increases</summary>
++      <description>Use an inverse ambient-light response for reflective displays. The brightness slider still sets the preferred level.</description>
++    </key>
+     <key name="ambient-enabled" type="b">
+       <default>true</default>
+       <summary>Enable the ALS sensor</summary>
+--- a/plugins/power/gsd-power-manager.c
++++ b/plugins/power/gsd-power-manager.c
+@@ -23,1 +23,2 @@
+ #include "config.h"
++#include <math.h>
+@@ -2730,6 +2730,10 @@
+                         disable_power_saver (manager);
+                 return;
+         }
++        if (g_str_equal (key, "ambient-inverted")) {
++                manager->ambient_norm_required = TRUE;
++                return;
++        }
+         if (g_str_equal (key, "ambient-enabled")) {
+                 iio_proxy_maybe_claim_light (manager);
+ 		return;
+@@ -3001,9 +3005,20 @@
+         if (val_has == NULL || !g_variant_get_boolean (val_has))
+                 return;
+         val_als = g_dbus_proxy_get_cached_property (manager->iio_proxy, "LightLevel");
+-        if (val_als == NULL || g_variant_get_double (val_als) <= 0.f)
++        if (val_als == NULL)
+                 return;
+         ambient_last_absolute = g_variant_get_double (val_als);
++        if (!isfinite (ambient_last_absolute) || ambient_last_absolute < 0.f)
++                return;
++
++        /* Reflective displays need less frontlight when their surroundings
++         * provide more light. Preserve the sensor reading and apply the
++         * device policy here, before the existing normalization and filter.
++         * The offset keeps a valid zero-count reading finite in darkness. */
++        if (g_settings_get_boolean (manager->settings, "ambient-inverted"))
++                ambient_last_absolute = 1.0 / (1.0 + ambient_last_absolute);
++        else if (ambient_last_absolute == 0.f)
++                return;
+         g_debug ("Read absolute light level: %f", ambient_last_absolute);
+ 
+         /* the user has asked to renormalize */

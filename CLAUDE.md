@@ -60,14 +60,20 @@ replace a differing existing key or repository list silently.
 `SOURCE_DATE_EPOCH`. Reproduce those commits, never floating branches. Kernel
 source is the public kernel repository's `jagar` branch at `KERNEL_COMMIT`.
 
-Three overlays produce four APKs:
+Five overlays produce ten runtime APKs:
 
 | Recipe under `pmaports/device/testing/` | Staging / output |
 | --- | --- |
 | `device-daylight-jagar` | Upstream `device/testing/`; device APK |
 | `linux-postmarketos-mediatek-mt6789` | Upstream `device/testing/`; kernel and modules APKs |
-| `mutter-mobile` | Upstream `extra-repos/systemd/mutter-mobile`; compositor APK |
+| `mutter-mobile` | Upstream `extra-repos/systemd/mutter-mobile`; compositor, schemas and udev APKs |
+| `gnome-shell-mobile` | Upstream `extra-repos/systemd/gnome-shell-mobile`; Shell and schemas APKs |
+| `gnome-settings-daemon-mobile` | Upstream `extra-repos/systemd/gnome-settings-daemon-mobile`; settings daemon and systemd APKs |
 
+- Keep Shell, Mutter and settings-daemon on the matched `51.1.mobile.21`
+  source cohort. Settings uses Shell's native brightness capability interface;
+  the DC-1 opts into inverse ambient response and routes native targets through
+  its two-channel warmth mixer. Do not add a second sensor controller.
 - Bump a recipe's `pkgrel` whenever its recipe or effective inputs change.
   CI reuses unchanged versions; an existing published APK filename must
   retain identical bytes.
@@ -76,7 +82,7 @@ Three overlays produce four APKs:
   or build scripts.
 - The modules APK owns all of `/lib/modules`, including kmod indexes; the
   kernel APK depends on its exact version. Export, signing, installed-version
-  parity and rollback cover all four APKs.
+  parity and rollback cover all ten runtime APKs.
 - Keep `usb-host.config` optional dock drivers modular and essential
   controller/gadget/HID/storage drivers built in. Check both `y` and `m`
   after Kconfig. The installer stages only its gadget-module allowlist.
@@ -163,7 +169,7 @@ and the LocalSearch musl `LD_LIBRARY_PATH` drop-in for confined extractors.
   streamer. Normal system initramfs boots start neither; physical USB rescue
   is reserved for failed boots and installer mode. Charging mode excludes
   USB networking and DHCP as well as remote login daemons.
-- Automatic updates and parity checks cover all four overlays. Respect
+- Automatic updates and parity checks cover all ten runtime APKs. Respect
   `/var/lib/dc1/no-auto-update`. Upstream versions must strictly lose to ours;
   bump `pkgrel` rather than bypassing the comparison gates.
 

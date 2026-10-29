@@ -115,9 +115,12 @@ pmb() {
 pmb apkbuild_parse device-daylight-jagar >/dev/null
 pmb apkbuild_parse linux-postmarketos-mediatek-mt6789 >/dev/null
 pmb apkbuild_parse mutter-mobile >/dev/null
+pmb apkbuild_parse gnome-settings-daemon-mobile >/dev/null
+pmb apkbuild_parse gnome-shell-mobile >/dev/null
 if [ "$verify_sources" = yes ]; then
 	pmb checksum --verify device-daylight-jagar \
-		linux-postmarketos-mediatek-mt6789 mutter-mobile
+		linux-postmarketos-mediatek-mt6789 mutter-mobile \
+		gnome-settings-daemon-mobile gnome-shell-mobile
 fi
 if [ "$validate_only" = yes ]; then
 	echo "validated pinned postmarketOS package metadata"
@@ -132,11 +135,18 @@ fi
 # and fail the build instead -- the fix is a pkgrel bump, never a gate bypass.
 # Build job only: --validate-only exited above and verify.sh stays offline.
 overlay_dir="$script_dir/../pmaports/device/testing"
-for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
+for package in gnome-settings-daemon-mobile gnome-settings-daemon-mobile-systemd \
+	gnome-shell-mobile gnome-shell-mobile-schemas \
+	mutter-mobile mutter-mobile-schemas mutter-mobile-udev linux-postmarketos-mediatek-mt6789 \
 	linux-postmarketos-mediatek-mt6789-modules \
 	device-daylight-jagar; do
 	recipe=$package
-	[ "$package" != linux-postmarketos-mediatek-mt6789-modules ] || recipe=${package%-modules}
+	case "$package" in
+		*-modules) recipe=${package%-modules} ;;
+		*-schemas) recipe=${package%-schemas} ;;
+		*-systemd) recipe=${package%-systemd} ;;
+		*-udev) recipe=${package%-udev} ;;
+	esac
 	apkbuild="$overlay_dir/$recipe/APKBUILD"
 	pkgver=$(awk -F= -v field=pkgver '
 		$1 == field { gsub(/"/, "", $2); print $2; exit }' "$apkbuild")
@@ -169,7 +179,9 @@ for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
 	done
 done
 
+pmb build --arch=aarch64 gnome-settings-daemon-mobile
 pmb build --arch=aarch64 mutter-mobile
+pmb build --arch=aarch64 gnome-shell-mobile
 
 # GitHub /archive tarballs have landed at full size with a bad sha512
 # (CI 2026-08-27, twice). Prefetch and verify the kernel distfile before

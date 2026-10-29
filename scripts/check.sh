@@ -71,7 +71,7 @@ for group do
 	case "$group" in
 		syntax) require sh ;;
 		packaging)
-			require sh python3 gjs git openssl zstd tar gzip sha256sum sha512sum \
+			require sh python3 gjs "${CC:-cc}" git openssl zstd tar gzip sha256sum sha512sum \
 				mkfs.ext4 e2fsck dumpe2fs debugfs
 			;;
 		installer) require sh python3 gcc "${CC:-cc}" openssl mkfs.ext4 blkid pkg-config; require_libdrm ;;
