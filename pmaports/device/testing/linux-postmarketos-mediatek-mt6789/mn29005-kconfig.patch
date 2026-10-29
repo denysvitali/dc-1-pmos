@@ -8,7 +8,7 @@ MN29005 raw ALS build integration. Driver source is supplied by the aport.
  
 +config MN29005
 +	tristate "MN29005 raw ambient light sensor"
-+	depends on I2C
++	depends on I2C && PM
 +	help
 +	  Fixed-gain raw ambient light readings for revision 0x1288.
 +	  Lux conversion, proximity and interrupts are not supported.
