@@ -1,0 +1,154 @@
+Subject: [PATCH] Fix mobile lock cancellation and panel brightness persistence
+
+Handle panels without EDID strings, retain the screen shield cancellation
+interface, and observe display power through Mutter's supported D-Bus API.
+
+--- a/js/misc/brightnessManager.js
++++ b/js/misc/brightnessManager.js
+@@ -8,23 +8,23 @@
+ import * as SignalTracker from '../misc/signalTracker.js';
+ 
+ const SCALE_VALUE_N_STEPS = 20;
+ const SCALE_VALUE_CHANGE_EPSILON = 0.001;
+ 
+ const KEYBINDING_SCHEMA = 'org.gnome.shell.keybindings';
+ const POWER_SCHEMA = 'org.gnome.settings-daemon.plugins.power';
+ 
+ class MonitorId {
+     constructor(options) {
+-        this._vendor = options.vendor;
+-        this._product = options.product;
+-        this._serial = options.serial;
++        this._vendor = options.vendor ?? '';
++        this._product = options.product ?? '';
++        this._serial = options.serial ?? '';
+         this._colorMode = options.colorMode;
+         this._connector = options.connector;
+     }
+ 
+     static fromMonitor(logicalMonitor) {
+         const monitor = logicalMonitor.get_monitors()[0];
+         return new MonitorId({
+             vendor: monitor.get_vendor(),
+             product: monitor.get_product(),
+             serial: monitor.get_serial(),
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -690,20 +690,24 @@
+     }
+ 
+     _escape() {
+         this._showClock();
+     }
+ 
+     cancelUnlock() {
+         this._showClock();
+     }
+ 
++    cancel() {
++        this.cancelUnlock();
++    }
++
+     _swipeBegin(tracker, monitor) {
+         if (monitor !== Main.layoutManager.primaryIndex)
+             return;
+ 
+         this._promptBox.remove_transition('translation-y');
+ 
+         const progress = 1 - (this._promptBox.translation_y / this._promptBoxHeight);
+         tracker.confirmSwipe(this._promptBoxHeight,
+             [0, 1],
+             progress,
+--- a/js/ui/screenShield.js
++++ b/js/ui/screenShield.js
+@@ -13,20 +13,24 @@
+ import * as OVirt from '../gdm/oVirt.js';
+ import * as LoginManager from '../misc/loginManager.js';
+ import * as Lightbox from './lightbox.js';
+ import * as Main from './main.js';
+ import * as Overview from './overview.js';
+ import * as MessageTray from './messageTray.js';
+ import * as ShellDBus from './shellDBus.js';
+ import * as SmartcardManager from '../gdm/smartcardManager.js';
+ 
+ import {adjustAnimationTime} from '../misc/animationUtils.js';
++import {loadInterfaceXML} from '../misc/fileUtils.js';
++
++const DisplayConfigProxy = Gio.DBusProxy.makeProxyWrapper(
++    loadInterfaceXML('org.gnome.Mutter.DisplayConfig'));
+ 
+ const SCREENSAVER_SCHEMA = 'org.gnome.desktop.screensaver';
+ const LOCK_ENABLED_KEY = 'lock-enabled';
+ const LOCK_DELAY_KEY = 'lock-delay';
+ 
+ const LOCKDOWN_SCHEMA = 'org.gnome.desktop.lockdown';
+ const DISABLE_LOCK_KEY = 'disable-lock-screen';
+ 
+ const LOCKED_STATE_STR = 'screenShield.locked';
+ 
+@@ -103,25 +107,32 @@
+ 
+         this._credentialManagers = {};
+         this.addCredentialManager(OVirt.SERVICE_NAME, OVirt.getOVirtCredentialsManager());
+ 
+         this._loginManager = LoginManager.getLoginManager();
+         this._loginManager.connect('prepare-for-sleep',
+             this._prepareForSleep.bind(this));
+ 
+         // The unlock prompt is of no use while the display is off; go back to
+         // the clock page whenever the display leaves the ON state.
+-        this._monitorManager = global.backend.get_monitor_manager();
+-        this._monitorManager.connectObject('power-save-mode-changed', () => {
+-            if (this._monitorManager.power_save_mode !== Meta.PowerSaveMode.ON)
+-                this.cancelUnlock();
+-        }, this);
++        // Mutter exposes the current mode through DisplayConfig, not through
++        // a public MonitorManager property or Meta.PowerSaveMode enum.
++        this._displayConfigProxy = new DisplayConfigProxy(Gio.DBus.session,
++            'org.gnome.Mutter.DisplayConfig',
++            '/org/gnome/Mutter/DisplayConfig', (proxy, error) => {
++                if (error) {
++                    logError(error, 'Error monitoring display power state');
++                    return;
++                }
++                proxy.connect('g-properties-changed',
++                    this._displayConfigChanged.bind(this));
++            });
+ 
+         this._loginSession = null;
+         this._getLoginSession();
+ 
+         this._settings = new Gio.Settings({schema_id: SCREENSAVER_SCHEMA});
+         this._settings.connect(`changed::${LOCK_ENABLED_KEY}`, this._syncInhibitor.bind(this));
+ 
+         this._lockSettings = new Gio.Settings({schema_id: LOCKDOWN_SCHEMA});
+         this._lockSettings.connect(`changed::${DISABLE_LOCK_KEY}`, this._syncInhibitor.bind(this));
+ 
+@@ -398,20 +409,27 @@
+ 
+     _activateDialog() {
+         if (this._isLocked) {
+             this._ensureUnlockDialog(true /* allowCancel */);
+             this._dialog.activate();
+         } else {
+             this.deactivate(true /* animate */);
+         }
+     }
+ 
++    _displayConfigChanged(proxy, properties) {
++        const mode = properties.lookup_value('PowerSaveMode', null)?.unpack();
++        // 1/2/3 are standby/suspend/off; 0 is on and -1 is unsupported.
++        if (mode > 0)
++            this.cancelUnlock();
++    }
++
+     _maybeCancelDialog() {
+         if (!this._dialog)
+             return;
+ 
+         this._dialog.cancel();
+     }
+ 
+     _becomeModal() {
+         if (this._grab)
+             return;

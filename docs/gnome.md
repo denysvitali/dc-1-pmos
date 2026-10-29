@@ -40,6 +40,11 @@ capability; the device integration does not force the property to true.
 See [frontlight policy](hw/display.md#frontlight) for the reflective response
 and two-channel warmth integration.
 
+The Shell overlay also handles missing panel EDID strings when saving
+brightness, preserves the lock dialog's cancellation interface, and observes
+display power through Mutter's public DisplayConfig D-Bus property. The
+mobile source's private power-state API is not available to GJS.
+
 The power-key default is `toggle-blank`; GNOME's automatic suspend timers
 remain disabled and the separate DC-1 sleep service remains opt-in. Existing
 explicit user preferences override schema defaults. Upgrades from 48 should
@@ -80,6 +85,11 @@ Shell 51's `St.Button.get_pressed()` reads the actual click gesture. The
 48-only compatibility extension remains packaged for rollback and is rejected
 by Shell 51's version check. Its offline regression checks remain available
 with `gjs -m scripts/tests/test_dc1_button_pressed.js`.
+
+Warmth and safe-area controls require GNOME's global Extensions switch to be
+on. A saved `org.gnome.shell disable-user-extensions=true` preference disables
+both even when their names appear in `enabled-extensions`; package upgrades
+preserve that owner preference.
 
 ## Chromium positional writes
 

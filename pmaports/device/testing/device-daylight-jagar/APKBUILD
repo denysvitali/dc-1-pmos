@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=121
+pkgrel=122
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -21,7 +21,7 @@ depends="
 	alsa-utils
 	curl
 	gnome-settings-daemon-mobile=999951.1.21-r0
-	gnome-shell-mobile=999951.1.21-r0
+	gnome-shell-mobile=999951.1.21-r1
 	gtk4.0
 	iio-sensor-proxy
 	libadwaita
