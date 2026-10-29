@@ -53,6 +53,7 @@ python3 "$script_dir/tests/test_verify_kernel_modules.py"
 sh -n "$script_dir/kernel-local.sh"
 python3 "$script_dir/tests/test_kernel_local_install.py"
 python3 "$script_dir/tests/test_kernel_config.py"
+python3 "$script_dir/tests/test_mn29005.py"
 python3 "$script_dir/tests/test_mt6375_input_limits.py"
 
 (

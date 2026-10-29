@@ -1,0 +1,27 @@
+MN29005 raw ALS build integration. Driver source is supplied by the aport.
+
+--- a/drivers/iio/light/Kconfig
++++ b/drivers/iio/light/Kconfig
+@@ -806,4 +806,15 @@
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called zopt2201.
+ 
++config MN29005
++	tristate "MN29005 raw ambient light sensor"
++	depends on I2C
++	help
++	  Fixed-gain raw ambient light readings for revision 0x1288.
++	  Lux conversion, proximity and interrupts are not supported.
++	  The board must establish AP I2C ownership before enabling its DT node.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called mn29005.
++
+ endmenu
+--- a/drivers/iio/light/Makefile
++++ b/drivers/iio/light/Makefile
+@@ -74,3 +74,4 @@
+ obj-$(CONFIG_VEML6075)		+= veml6075.o
+ obj-$(CONFIG_VL6180)		+= vl6180.o
+ obj-$(CONFIG_ZOPT2201)		+= zopt2201.o
++obj-$(CONFIG_MN29005)		+= mn29005.o

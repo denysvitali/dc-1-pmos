@@ -58,10 +58,10 @@ A development unit upgraded over time does not replace fresh-rootfs acceptance.
   while charging; if `0x55` stays silent on every bus, try a 100 kHz test
   overlay before treating the pack connector as a hardware fault.
   See [power hardware](hw/power.md).
-- **Ambient light/proximity:** identify the i2c1 `0x49` part and its protocol
-  before binding a driver. Keep AP/SCP pin ownership exclusive. The survey's
-  opt-in single pointer select (`0x00`) is the next step after the
-  current-address captures. See [sensors](hw/sensors.md).
+- **Ambient light/proximity:** qualify the native raw ALS driver across cold
+  boots and sensor faults, calibrate the reflective display's light policy,
+  and identify a safe proximity configuration before exposing that channel.
+  Keep AP/SCP pin ownership exclusive. See [sensors](hw/sensors.md).
 - **Secondary charger:** RT9471 stays unbound. The mainline driver resets the
   chip, sets `CHG_EN`, clears JEITA and enables BC1.2 detection at probe, so
   it is not a safe first bind. Gates, in order: survey evidence (ID, GPIO151

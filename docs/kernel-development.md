@@ -109,3 +109,11 @@ If installation stops with a pending transaction, inspect its root-only
 `pending.json`, boot state and journal before retrying or rebooting. The
 script refuses to overwrite a pending transaction. Installation without
 `--reboot` leaves the verified new slot armed and prints the records path.
+
+### Ambient-light device-tree binding
+
+The MN29005 IIO module is discovered through `light-sensor@49` on AP i2c1.
+Introducing that node requires a full image with the updated DTB: a
+kernel-only update preserves the running DTB and cannot add the sensor.
+The compiled DTB must retain AP GPIO132/133 pinctrl and disable SCP before
+activation. See [sensor constraints](hw/sensors.md#ambient-light-at-i2c1-0x49).

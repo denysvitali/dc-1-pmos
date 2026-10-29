@@ -1,21 +1,17 @@
-# Sensors — measurement record
+# Sensors
 
 Deep-dive for the status-table row *Sensors* (accelerometer, hall switch,
 ambient-light part, orientation chain) in [README.md](../../README.md#hardware-support-at-a-glance).
-Newest facts last.
 
 ## Bus ownership
 
-The sensor buses are SCP-connected but reachable from the AP when the
-pins are re-muxed; the SCP node is enabled with only its mailbox driver
-bound and the core stays halted (wake requests time out), so no firmware
-owns the pins:
+The sensor buses are reachable from the AP with their AP pinmux. The unused
+SCP node is disabled so no sensorhub firmware can compete for the pins.
 
 - GPIO142/143, AP i2c6 at `0x1101a000`, exposes the MCube MC3416 at
   `0x4c` (`mcube,mc3416`, `drivers/iio/accel/mc3230.c`).
-- GPIO132/133, AP i2c1 at `0x11e01000`, exposes an ambient-light/
-  proximity part at `0x49`. The bus is now claimed by the AP for controlled
-  bring-up, but the sensor itself remains deliberately unbound.
+- GPIO132/133, AP i2c1 at `0x11e01000`, exposes the MN29005-compatible
+  ambient-light part at `0x49`, revision `0x1288`, through the native IIO driver.
 
 Do not add an AP sensor node while also adding an SCP/sensorhub owner for
 the same pins. There is still no gyro or magnetometer.
@@ -84,66 +80,121 @@ physical scanout is 180° from the glass; if a future DTS
 `rotation = <180>` property is added, remove the same 180° compensation
 from this mount-matrix in that change to avoid double rotation.
 
-## Ambient-light / proximity part at i2c1 `0x49`
+## Ambient light at i2c1 `0x49`
 
-**Identification documented 2026-08-22; protocol still unknown:** the part
-is pinned only to family level — the board-specific tinysys SCP sensorhub
-firmware read from this device's own UFS names its sole ALS/PS driver
-family `mn29xxx` beside standalone `memsic` (MEMSic) strings, which also
-positively exclude stk/tmd/apds/ltr/epl candidates. A same-day live probe
-(bit-banged through `/dev/gpiochip0` with nothing driving the SCP) found
-exactly one ACKing device at `0x49`, but it NAKs every write-data byte
-and returns constant bytes — no register protocol reachable, hence no
-ID-register read, hence no exact part number and no basis for a driver
-candidate; the kernel tree carries no driver for any MN29 part. Caveat:
-the probe ran before any SCP initialization, so AP-side behaviour may
-differ once that domain runs — do not conclude the part is broken from AP
-probes alone.
+The `mn29005` IIO driver supports fixed-gain raw ambient-light counts for
+revision `0x1288`. Its protocol source is the GPL driver published by
+[OnePlusOSS at commit 48f1797695e24d46986a7c87dd91dd21cbf8c342](https://github.com/OnePlusOSS/android_kernel_oneplus_mt6893/tree/48f1797695e24d46986a7c87dd91dd21cbf8c342/drivers/misc/mediatek/sensor/2.0/mn29005).
+The register-address read of `0x03` independently returned `0x88 0x12`
+on the DC-1. The physical package marking has not been inspected; the
+name identifies the matching public protocol. Firmware, Android libraries
+and a sensorhub service are not runtime dependencies.
 
-**2026-08-28 AP path verified:** the shipped DT enables AP i2c1 and
-muxes GPIO132/133 to SCL1/SDA1, using the same measured AP-bus-ownership
-approach as i2c6. The sensor has no child node or compatible: an exact MN29
-part identity and register protocol are still missing, and a guessed binding
-could change its mode without any safe way back. The device package ships
-root-only `dc1-mn29-probe` (`sudo dc1-mn29-probe`), which checks only the
-address ACK on `/dev/i2c-1`; it never writes a byte. The original r81/r85
-helper used a zero-length message with a null buffer, which `i2c-mt65xx`
-rejects locally with `-EINVAL`; its `no ACK` result on the first r50 boot was
-therefore not a bus measurement. The corrected r86 helper performs a one-byte
-read and reports the actual ioctl error. Built directly from the r86
-source and run on that same boot, it returned `ACK at i2c1 0x49 (read 0x00)`.
-A repeat returned `0x27`; the byte is whatever the sensor's current internal
-pointer exposes and has no protocol meaning yet. The ACK closes
-controller/pinmux reachability without writing or changing sensor state. It
-does not provide ambient light or proximity readings; protocol identification
-and a real driver remain open.
+The kernel builds `CONFIG_MN29005=m` and adds `light-sensor@49` to the
+existing AP i2c1 controller. The OF match table and exported module alias
+let the normal udev coldplug path load the driver. No custom service,
+debugfs check or userspace `new_device` write is needed for normal boot.
 
-The mainboard carries a connector explicitly labelled Light Sensor
-(Daylight publishes nothing about sensors).
+The node reuses `mediatek,mn29xxxals` from the public protocol driver; the
+native driver's revision check narrows support to `0x1288`. AP pinctrl retains
+GPIO132/133 and the unused SCP sensorhub node is explicitly disabled so it
+cannot later compete for the sensor buses. The accelerometer's i2c6 setup is
+unchanged. A full image with the updated DTB is required; a kernel-only update
+preserves the old DTB and will not discover this sensor. Do not manually create
+a second client when the DT node already owns address `0x49`.
 
-**2026-08-31 source audit and read-only measurement:** the [public MT8781 vendor
-kernel](https://gitlab.com/ubports/porting/reference-device-ports/halium13/volla-tablet/android_kernel_volla_mt8781)
-contains the Linux-side MediaTek sensorhub transport and represents
-light/proximity as single-value sensorhub events, but it contains no
-`mn29xxx` physical driver or register definitions. That driver is compiled
-into the closed SCP firmware, so the vendor kernel cannot establish a direct
-AP-I2C register map. [MEMSIC's public datasheet
-catalogue](https://www.memsic.com/datasheets) likewise has no MN29 part. The
-direct-I2C path therefore remains unidentified.
+The driver accepts only address `0x49`, revision `0x1288`, and an idle/off
+baseline. It uses a fixed ALS preset from the public driver, bounds readiness
+polling to 500 ms, serializes reads, and restores the captured control,
+configuration and thresholds after each sample. Restoration includes register
+readback. A failed restoration latches a fault and blocks further activation.
+It does not enable the proximity emitter, claim an interrupt, expose buffered
+samples or report lux, distance or threshold events.
 
-Device package r94 extends `dc1-mn29-probe` with bounded read-only sampling:
+Read raw counts by discovering the IIO device by name:
 
 ```sh
-sudo dc1-mn29-probe --samples 100 --interval-ms 100
+for device in /sys/bus/iio/devices/iio:device*; do
+    [ "$(cat "$device/name")" = mn29005 ] || continue
+    cat "$device/in_illuminance_raw"
+done
 ```
 
-The helper still performs only current-address reads: it sends no register
-address and writes no data byte. On the live device, 1,024 back-to-back reads
-were exactly periodic every 256 bytes (zero mismatches across three complete
-comparisons). A second 256-byte pass sampled at 100 ms intervals matched the
-first byte-for-byte, so the sequence remained fixed for 25.5 seconds. The
-current-address operation is therefore walking a static 256-byte register or
-configuration window; it is not returning a live light sample. This rules out
-a truthful read-only IIO prototype from the present evidence. The exact part
-and SCP register protocol remain mandatory before binding a child node or
-issuing a register-address write.
+To prevent automatic loading on subsequent boots, add `blacklist mn29005` to
+an owner-managed file under `/etc/modprobe.d/`. With module unloading disabled,
+already loaded code remains resident until reboot. A bound client can be
+unbound through `/sys/bus/i2c/drivers/mn29005/unbind` after stopping sensor
+readers. This does not delete the DT-owned client.
+Do not use I2C `delete_device` for it. Remove the blacklist to opt back in.
+
+Do not run `dc1-mn29-probe`, raw I2C tools or a second driver while the client
+is bound. The legacy helper reads the current address only; its output is
+not a light measurement. Earlier periodic byte sequences were a static
+register window and are superseded by the combined register transactions.
+
+### Evidence and remaining acceptance
+
+The offline harness executes the shipped C with negative and short I2C
+transfers at 42 failure points. It checks PM reference balance, identity and
+ownership refusals, readiness flags, saturation, timeout, restoration
+readback and fault latching. These tests do not simulate a physical stuck bus.
+The compiled DTB and module aliases must agree on the sensor compatible,
+and the DTB must retain AP pinctrl and a disabled SCP.
+
+Native measurements on 2026-10-28 responded to owner-controlled lighting
+with 10-sample medians of 3,152 and 552 counts; the ranges did not overlap.
+The sensor is behind the display, so this establishes a light response,
+not absolute lux or spectral accuracy.
+
+Kernel/modules r82 (Linux 7.2.13 build #83) and device r120 completed a
+guarded local boot on 2026-10-28. The module loaded from its DT node before
+desktop discovery, SensorProxy reported an ambient sensor, and the owner
+confirmed normal display and touch. Fifty reads completed without errors;
+p95 latency was 43.862 ms and maximum latency was 44.888 ms. Every read
+returned to runtime suspend, the accelerometer returned samples, and kernel
+taint remained zero with no matching sensor/I2C faults in the boot log.
+
+That test used the same driver source on a newer kernel than this repository's
+current base, in a local continuity image preserving the previous boot DT
+except for the sensor node and SCP status. It does not qualify the normal
+published full-image DT. Published-image coldplug, real bus-error recovery,
+suspend/resume with an agreed wake path, and electrical idle/active power
+measurement remain open. Preserve the working fallback and coordinate codec
+activity before these tests. Do not turn on general sleep policy to qualify
+the sensor.
+
+Calibration belongs above the raw channel. Neutral offset `0` and gain `1`
+preserve counts; an adjusted value can use `max(0, raw - offset) * gain`.
+Reference measurements through the display are needed before calling the
+result lux. Automatic brightness needs separate policy qualification. Proximity requires
+separate evidence for emitter wiring, safe drive settings and measurement
+meaning before implementation.
+
+### GNOME automatic brightness
+
+GNOME Mobile 48 implements automatic brightness in
+`org.gnome.Shell.SensorDaemon`, using `iio-sensor-proxy` and the
+`org.gnome.settings-daemon.plugins.power ambient-enabled` setting. The
+standard settings-daemon algorithm is not the implementation used here.
+The Shell service uses a lux-to-nits curve; raw counts reported by SensorProxy
+as lux are still uncalibrated and require separate calibration/policy work.
+
+With iio-sensor-proxy 3.9, a sensor attached after login can leave GNOME with
+cached `HasAmbientLight=false`: the proxy sends availability changes only to
+clients that already claimed the sensor. A client that saw no sensor has no
+reason to claim it. In the bounded live test, restarting the Shell sensor
+service after attachment restored polling and changed the white frontlight
+from 89 to 105, then the test restored 89. This proves the read/write path,
+not the calibration or suitability of the curve for a reflective display.
+
+DT/module coldplug passed on the local build #83 image described above.
+The original Shell sensor-service process followed changing readings without
+a restart: the white frontlight rose from 10 to 255, then fell to 193 as
+readings dropped. Its log recorded the automatic adjustments. The test
+restored white to 10, amber to 2, and automatic brightness to disabled; the
+amber channel remained at 2 throughout.
+
+Coldplug does not repair the proxy's late-attachment notification bug.
+No GNOME or SensorProxy package patch is included in this driver change.
+The reflective response and dual-frontlight behavior need separate
+qualification. See [frontlight](display.md#frontlight).
