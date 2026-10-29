@@ -95,6 +95,12 @@ class KernelConfigTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(setting, result.stderr)
 
+    def test_no_build_dependency_on_own_modules(self):
+        result = self.run_recipe('printf "%s\\n" "${depends:-}"\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(any(dep.startswith("linux-postmarketos-mediatek-mt6789-modules")
+                             for dep in result.stdout.split()), result.stdout)
+
     def test_modules_split_keeps_tree_and_metadata_together(self):
         pkgdir = self.work / "pkg"
         tree = pkgdir / "lib/modules/test-release"
@@ -105,7 +111,9 @@ class KernelConfigTest(unittest.TestCase):
         (pkgdir / "boot").mkdir()
         (pkgdir / "boot/vmlinuz").write_bytes(b"kernel")
         subpkg = self.work / "modules-package"
-        result = self.run_recipe('printf "%s\\n" "$depends"\nmodules\nprintf "%s\\n" "$depends"\n',
+        result = self.run_recipe('build\npackage\n'
+                                 '[ "$depends" = "$pkgname-modules=$pkgver-r$pkgrel" ]\n'
+                                 'printf "%s\\n" "$depends"\nmodules\nprintf "%s\\n" "$depends"\n',
                                  subpkgdir=str(subpkg))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("linux-postmarketos-mediatek-mt6789-modules=", result.stdout)
