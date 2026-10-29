@@ -112,7 +112,10 @@ script refuses to overwrite a pending transaction. Installation without
 
 ### Ambient-light device-tree binding
 
-The MN29005 IIO module is discovered through `light-sensor@49` on AP i2c1.
+The pinned kernel source supplies the MN29005 driver, Kconfig entry and
+`light-sensor@49` DT node on AP i2c1. The package adds no local sensor driver
+or DT patch; `sensors.config` requires `CONFIG_MN29005=m` after Kconfig resolves
+the dependencies.
 Introducing that node requires a full image with the updated DTB: a
 kernel-only update preserves the running DTB and cannot add the sensor.
 The compiled DTB must retain AP GPIO132/133 pinctrl and disable SCP before

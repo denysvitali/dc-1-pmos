@@ -134,9 +134,10 @@ register window and are superseded by the combined register transactions.
 
 ### Evidence and remaining acceptance
 
-The offline harness executes the shipped C with negative and short I2C
-transfers at 42 failure points. It checks PM reference balance, identity and
-ownership refusals, readiness flags, saturation, timeout, restoration
+The [kernel repository fault-injection harness](https://github.com/denysvitali/dc-1-linux-kernel/blob/d842efacd1751f0862b9306fa9fdc4a5e3461970/tools/testing/iio/test_mn29005.py)
+executes the driver C with negative and short I2C transfers at 42 failure points.
+It checks PM reference balance, identity and ownership refusals, readiness
+flags, saturation, timeout, restoration
 readback and fault latching. These tests do not simulate a physical stuck bus.
 The compiled DTB and module aliases must agree on the sensor compatible,
 and the DTB must retain AP pinctrl and a disabled SCP.
