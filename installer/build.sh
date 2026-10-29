@@ -104,7 +104,7 @@ REGDB_SIG_SIZE=1085
 REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e919179
 
 # Alpine edge/main aarch64 packages, pinned by exact version AND content hash
-# (verified 2026-10-18 against official artifacts with trusted Alpine signing
+# (verified 2026-10-29 against official artifacts with trusted Alpine signing
 # keys; replacement hashes confirmed by a second download). Edge removes
 # superseded builds, so audit every pin when refreshing unavailable packages.
 # A filename is not a content pin: mirrors may replace
@@ -112,13 +112,13 @@ REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e91917
 # downloaded APK is therefore verified before extraction.
 ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64"
 ALPINE_APKS="
-busybox-static-1.38.0-r7
-musl-1.2.6-r5
-curl-8.22.0-r0
-libcurl-8.22.0-r0
-ca-certificates-bundle-20260909-r0
-brotli-libs-1.2.0-r1
-c-ares-1.34.8-r0
+busybox-static-1.38.0-r8
+musl-1.2.6-r6
+curl-8.23.0-r0
+libcurl-8.23.0-r0
+ca-certificates-bundle-20261020-r0
+brotli-libs-1.2.1-r0
+c-ares-1.34.9-r0
 libcrypto3-3.5.9-r0
 libssl3-3.5.9-r0
 libidn2-2.3.8-r0
@@ -135,8 +135,8 @@ dbus-libs-1.16.2-r4
 libnl3-3.12.0-r0
 pcsc-lite-libs-2.5.2-r0
 dropbear-2026.94-r0
-utmps-libs-0.1.3.4-r0
-skalibs-libs-2.15.1.0-r0
+utmps-libs-0.1.3.4-r1
+skalibs-libs-2.16.0.0-r0
 e2fsprogs-1.47.4-r0
 e2fsprogs-extra-1.47.4-r0
 e2fsprogs-libs-1.47.4-r0
@@ -146,13 +146,13 @@ libuuid-2.42.4-r3
 libeconf-0.8.4-r0
 "
 ALPINE_APK_SHA256S="
-6e1b8ecc3fb6a991025127120378521f481daa886e7f346f1089019d9741df2f busybox-static-1.38.0-r7
-d59b8eecf8bd212162171bd816861c19319a5616e33380ae68fa9fcb7d2f4d1b musl-1.2.6-r5
-e5b5f41ce308324fe0b7102a67e176dc4a841fc0400ee1139a454d99bf09749f curl-8.22.0-r0
-a0bcde87175e2e73d087e8626b8c606d83c61851b06f36e108abff4f1d8a20e9 libcurl-8.22.0-r0
-e85937873b0c571353aa521dec19753156a2b976dde278d0703db6e5e1e0071f ca-certificates-bundle-20260909-r0
-1d355054e19b7dd843d225c878a8e92b205270f4f7c89fb218151d21c9ae87e0 brotli-libs-1.2.0-r1
-b16ca578a8718851e2d3068120c0e60753a66f2df1fe44c530198b3ef5882b67 c-ares-1.34.8-r0
+5af651137b4279d641612bfd0ed00b4f276c824f9d70037c0c576bffa1f613ff busybox-static-1.38.0-r8
+180b2e52dbd452919c3271ed9dddf06826cee9a387650c81c00c7ac393031c5b musl-1.2.6-r6
+31834a23bc6ca602b55a3be3070e228a13ab66a99c45d61bd8a22697b9f19503 curl-8.23.0-r0
+270a44c2b69463e910f13225c289d478242b86a92d0d570d0839a74549e82cd5 libcurl-8.23.0-r0
+7a13e1d99c44bce766e03c3a5c44029138ba91e8c51fd8a862d49f826e6f3e8c ca-certificates-bundle-20261020-r0
+4a582d94a8a524de85133942d98dc2654fe7b9a9b39f200a7de14fda2e276b8f brotli-libs-1.2.1-r0
+4b70b88a707295c546fc9760628889fe61356cb1fa10a936defef0ef587771e4 c-ares-1.34.9-r0
 ddfed8feb861b75bc002c3bc4a8453cee00f46db822dadc40dabb2334c47b585 libcrypto3-3.5.9-r0
 90f714960f379016298504d2afac67196814fff6f78ad9844348dda74cc99cb0 libssl3-3.5.9-r0
 3c6f9af20e672e880e2d719445750ad5ba41dceb53158fef9f256f17dc828f09 libidn2-2.3.8-r0
@@ -169,8 +169,8 @@ a552fb542888b300e353c960be884d448e789e8fb96be5e12873f0102540c363 nghttp2-libs-1.
 462da328a92f1f5bd9089b8055e542afba3d91015a820191e36ad3a1fb2011a9 libnl3-3.12.0-r0
 fee7634ca4f4d9527ac5fb769ae7ca2dd7e1693d7fb3d647366c76d087d5642a pcsc-lite-libs-2.5.2-r0
 445c25a5cbd99ce1881df61fd1a191705e937e0c6e9963cbb8b04f2acf3541ac dropbear-2026.94-r0
-230e4a1749df6ece26852f552e84789fac750eef613e6f9cca0c5aedcd75514a utmps-libs-0.1.3.4-r0
-f14960b7a1d40c20d6c045874682f73c0aa4e8f36bae11583d3b860fb10b6764 skalibs-libs-2.15.1.0-r0
+cbedd95dd5cef9e58250cc9042ab0d0e0508a799e7649a855fa12f25ba18ee1f utmps-libs-0.1.3.4-r1
+2b8cfda265b0a37bba6809806bf5b8fff6fc2dcc14745cf754bf5e93b7411ac9 skalibs-libs-2.16.0.0-r0
 7071d075262b1fdd3996e86c7955f219e00ce55e0774e54a62566c2bd11c493f e2fsprogs-1.47.4-r0
 44096fa251d7cf4a5d8c6c1ffb4014e28fc63ccd4e02534d0e2908fc5e7bc850 e2fsprogs-extra-1.47.4-r0
 476555b7a8178a8acf7cd94e0b3d10deb12ac236b9e78e04fc1648f0a29e3ea5 e2fsprogs-libs-1.47.4-r0
