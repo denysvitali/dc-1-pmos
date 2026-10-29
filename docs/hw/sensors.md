@@ -134,7 +134,7 @@ register window and are superseded by the combined register transactions.
 
 ### Evidence and remaining acceptance
 
-The [kernel repository fault-injection harness](https://github.com/denysvitali/dc-1-linux-kernel/blob/d842efacd1751f0862b9306fa9fdc4a5e3461970/tools/testing/iio/test_mn29005.py)
+The [kernel repository fault-injection harness](https://github.com/denysvitali/dc-1-linux-kernel/blob/bbef344a9ab87c2ba961d890cb01b9c3cf2ceeb7/tools/testing/iio/test_mn29005.py)
 executes the driver C with negative and short I2C transfers at 42 failure points.
 It checks PM reference balance, identity and ownership refusals, readiness
 flags, saturation, timeout, restoration

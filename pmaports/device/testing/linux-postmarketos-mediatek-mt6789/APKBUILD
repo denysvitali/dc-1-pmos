@@ -1,7 +1,7 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=linux-postmarketos-mediatek-mt6789
 pkgver=7.2_rc5_git20260819
-pkgrel=73
+pkgrel=74
 pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
 arch="aarch64"
 _carch="arm64"
@@ -31,7 +31,7 @@ makedepends="
 "
 
 _repository="dc-1-linux-kernel"
-_commit="d842efacd1751f0862b9306fa9fdc4a5e3461970"
+_commit="bbef344a9ab87c2ba961d890cb01b9c3cf2ceeb7"
 # Native ALS, display-resume fixes and shallow WFI support are in this pin.
 # The kernel source tarball supplies the base config. The config used to be
 # fetched separately from raw.githubusercontent.com under a commit-independent
@@ -262,7 +262,7 @@ modules() {
 }
 
 sha512sums="
-aa87a02875edfd055c5a684a6ef8c55a5520f78489f304856d0cf504b8df3af20b4d8a8e3d07b4213c7cd09b0adfd6641c9f58fe1751e5293cc0d2775f09a423  linux-postmarketos-mediatek-mt6789-d842efacd1751f0862b9306fa9fdc4a5e3461970.tar.gz
+f20f952f291589acc5e4b831c8c02740bda4b7f2fd32dbf1f2c5a0a68e2f6597130b8bc92e14902ec3d4afeb33a70a5cddb7af901c876d3bd0c3af3a590d528c  linux-postmarketos-mediatek-mt6789-bbef344a9ab87c2ba961d890cb01b9c3cf2ceeb7.tar.gz
 35e0cbe0891e1c696a927c3f0e83207ecff9a9a05302336b2fb76a07fcc099f41748d716c99c6fed9d6e4aa3368dbe088178985ad5fd70ce4b4b87b3dc197f57  sdcard.config
 91cdf92c1f37efb6b8e3ebc691c1ce97d4a93acc737aa5ecd4f2943943734ab2d5fa73899e6f5d254dc57ec9fe15f75813cd7008b128982a3fc1cfa19dc5fc6f  latency.config
 4be263aa63ccd85cecda1c900f5210eab22d2305ef88330734afc68e8151682da88950c53a6fef5aed0161b524d0d6b40df3ca7da81468005b769c267e84fc42  suspend.config
