@@ -26,6 +26,11 @@
         white channel's current level on first start.
       </description>
     </key>
+    <key name="native-brightness-migrated" type="b">
+      <default>false</default>
+      <summary>Saved brightness has been transferred to GNOME 51</summary>
+      <description>Prevents a later session from overwriting GNOME's saved monitor brightness with the older frontlight setting.</description>
+    </key>
     <key name="warmth" type="d">
       <default>0.0</default>
       <range min="0.0" max="1.0"/>

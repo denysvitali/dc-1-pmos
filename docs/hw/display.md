@@ -294,16 +294,25 @@ the [desktop guide](../gnome.md#chromium-webgpu) for restart and override behavi
 
 ## Frontlight
 
-Dual RT4539 backlight drivers: `lcd-backlight` (white, i2c-5) and
-`lcd-backlight-amber` (amber, i2c-2). GNOME binds exactly one backlight
-device to the internal display — `gsd-power` takes the first `firmware` >
-`platform` > `raw` match, which is always the white one — so its Settings
-slider drives white alone. The `dc1-warmth@denv.it` shell extension
-shipped in the device package adds a quick-settings temperature slider
-that mixes both channels over one shared luminance: the lower half ramps
-amber up over full white, the upper half dims white, reaching pure amber
-(white fully off) at max. GNOME's own brightness controls set the
-luminance; the extension persists it and tells gsd's echoes of its own
-white writes apart from real brightness changes by comparing sysfs against
-its last write. Writes go through logind's `Session.SetBrightness`, no
-root needed.
+Dual RT4539 backlight drivers expose `lcd-backlight` (white, i2c-5) and
+`lcd-backlight-amber` (amber, i2c-2). GNOME Mobile 51's native brightness
+manager owns the slider, automatic target, idle dimming and saved monitor
+brightness. The `dc1-warmth@denv.it` extension routes its built-in display
+output through the existing two-channel mixer, preserving the temperature
+crossfade and logind's `Session.SetBrightness` permissions. White-channel
+uevents are not treated as total luminance, so pure amber does not reset the
+slider or feed an automatic target back into the user's preference.
+
+The matched settings daemon consumes SensorProxy and retains its native
+normalization and smoothing. The DC-1 schema override enables
+`ambient-inverted`: it transforms a finite nonnegative raw reading to
+`1 / (1 + reading)` before normalization, increasing frontlight in darkness
+and reducing it as ambient light rises. Zero remains a valid dark reading;
+negative or nonfinite readings are ignored. This policy does not convert
+raw counts into calibrated lux. Automatic brightness remains controllable
+through Settings, and the brightness slider sets the native manual bias.
+
+The extension retains the older GSD echo-tracking path for a rollback to
+GNOME Mobile 48. The compositor upgrade, automatic response, amber mixing,
+blank/wake, and lock-screen controls require validation on the same
+candidate package set before marking hardware acceptance complete.

@@ -1,0 +1,142 @@
+# Forked from Alpine to add systemd!
+# Co-Maintainer: Pablo Correa Gomez <pabloyoyoista@postmarketos.org>
+# Co-Maintainer: Achill Gilgenast <achill@achill.org>
+maintainer="Stefan Hansson <newbyte@postmarketos.org>"
+pkgname=gnome-shell-mobile
+pkgver=999951.1.21
+pkgrel=1
+pkgdesc="GNOME shell"
+url="https://gitlab.gnome.org/verdre/gnome-shell-mobile"
+# armhf: gjs -> mozjs
+arch="aarch64"
+license="GPL-2.0-or-later"
+depends="
+	accountsservice
+	adwaita-fonts
+	adwaita-icon-theme
+	desktop-file-utils
+	gnome-bluetooth
+	gnome-control-center
+	gnome-shell-mobile-schemas=$pkgver-r$pkgrel
+	mutter-mobile=$pkgver-r0
+	gsettings-desktop-schemas>=46
+	gst-plugin-pipewire
+	gst-plugins-good
+	gstreamer
+	ibus
+	libglycin
+	libgnome-qr-4
+	librsvg
+	networkmanager
+	systemd
+	tecla
+	unzip
+	upower
+	"
+makedepends="
+	asciidoc
+	evolution-data-server-dev evolution-dev
+	gcr4-dev
+	gjs-dev>=1.78.0
+	gnome-autoar-dev
+	gnome-bluetooth-dev
+	gnome-control-center-dev
+	gnome-desktop-dev>=44.0
+	gobject-introspection-dev
+	gstreamer-dev
+	ibus-dev
+	libcanberra-dev
+	libnma-dev
+	librsvg-dev
+	libxml2-dev
+	libxml2-utils
+	meson
+	mutter-mobile-dev=$pkgver-r0
+	libglycin-dev
+	libadwaita-dev
+	gtk4.0-dev
+	networkmanager-dev
+	pipewire-dev
+	polkit-dev
+	pulseaudio-dev
+	py3-docutils
+	py3-setuptools
+	python3
+	sassc
+	startup-notification-dev
+	systemd-dev
+	tecla-dev
+	"
+checkdepends="
+	mesa-dri-gallium
+	xvfb-run
+	"
+	# gdm is also needed but introduces circular dep
+provides="gnome-shell=$pkgver-r$pkgrel"
+subpackages="
+	$pkgname-dbg
+	$pkgname-doc
+	$pkgname-lang
+	$pkgname-schemas::noarch
+	"
+_commit="d444fb8b8de352309bdddeb15a58f9ad51acb9da"
+source="
+	gnome-shell-mobile-$_commit.tar.gz::https://gitlab.gnome.org/verdre/gnome-shell-mobile/-/archive/$_commit/gnome-shell-mobile-$_commit.tar.gz
+	libgnome-volume-control-0a4eda0cdc2deb352bebc70ec697c42af46094e4.tar.gz::https://gitlab.gnome.org/GNOME/libgnome-volume-control/-/archive/0a4eda0cdc2deb352bebc70ec697c42af46094e4/libgnome-volume-control-0a4eda0cdc2deb352bebc70ec697c42af46094e4.tar.gz
+	libshew-d16afc40412b565d2bbecf80335f54a19a978009.tar.gz::https://gitlab.gnome.org/GNOME/libshew/-/archive/d16afc40412b565d2bbecf80335f54a19a978009/libshew-d16afc40412b565d2bbecf80335f54a19a978009.tar.gz
+	gsh.patch
+	mobile-runtime-fixes.patch
+	"
+# TODO: crossdirect disabled due to armv7 crosscompile failure on x86_64, see
+# https://gitlab.com/postmarketOS/pmaports/-/merge_requests/5115#note_1899890119
+options="!check !pmb:crossdirect" # Tests have circular dependency 'gnome-shell <-> gdm'
+builddir="$srcdir/gnome-shell-mobile-$_commit"
+
+# secfixes:
+#   0:
+#     - CVE-2019-3820
+
+prepare() {
+	default_prepare
+	sed -i 's/51\.1\.mobile\.21/51.1.21/g' meson.build
+	rm -rf subprojects/libshew
+	cp -R "$srcdir/libshew-d16afc40412b565d2bbecf80335f54a19a978009" subprojects/libshew
+	rm -rf subprojects/gvc
+	cp -R "$srcdir/libgnome-volume-control-0a4eda0cdc2deb352bebc70ec697c42af46094e4" subprojects/gvc
+}
+
+build() {
+	abuild-meson \
+		-Db_lto=true \
+		-Dsystemd=true \
+		-Dtests=false \
+		. output
+	meson compile -C output
+}
+
+check() {
+	xvfb-run meson test --print-errorlogs -C output
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install --no-rebuild -C output
+}
+
+schemas() {
+	provides="gnome-shell-schemas=$pkgver-r$pkgrel"
+	pkgdesc="GNOME Shell gsetting schemas"
+	depends=""
+	replaces="gnome-shell"
+
+	amove usr/share/glib-2.0/schemas
+	amove usr/share/gnome-control-center/keybindings
+}
+
+
+sha512sums="
+18bce933e7d26f858acc6bec45b42365ad797ad1805bf557a9405a7634c22887afe6a9a139b102caae3072d54ffc3408e9953f572cff66c2a8f37f6f9bdeb4e2  gnome-shell-mobile-d444fb8b8de352309bdddeb15a58f9ad51acb9da.tar.gz
+8197d127ee790e45bdbb341557ee39bf4a89109e40f02d53f7c2b55bd3b66f649214709b58493a2d60f36f841c6b3537a8568af104e8ec50c50da1688a087aec  libgnome-volume-control-0a4eda0cdc2deb352bebc70ec697c42af46094e4.tar.gz
+c1cc444ae28ed929bd280b4e1f98067a6784709c40e0254aa90c843e26c23e452c9c9114899f97b3444a3de2380abf0f2d69336a1a8aea27bbfd80bc6749906f  libshew-d16afc40412b565d2bbecf80335f54a19a978009.tar.gz
+40cafbd0da2f2a40ff9e9db1026179d52a3b296a81fa43a98e433c0919800f0ec5231fcad32d523b8f01b8f7c0205dce1332e48493b0101ad02dae9469ac3de0  gsh.patch
+f0fbff7057536679e4b90e1f5ec98f59599576fbb86f597acd078e320025a988cd228e3e62bb471eb6fecadb7ef0c34f23adddbfc1d2e39f0aef89d02339a35d  mobile-runtime-fixes.patch
+"

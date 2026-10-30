@@ -39,6 +39,12 @@ write_installed_db() {
 	[ "${5:-$3}" = - ] || printf 'P:linux-postmarketos-mediatek-mt6789-modules\nV:%s\nA:aarch64\nC:Q1-modules\n\n' "${5:-$3}" >>"$1/lib/apk/db/installed"
 	[ "$4" = - ] || printf 'P:device-daylight-jagar\nV:%s\nA:aarch64\nC:Q1-device\n\n' "$4" \
 		>>"$1/lib/apk/db/installed"
+	for package in $desktop_support; do
+		recipe=${package%-schemas}; recipe=${recipe%-systemd}; recipe=${recipe%-udev}
+		version=$(awk -F= '$1=="pkgver" { print $2; exit }' "$overlay/$recipe/APKBUILD")
+		release=$(awk -F= '$1=="pkgrel" { print $2; exit }' "$overlay/$recipe/APKBUILD")
+		printf 'P:%s\nV:%s-r%s\nA:aarch64\nC:Q1-fixture\n\n' "$package" "$version" "$release" >>"$1/lib/apk/db/installed"
+	done
 }
 
 packages="$tmp/packages/aarch64"
@@ -59,6 +65,8 @@ mutter_ver=$(awk -F= '$1=="pkgver" { print $2; exit }' \
 	"$overlay/mutter-mobile/APKBUILD")
 mutter_rel=$(awk -F= '$1=="pkgrel" { print $2; exit }' \
 	"$overlay/mutter-mobile/APKBUILD")
+desktop_support="gnome-settings-daemon-mobile gnome-settings-daemon-mobile-systemd
+	gnome-shell-mobile gnome-shell-mobile-schemas mutter-mobile-schemas mutter-mobile-udev"
 write_installed_db "$root" \
 	"$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel"
 kernel_apk="linux-postmarketos-mediatek-mt6789-$kernel_ver-r$kernel_rel.apk"
@@ -78,6 +86,12 @@ tar -czf "$packages/$modules_apk" -C "$tmp/modules-apk" lib
 cp -a "$tmp/modules-apk/lib/modules" "$root/lib/"
 printf 'fake\n' >"$packages/$device_apk"
 printf 'fake\n' >"$packages/$mutter_apk"
+for package in $desktop_support; do
+	recipe=${package%-schemas}; recipe=${recipe%-systemd}; recipe=${recipe%-udev}
+	version=$(awk -F= '$1=="pkgver" { print $2; exit }' "$overlay/$recipe/APKBUILD")
+	release=$(awk -F= '$1=="pkgrel" { print $2; exit }' "$overlay/$recipe/APKBUILD")
+	printf 'fake\n' >"$packages/$package-$version-r$release.apk"
+done
 printf 'stale\n' >"$packages/linux-postmarketos-mediatek-mt6789-0.1_git1-r0.apk"
 printf 'pinned upstream sources\n' >"$tmp/SOURCES"
 
@@ -91,6 +105,12 @@ for f in jagar-rootfs.tar.gz jagar-rootfs.ext4.zst FILES.tsv PACKAGES.tsv SOURCE
 	boot/mt8781-daylight-jagar.dtb \
 	"packages/$kernel_apk" "packages/$modules_apk" "packages/$device_apk" "packages/$mutter_apk"; do
 	[ -s "$out/$f" ] || fail "missing or empty output: $f"
+done
+[ "$(find "$out/packages" -name '*.apk' | wc -l | tr -d ' ')" = 10 ] ||
+	fail "export did not publish the full ten-package cohort"
+for package in $desktop_support; do
+	grep -q "^package_$(echo "$package" | tr - _)=" "$out/PROVENANCE" ||
+		fail "missing desktop support provenance for $package"
 done
 [ ! -e "$out/jagar-rootfs.ext4" ] || fail "uncompressed image was left behind"
 
@@ -139,6 +159,17 @@ check_gate_a_refusal missing-device-block "$mutter_ver-r$mutter_rel" "$kernel_ve
 check_gate_a_refusal modules-stale "$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel" "0.1-r0"
 check_gate_a_refusal missing-modules "$mutter_ver-r$mutter_rel" "$kernel_ver-r$kernel_rel" "$device_ver-r$device_rel" -
 check_gate_a_refusal missing-database "" "" ""
+for package in $desktop_support; do
+	root_bad="$tmp/root-missing-$package"
+	cp -a "$root" "$root_bad"
+	awk -v package="$package" 'BEGIN { RS=""; ORS="\n\n" } $0 !~ "P:" package "\n"' \
+		"$root/lib/apk/db/installed" >"$root_bad/lib/apk/db/installed"
+	mkdir "$tmp/out-missing-$package"
+	if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$root_bad" "$tmp/packages" \
+		"$tmp/SOURCES" "$tmp/out-missing-$package" >/dev/null 2>&1; then
+		fail "Gate A accepted missing $package"
+	fi
+done
 rm -rf "$root/lib/apk/db/installed"
 mkdir -p "$tmp/out-nodb"
 if PMOS_EXT4_SIZE_MIB=32 sh "$exporter" "$root" "$tmp/packages" \

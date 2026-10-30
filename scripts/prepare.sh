@@ -53,7 +53,11 @@ prepare_checkout() {
 				device/testing/linux-postmarketos-mediatek-mt6789/*|\
 				device/testing/mutter-mobile/*|\
 				temp/mutter-mobile/*|\
-				extra-repos/systemd/mutter-mobile/*) ;;
+				extra-repos/systemd/mutter-mobile/*|\
+				temp/gnome-shell-mobile/*|\
+				extra-repos/systemd/gnome-shell-mobile/*|\
+				temp/gnome-settings-daemon-mobile/*|\
+				extra-repos/systemd/gnome-settings-daemon-mobile/*) ;;
 				*) echo "$directory has unrelated local change: $path" >&2; exit 1 ;;
 			esac
 		done
@@ -90,6 +94,10 @@ cp -R "$overlay_dir/device/testing/linux-postmarketos-mediatek-mt6789" \
 mkdir -p "$pmaports_dir/extra-repos/systemd"
 cp -R "$overlay_dir/device/testing/mutter-mobile" \
 	"$pmaports_dir/extra-repos/systemd/"
+for package in gnome-settings-daemon-mobile gnome-shell-mobile; do
+	rm -rf -- "$pmaports_dir/temp/$package" "$pmaports_dir/extra-repos/systemd/$package"
+	cp -R "$overlay_dir/device/testing/$package" "$pmaports_dir/extra-repos/systemd/"
+done
 
 printf 'pmaports=%s\npmbootstrap=%s\nkernel=%s\n' \
 	"$PMAPORTS_COMMIT" "$PMBOOTSTRAP_COMMIT" "$KERNEL_COMMIT" \

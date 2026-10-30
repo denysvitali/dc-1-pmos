@@ -99,7 +99,7 @@ zstd -q -12 -T0 --rm "$output_dir/jagar-rootfs.ext4"
 [ -s "$output_dir/jagar-rootfs.ext4.zst" ] ||
 	fail "ext4 image compression produced nothing"
 
-# Publish all four packages by EXACT version, never "whatever *.apk is there".
+# Publish all ten packages by EXACT version, never "whatever *.apk is there".
 # The local binary repository is cached between CI runs so it legitimately
 # holds older builds; globbing would ship one of those and the release would
 # describe a kernel it does not contain.
@@ -121,11 +121,18 @@ as_root [ -s "$installed_db" ] ||
 
 mkdir "$output_dir/packages"
 package_provenance=""
-for package in mutter-mobile linux-postmarketos-mediatek-mt6789 \
+for package in gnome-settings-daemon-mobile gnome-settings-daemon-mobile-systemd \
+	gnome-shell-mobile gnome-shell-mobile-schemas \
+	mutter-mobile mutter-mobile-schemas mutter-mobile-udev linux-postmarketos-mediatek-mt6789 \
 	linux-postmarketos-mediatek-mt6789-modules \
 	device-daylight-jagar; do
 	recipe=$package
-	[ "$package" != linux-postmarketos-mediatek-mt6789-modules ] || recipe=${package%-modules}
+	case "$package" in
+		*-modules) recipe=${package%-modules} ;;
+		*-schemas) recipe=${package%-schemas} ;;
+		*-systemd) recipe=${package%-systemd} ;;
+		*-udev) recipe=${package%-udev} ;;
+	esac
 	apkbuild="$overlay/$recipe/APKBUILD"
 	[ -f "$apkbuild" ] || fail "missing overlay APKBUILD: $apkbuild"
 	pkgver=$(apkbuild_field "$apkbuild" pkgver)

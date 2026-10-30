@@ -51,7 +51,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const BEZEL_DEVICE_PX = 10;
+const BEZEL_DEVICE_PX = 12;
+const CORNER_DEVICE_PX = 40;
 
 export default class Dc1SafeAreaExtension extends Extension {
     enable() {
@@ -73,10 +74,11 @@ export default class Dc1SafeAreaExtension extends Extension {
     _applyBezel() {
         const scale = Main.layoutManager.primaryMonitor?.geometry_scale ?? 1;
         const px = Math.ceil(BEZEL_DEVICE_PX / scale);
+        const corner = Math.ceil(CORNER_DEVICE_PX / scale);
         Main.layoutManager.panelBox.style =
-            `padding: ${px}px ${px}px 0 ${px}px;`;
+            `padding: ${px}px ${corner}px 0 ${corner}px;`;
         Main.layoutManager.keyboardBox.style =
-            `padding: 0 ${px}px ${px}px ${px}px;`;
+            `padding: 0 ${corner}px ${px}px ${corner}px;`;
     }
 
     _applyLockSheet() {
