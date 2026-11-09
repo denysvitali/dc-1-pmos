@@ -2,7 +2,7 @@ maintainer="Denys Vitali <denys@denv.it>"
 pkgname=device-daylight-jagar
 pkgdesc="Daylight Computer DC-1"
 pkgver=1
-pkgrel=122
+pkgrel=123
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -104,7 +104,7 @@ source="
 	dc1-bluetooth.service
 	dc1-frontlight
 	dc1-frontlight.service
-	dc1-screen-backlight
+	dc1-screen-backlight.c
 	dc1-screen-backlight.service
 	dc1-sleep-on-blank
 	dc1-sleep-on-blank.service
@@ -182,6 +182,8 @@ build() {
 		"$srcdir"/dc1-pwrkey.c
 	${CC:-gcc} $CFLAGS $LDFLAGS -o "$srcdir"/dc1-mn29-probe \
 		"$srcdir"/dc1-mn29-probe.c
+	${CC:-gcc} $CFLAGS $LDFLAGS -o "$srcdir"/dc1-screen-backlight \
+		"$srcdir"/dc1-screen-backlight.c
 	${CC:-gcc} $CFLAGS $LDFLAGS $(pkg-config --cflags libdrm) \
 		-o "$srcdir"/dc1-charging-display "$srcdir"/dc1-charging-display.c \
 		$(pkg-config --libs libdrm)
@@ -611,7 +613,7 @@ d9309e869341a6dfd38714154492044daf11f00635385ccf948e0fba31553479ca73ea62e4bd54be
 2c0b0e3f6fe32b754521cc0022b6a1a5808f1b8c30f2e98bc4cd7c2f70a3a8c276d53f938a1fcb272f7130462f732b2a310d4d2ac53f8fc30be12968499e018d  dc1-bluetooth.service
 f29500ad474be305cd8934aa059a50921a403b0922451a8a36fce295186cbd01bde2972616857bc32d4970161be136c9b09549010c6284f69da6f9c027285b24  dc1-frontlight
 a611b818be1a7af166b59f9b8498c28275725d1de95c3cffe6b2c38900e3a31065fc4e5d2bda023a1bd95549246a0e5ba72126450b53a733f1a5dbf3bd654af7  dc1-frontlight.service
-c46f6366f7145a50e8d4bb64f84300b60fb2103765da8572546d66a502a68af353291a7ff1c9a78d42e2d8f865c434206d8d1b5224b62f43d0c4016ddbab1aed  dc1-screen-backlight
+ac4ac7a94d97a14cf9603f9f0b31a4dfb268407994eea8d1a9b91fe85f8c53c446ab39c299a0d73a6ad77a4dc5376016c38d00909eaa2d65e1c62c78879471ed  dc1-screen-backlight.c
 51c547dff77fe30aa8459ff2fbc64856ad2ad05fad2d050901fed169d72960deeb22b21e212e5e529a78044b2a62e661efb9c9de44cb3f152c37a5876889a0a7  dc1-screen-backlight.service
 7906a8a2843de4e6467c8b71b97513939d6b367ff00af56aa4227db93aab5df1ed45a7ee3fa0dc4484b659e8c1f7c7642add6994fa019604cb0845c1501f0467  dc1-sleep-on-blank
 f876faf66677356a64029f9c72625473932f2e20d9e20a97c71c728b47808f64226e3f8ccba61e2dd6f09cacb334ca25128aef3f5fb961b007320dc3b6348c46  dc1-sleep-on-blank.service
