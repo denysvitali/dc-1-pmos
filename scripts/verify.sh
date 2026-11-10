@@ -52,6 +52,7 @@ python3 "$script_dir/tests/test_make_rootfs_archive.py"
 python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' \
 	"$script_dir/apk_version_compare.py"
 python3 "$script_dir/tests/test_apk_version_compare.py"
+python3 "$script_dir/tests/test_bootstrap_alpine_apk.py"
 python3 "$script_dir/tests/test_verify_kernel_artifacts.py"
 python3 "$script_dir/tests/test_verify_kernel_modules.py"
 sh -n "$script_dir/kernel-local.sh"

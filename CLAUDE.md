@@ -102,9 +102,9 @@ Five overlays produce ten runtime APKs:
   Binder with `/proc/config.gz`, and `CONFIG_MN29005=m`. Ship the resolved
   pre-DTB config snapshot. A new or changed fragment needs an entry in the
   recipe's check loop and in `scripts/tests/test_kernel_config.py`.
-- `installer/build.sh` pins Alpine edge APKs by exact version and SHA-256.
-  Edge deletes superseded builds, so a 404 means refresh the affected pins
-  after verifying Alpine signatures; never relax the hash check.
+- Resolve installer Alpine dependencies from the current signed edge index,
+  not hard-coded package versions. Authenticate the apk bootstrap and all
+  packages before use; fail closed on untrusted keys or integrity failures.
 - Device helpers ship as regular files or compiled C, never as shell scripts
   kept under an old path. A helper that moves from shell to C needs: the
   `source=` entry and checksum renamed, a `build()` compile line, its `sh -n`

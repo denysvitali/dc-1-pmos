@@ -144,7 +144,7 @@ jobs:
       # Install rootfs and boot-image tools before the long build. The stub
       # keeps its hardware-proven LLVM 19; kernel LLVM 20 lives in the chroot.
       # pigz parallelizes rootfs archive creation. Ubuntu busybox-static is
-      # deliberately omitted: the installer fetches its pinned Alpine package.
+      # deliberately omitted: the installer resolves its Alpine package.
       - name: Install build and boot-image dependencies
         timeout-minutes: 12
         run: |
@@ -349,7 +349,7 @@ jobs:
           key: pmb4-${{ hashFiles('scripts/versions.env') }}-${{ github.run_id }}
 
       # Root is required for initramfs device nodes. installer/build.sh
-      # downloads pinned Alpine busybox-static; Ubuntu's lacks required applets.
+      # resolves Alpine busybox-static; Ubuntu's lacks required applets.
       # Pass MODDIR only when the rootfs ships modules.
       - name: Build installer and system boot images
         run: |
