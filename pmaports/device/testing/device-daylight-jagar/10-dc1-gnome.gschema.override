@@ -1,36 +1,21 @@
 [org.gnome.settings-daemon.plugins.power]
-# gnome-shell-mobile handles the power key itself -- it grabs it as a mutter
-# keybinding ("DBus: disallowing the grabbing of power key accelerator"), so
-# neither logind's HandlePowerKey nor gnome-settings-daemon ever sees it. On
-# key release its misc/powerManager.js maps this setting:
-#
-#     let action = this._powerSettings.get_string('power-button-action');
-#     if (action === 'nothing') { // FIXME: get rid of this in favor of new action
-#         action = 'blank';
-#     } else if (action === 'interactive') { this._showInteractivePowerMenu(); return; }
-#
-# 'nothing' is remapped to 'blank', which is the phone-like sleep/wake toggle
-# we want: a short press locks the shield (see lock-enabled below) and
-# DPMS-offs the panel, and the next short press cancels the running blank
-# action and turns the screen back on at the lock screen -- powerManager
-# swallows that wake press after cancelling, so one press toggles exactly
-# once and cannot flap into an immediate re-blank. A >=2 s hold opens the
-# quick-settings power menu. Suspend and hibernate are masked system-wide
-# (see the sleep-target masks in the APKBUILD), so logind reports
-# CanSuspend=no and the menu offers only restart/power off until a current-build
-# suspend/resume cycle and reliable wake path are verified.
-power-button-action='nothing'
+# GNOME Mobile 51 uses the native toggle-blank action for the power key.
+# Keep GNOME's suspend timers disabled; dc1-sleep-on-blank remains opt-in.
+power-button-action='toggle-blank'
+# A reflective panel needs more frontlight in darkness. GNOME retains its
+# native sensor claim, smoothing, manual brightness bias and dimming.
+ambient-inverted=true
 sleep-inactive-ac-type='nothing'
 sleep-inactive-battery-type='nothing'
 
-[org.gnome.mutter]
+[org.gnome.mutter.experimental]
 # 120 Hz compositing (measured 2026-08-27): KMS planes only advertise
 # LINEAR + rotate-0/180, so landscape is a GPU offscreen blit, and the
 # 1200x1600@120 mode has 0.31 ms of vblank (vtotal 1662). GBM modifiers
 # let Panfrost use tiled intermediates for that blit; without the flag
 # mutter stays on linear copies. Schema default only -- Settings still
-# wins if the user clears experimental-features.
-experimental-features=['kms-modifiers']
+# wins if the user disables kms-modifiers.
+kms-modifiers=true
 
 [org.gnome.shell]
 # The amber frontlight is a second RT4539 that GNOME cannot see: gsd-power
@@ -42,20 +27,10 @@ experimental-features=['kms-modifiers']
 # is a user setting, so
 # anything the user does in Extensions still wins.
 #
-# dc1-session-compat restores Power Off / Restart while the shell is a
-# 48-based fork running against gnome-session >= 50 (CanShutdown reply
-# changed from boolean to a uint32 availability enum), and re-issues
-# gdm 50's RegisterSession() from inside the shell, which takes no
-# argument where the shell still sends an empty dict. Left unfixed, gdm
-# rejects the call with INVALID_ARGS, never marks the display
-# session-registered, and therefore skips finishing it on logout. Drop it
-# together with the extension when gnome-shell-mobile rebases onto
-# GNOME >= 50.
-#
 # dc1-safe-area pads the top bar and on-screen keyboard away from the
 # bezel, which overlaps the outer ~10 device px of the panel on every edge
 # (measured 2026-08-25 with on-glass calibration rulers).
-enabled-extensions=['dc1-warmth@denv.it', 'dc1-session-compat@denv.it', 'dc1-safe-area@denv.it']
+enabled-extensions=['dc1-warmth@denv.it', 'dc1-safe-area@denv.it']
 
 [org.gnome.shell.keybindings]
 # The two spare side buttons, remapped by 61-daylight-jagar-keyboard.hwdb to
@@ -70,25 +45,11 @@ toggle-overview=['XF86Launch2']
 [org.gnome.desktop.session]
 # Blank and lock after five minutes without input. The separate opt-in
 # dc1-sleep-on-blank service handles suspend after another minute on battery;
-# GNOME's own suspend timers remain disabled. With the shield up,
-# powerManager uses a hardcoded 10 s timeout instead -- see below.
+# GNOME's own suspend timers remain disabled.
 idle-delay=300
 
 [org.gnome.desktop.screensaver]
-# Lock on blank: the power button's blank action consults this key
-# (powerManager.js case 'blank' calls screenShield.lock() before fading the
-# panel out when this is true), so true is what turns a short press into
-# "sleep" that also secures the device. Raising the shield makes powerManager
-# arm a *hardcoded* 10 s idle watch instead of honouring idle-delay:
-#
-#     const idleTimeoutMs = Main.screenShield.active
-#         ? 10 * 1000
-#         : this._sessionSettings.get_uint('idle-delay') * 1000;
-#
-# so an untouched lock screen goes dark again 10 s after the last input,
-# phone-style; any touch or keystroke (PIN entry included) resets it. Manual
-# locking is unaffected: screenShield.lock() consults
-# org.gnome.desktop.lockdown disable-lock-screen, not this key.
+# Lock when the panel blanks; a power-key wake returns to the lock screen.
 lock-enabled=true
 
 [org.gnome.desktop.a11y.applications]

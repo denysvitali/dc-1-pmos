@@ -1,7 +1,8 @@
 # Building from pinned sources
 
-This repository builds four aarch64 packages (kernel, kernel modules, device, and Mutter)
-from three recipes,
+This repository builds ten runtime packages from five recipes: kernel and
+modules, device integration, Mutter with schemas and udev support, Shell with
+schemas, and settings-daemon with systemd support. These produce
 a GNOME Mobile rootfs, and installer/system boot images. The
 [build workflow](../.github/workflows/build.yml) is the complete release recipe.
 Local rootfs export is an intermediate output, not a complete installer release.
@@ -41,9 +42,9 @@ pmbootstrap, and public kernel commits, plus `SOURCE_DATE_EPOCH`.
 Do not substitute branch tips to reproduce a release. The build writes its
 source inventory to `WORK/SOURCES`.
 
-Three local recipes live under `pmaports/device/testing/`. Preparation copies
-the device and kernel overlays to upstream `device/testing/`, and Mutter to
-`extra-repos/systemd/mutter-mobile`. Every recipe or effective package-input
+Five local recipes live under `pmaports/device/testing/`. Preparation copies
+the device and kernel overlays to upstream `device/testing/`, and the three
+matched GNOME Mobile recipes to `extra-repos/systemd/`. Every recipe or effective package-input
 change needs a `pkgrel` bump: caches deliberately reuse an unchanged package
 version, and releases refuse to replace an existing APK filename with different
 bytes. Restored pmbootstrap signing caches require the public-key handoff in
@@ -71,7 +72,7 @@ It never selects a device, flashes a slot, or writes a block-device target.
 The rootfs export contains:
 
 - `jagar-rootfs.tar.gz` and `jagar-rootfs.ext4.zst` (ext4 label `jagar-root`);
-- exact-version copies of the four overlay APKs;
+- exact-version copies of the ten runtime overlay APKs;
 - kernel and DTB inputs under `boot/`;
 - `FILES.tsv`, `PACKAGES.tsv`, `SOURCES`, `PROVENANCE`, and `SHA256SUMS`.
 

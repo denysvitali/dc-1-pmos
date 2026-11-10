@@ -1,0 +1,111 @@
+# Forked from Alpine for systemd support
+# Co-Maintainer: Pablo Correa Gomez <pabloyoyoista@postmarketos.org>
+# Co-Maintainer: Achill Gilgenast <achill@achill.org>
+maintainer="Stefan Hansson <newbyte@postmarketos.org>"
+pkgname=gnome-settings-daemon-mobile
+pkgver=999951.1.21
+pkgrel=0
+pkgdesc="GNOME settings daemon"
+url="https://gitlab.gnome.org/verdre/gnome-settings-daemon-mobile"
+# armhf: pmb#2618
+arch="aarch64"
+options="!check" # tests fail on builders
+license="GPL-2.0-only AND LGPL-2.1-only"
+depends="pulseaudio $pkgname-systemd=$pkgver-r$pkgrel"
+provides="gnome-settings-daemon=$pkgver-r$pkgrel"
+depends_dev="
+	alsa-lib-dev
+	colord-dev
+	cups-dev
+	geoclue-dev
+	geocode-glib-dev>=3.26.4-r1
+	lcms2-dev
+	libcanberra-dev
+	libgweather4-dev
+	libnotify-dev
+	libwacom-dev
+	modemmanager-dev
+	networkmanager-dev
+	nss-dev
+	pango-dev
+	polkit-dev
+	pulseaudio-dev
+	systemd-dev
+	upower-dev
+	"
+makedepends="
+	$depends_dev
+	coreutils
+	gcr4-dev
+	glib-dev
+	gnome-desktop-dev
+	gsettings-desktop-schemas-dev
+	gtk+3.0-dev
+	libxml2-utils
+	meson
+	"
+# checkdepends="
+# 	gnome-session
+# 	gnome-shell
+# 	py3-dbusmock
+# 	py3-gobject3
+# 	umockdev-dev
+# 	"
+subpackages="
+	$pkgname-dev
+	$pkgname-lang
+	$pkgname-systemd
+	"
+_commit="9898ab670852caf8f02dbba98183597fe61f6941"
+source="
+	gnome-settings-daemon-mobile-$_commit.tar.gz::https://gitlab.gnome.org/verdre/gnome-settings-daemon-mobile/-/archive/$_commit/gnome-settings-daemon-mobile-$_commit.tar.gz
+	libgnome-volume-control-0a4eda0cdc2deb352bebc70ec697c42af46094e4.tar.gz::https://gitlab.gnome.org/GNOME/libgnome-volume-control/-/archive/0a4eda0cdc2deb352bebc70ec697c42af46094e4/libgnome-volume-control-0a4eda0cdc2deb352bebc70ec697c42af46094e4.tar.gz
+	reflective-frontlight.patch
+	"
+builddir="$srcdir/gnome-settings-daemon-mobile-$_commit"
+
+prepare() {
+	default_prepare
+	# Keep pkg-config versions numeric for all three matched components.
+	sed -i 's/51\.1\.mobile\.21/51.1.21/g' meson.build
+}
+
+build() {
+	rm -rf "$builddir/subprojects/gvc"
+	mv "$srcdir/libgnome-volume-control-0a4eda0cdc2deb352bebc70ec697c42af46094e4" $builddir/subprojects/gvc
+	abuild-meson \
+		-Db_lto=true \
+		-Dsystemd=true \
+		. output
+	meson compile -C output
+}
+
+dev() {
+	provides="gnome-settings-daemon-dev=$pkgver-r$pkgrel"
+	default_dev
+}
+
+systemd() {
+	provides="gnome-settings-daemon-systemd=$pkgver-r$pkgrel"
+	default_systemd
+}
+
+lang() {
+	provides="gnome-settings-daemon-lang=$pkgver-r$pkgrel"
+	default_lang
+}
+
+check() {
+	meson test --print-errorlogs -C output
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install --no-rebuild -C output
+}
+
+
+sha512sums="
+f8143cde195d62e4576c6dffeb855ae911efd944bcbe670de82c759c3d1caf1a7a01c5c52a4a4824972934b579ce4be461e87bb8f61c39a5e0d36ed490c95f6b  gnome-settings-daemon-mobile-9898ab670852caf8f02dbba98183597fe61f6941.tar.gz
+8197d127ee790e45bdbb341557ee39bf4a89109e40f02d53f7c2b55bd3b66f649214709b58493a2d60f36f841c6b3537a8568af104e8ec50c50da1688a087aec  libgnome-volume-control-0a4eda0cdc2deb352bebc70ec697c42af46094e4.tar.gz
+36d85e6f4977dbcb4b91478f533560982d1f402386136d396b2533991783ae890a0f4077f2c07356004d25efeebbd7c18467e8e835fe3de7605a30157372559d  reflective-frontlight.patch
+"

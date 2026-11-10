@@ -121,10 +121,10 @@ function makeShell(scale = 1.25) {
 {
     const { ext, layoutManager } = makeShell(1.25);
     ext.enable();
-    check('bezel pads panelBox by ceil(10/1.25)',
-          layoutManager.panelBox.style === 'padding: 8px 8px 0 8px;');
-    check('bezel pads keyboardBox by ceil(10/1.25)',
-          layoutManager.keyboardBox.style === 'padding: 0 8px 8px 8px;');
+    check('bezel pads panelBox by 12 px edges and 40 px corners at scale 1.25',
+          layoutManager.panelBox.style === 'padding: 10px 32px 0 32px;');
+    check('bezel pads keyboardBox by 12 px edges and 40 px corners at scale 1.25',
+          layoutManager.keyboardBox.style === 'padding: 0 32px 10px 32px;');
     ext.disable();
     check('disable clears the bezel insets',
           layoutManager.panelBox.style === null &&
@@ -134,7 +134,7 @@ function makeShell(scale = 1.25) {
     const { ext, layoutManager } = makeShell(2);
     ext.enable();
     check('bezel inset follows a larger scale',
-          layoutManager.panelBox.style === 'padding: 5px 5px 0 5px;');
+          layoutManager.panelBox.style === 'padding: 6px 20px 0 20px;');
     ext.disable();
 }
 

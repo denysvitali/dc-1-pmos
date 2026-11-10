@@ -6,6 +6,8 @@ overlay_dir=$(CDPATH= cd -- "$script_dir/../pmaports" && pwd)
 device_dir="$overlay_dir/device/testing/device-daylight-jagar"
 kernel_dir="$overlay_dir/device/testing/linux-postmarketos-mediatek-mt6789"
 mutter_dir="$overlay_dir/device/testing/mutter-mobile"
+shell_dir="$overlay_dir/device/testing/gnome-shell-mobile"
+gsd_dir="$overlay_dir/device/testing/gnome-settings-daemon-mobile"
 
 fail() {
 	echo "postmarketOS packaging verification failed: $*" >&2
@@ -17,7 +19,9 @@ for file in \
 	"$device_dir/APKBUILD" \
 	"$device_dir/deviceinfo" \
 	"$kernel_dir/APKBUILD" \
-	"$mutter_dir/APKBUILD"; do
+	"$mutter_dir/APKBUILD" \
+	"$shell_dir/APKBUILD" \
+	"$gsd_dir/APKBUILD"; do
 	[ -f "$file" ] || fail "missing $file"
 done
 
@@ -68,7 +72,7 @@ python3 "$script_dir/tests/test_mt6375_input_limits.py"
 # every following file against the wrong hash (a multi-CI-cycle failure).
 # Source both lists exactly as abuild does and assert the pairing, then hash
 # every local file against its paired checksum.
-for dir in "$device_dir" "$kernel_dir" "$mutter_dir"; do
+for dir in "$device_dir" "$kernel_dir" "$mutter_dir" "$shell_dir" "$gsd_dir"; do
 	(
 		cd "$dir" || exit 1
 		startdir=$(pwd)
@@ -242,7 +246,6 @@ sh -n "$device_dir/dc1-frontlight"
 sh -n "$device_dir/dc1-gpu"
 sh -n "$device_dir/dc1-link-apk-keys"
 sh -n "$device_dir/dc1-owner-settings"
-sh -n "$device_dir/dc1-screen-backlight"
 sh -n "$device_dir/dc1-update"
 sh -n "$device_dir/dc1-usb-gadget"
 python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __import__("sys").argv[1], "exec")' 	"$device_dir/dc1-gpu-settings"
@@ -251,6 +254,9 @@ python3 -c 'compile(open(__import__("sys").argv[1], encoding="utf-8").read(), __
 python3 "$script_dir/tests/test_orientation.py"
 python3 "$script_dir/tests/test_gpu_settings_poll.py"
 gjs -m "$script_dir/tests/test_dc1_safe_area_locksheet.js"
+gjs -m "$script_dir/tests/test_dc1_frontlight_bridge.js"
+gjs -m "$script_dir/tests/test_mobile_runtime_fixes.js"
+python3 "$script_dir/tests/test_reflective_frontlight.py"
 gjs -m "$script_dir/tests/test_dc1_button_pressed.js"
 python3 "$script_dir/tests/test_chromium_pwrite.py"
 sh -n "$device_dir/device-daylight-jagar.trigger"

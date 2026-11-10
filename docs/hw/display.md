@@ -105,7 +105,19 @@ The frontlight is not the panel's DRM backlight — our mainline DT has no
 panel node, so DRM exposes no `panel orientation` property and no backlight
 phandle — so `dc1-screen-backlight` mirrors the connector's DPMS state onto
 both RT4539 `bl_power` files; without it a blanked panel stays evenly lit
-and reads as a wedged display.
+and reads as a wedged display. The helper polls every 500 ms (DRM supplies
+no DPMS uevent, and GNOME-only D-Bus notifications would lose sway
+support): any successfully read `On` wins, any other complete line votes
+off, missing/unreadable/partial reads do not vote, an all-unknown poll
+leaves the lights untouched, and writes land only on observed state changes
+so `brightness` survives blanking. Since device r123 it is a compiled C
+helper (`dc1-screen-backlight.c`) that waits on a monotonic clock instead
+of the shell loop's twice-per-second `sleep` child — that removes recurring
+process creation, not the polling wakeups, and no battery-life change has
+been measured. Both service managers still call `--restore` on stop.
+Fake-sysfs contract tests for the helper live in
+`installer/tests/test-dc1-screen-backlight.py` and cover blanking, restoration,
+unknown connector states and preservation of brightness.
 
 ## GPU
 
@@ -294,16 +306,35 @@ the [desktop guide](../gnome.md#chromium-webgpu) for restart and override behavi
 
 ## Frontlight
 
-Dual RT4539 backlight drivers: `lcd-backlight` (white, i2c-5) and
-`lcd-backlight-amber` (amber, i2c-2). GNOME binds exactly one backlight
-device to the internal display — `gsd-power` takes the first `firmware` >
-`platform` > `raw` match, which is always the white one — so its Settings
-slider drives white alone. The `dc1-warmth@denv.it` shell extension
-shipped in the device package adds a quick-settings temperature slider
-that mixes both channels over one shared luminance: the lower half ramps
-amber up over full white, the upper half dims white, reaching pure amber
-(white fully off) at max. GNOME's own brightness controls set the
-luminance; the extension persists it and tells gsd's echoes of its own
-white writes apart from real brightness changes by comparing sysfs against
-its last write. Writes go through logind's `Session.SetBrightness`, no
-root needed.
+Two RT4539 chips light the panel: white on i2c-5 and amber on i2c-2. The
+driver pairs the node labelled `lcd-backlight-amber` with `lcd-backlight` and
+registers only `lcd-backlight`, whose brightness is the total luminance.
+`/sys/class/backlight/lcd-backlight/device/warmth` (0 to `max_warmth`)
+selects a constant-sum crossfade. Up to half the range, amber rises beside an
+undimmed white channel. Above that, white dims while amber keeps rising, and
+white is off at maximum warmth. One brightness or warmth request updates both
+chips under one lock, so no intermediate colour is shown. Warmth is not
+persistent and starts at 0.
+
+GNOME Mobile 51's native brightness manager writes `lcd-backlight` directly
+and owns the slider, automatic target, idle dimming and saved monitor
+brightness. The `dc1-warmth@denv.it` extension adds a dedicated temperature
+slider that writes only `warmth`. The device udev rule makes that attribute
+`root:wheel 0664` when the driver binds. Provisioning adds the owner to
+`wheel`. On a kernel without the paired driver, which still exposes two
+backlight devices, the extension falls back to its userspace two-channel
+mixer through logind's `Session.SetBrightness`.
+
+The matched settings daemon consumes SensorProxy and retains its native
+normalization and smoothing. The DC-1 schema override enables
+`ambient-inverted`: it transforms a finite nonnegative raw reading to
+`1 / (1 + reading)` before normalization, increasing frontlight in darkness
+and reducing it as ambient light rises. Zero remains a valid dark reading;
+negative or nonfinite readings are ignored. This policy does not convert
+raw counts into calibrated lux. Automatic brightness remains controllable
+through Settings, and the brightness slider sets the native manual bias.
+
+The extension retains the older GSD echo-tracking path for a rollback to
+GNOME Mobile 48. The compositor upgrade, automatic response, amber mixing,
+blank/wake, and lock-screen controls require validation on the same
+candidate package set before marking hardware acceptance complete.

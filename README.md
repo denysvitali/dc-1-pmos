@@ -64,7 +64,7 @@ model and records sourced board specifications.
 | Battery & charging | 🟡 | USB-C PD negotiates (12 V PDO verified); Charging Profile selects 3.15 A or 2.00 A; charge % is restored only after a valid clean reboot within ten minutes; pack-temperature control is unavailable |
 | USB-C data | 🟡 | USB 2.0 ACM serial works; ECM is configured device-side but host Ethernet/SSH remains unverified, and host mode is partial. No implemented SuperSpeed, video Alt Mode, or Thunderbolt path |
 | Suspend/sleep | 🚧 | RTC wake and long-cycle service/input access pass; physical display/touch acceptance remains. Hardware deep sleep is unavailable; automatic sleep stays disabled |
-| Ambient light / proximity sensor | ❌ | An unidentified MN29-family part ACKs at `0x49`; protocol and driver remain unknown |
+| Ambient light / proximity sensor | 🟡 | Native IIO raw ambient-light readings and DT discovery work; lux calibration and proximity remain open |
 | Gyro, magnetometer, cellular, GPS, onboard cameras | ❌ | Not fitted/exposed on this hardware |
 
 ✅ works · 🟡 works, with stated caveats · 🚧 being worked on · ❌ unavailable
@@ -123,7 +123,8 @@ Each release contains:
 - `jagar-boot.img` — the installed system's boot image;
 - `jagar-rootfs.ext4.zst` / `.tar.gz` — the root filesystem (ext4, label
   `jagar-root`);
-- the four APKs (kernel, matching kernel modules, device and Mutter), plus the signed
+- the ten runtime APKs (kernel/modules, device, and the matched GNOME Mobile
+  stack with its schemas and service support), plus the signed
   `APKINDEX.tar.gz`;
 - `dc1-install.sh` and `dc1-repair-apk.sh` (host-side helpers),
   `dc1-apk.rsa.pub`, `PROVENANCE`, `SOURCES`, `FILES.tsv`, the exact installed
