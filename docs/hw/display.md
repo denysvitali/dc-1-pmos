@@ -306,14 +306,24 @@ the [desktop guide](../gnome.md#chromium-webgpu) for restart and override behavi
 
 ## Frontlight
 
-Dual RT4539 backlight drivers expose `lcd-backlight` (white, i2c-5) and
-`lcd-backlight-amber` (amber, i2c-2). GNOME Mobile 51's native brightness
-manager owns the slider, automatic target, idle dimming and saved monitor
-brightness. The `dc1-warmth@denv.it` extension routes its built-in display
-output through the existing two-channel mixer, preserving the temperature
-crossfade and logind's `Session.SetBrightness` permissions. White-channel
-uevents are not treated as total luminance, so pure amber does not reset the
-slider or feed an automatic target back into the user's preference.
+Two RT4539 chips light the panel: white on i2c-5 and amber on i2c-2. The
+driver pairs the node labelled `lcd-backlight-amber` with `lcd-backlight` and
+registers only `lcd-backlight`, whose brightness is the total luminance.
+`/sys/class/backlight/lcd-backlight/device/warmth` (0 to `max_warmth`)
+selects a constant-sum crossfade. Up to half the range, amber rises beside an
+undimmed white channel. Above that, white dims while amber keeps rising, and
+white is off at maximum warmth. One brightness or warmth request updates both
+chips under one lock, so no intermediate colour is shown. Warmth is not
+persistent and starts at 0.
+
+GNOME Mobile 51's native brightness manager writes `lcd-backlight` directly
+and owns the slider, automatic target, idle dimming and saved monitor
+brightness. The `dc1-warmth@denv.it` extension adds a dedicated temperature
+slider that writes only `warmth`. The device udev rule makes that attribute
+`root:wheel 0664` when the driver binds. Provisioning adds the owner to
+`wheel`. On a kernel without the paired driver, which still exposes two
+backlight devices, the extension falls back to its userspace two-channel
+mixer through logind's `Session.SetBrightness`.
 
 The matched settings daemon consumes SensorProxy and retains its native
 normalization and smoothing. The DC-1 schema override enables

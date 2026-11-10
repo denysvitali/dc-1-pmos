@@ -73,9 +73,9 @@ Five overlays produce ten runtime APKs:
 | `gnome-settings-daemon-mobile` | Upstream `extra-repos/systemd/gnome-settings-daemon-mobile`; settings daemon and systemd APKs |
 
 - Keep Shell, Mutter and settings-daemon on the matched `51.1.mobile.21`
-  source cohort. Settings uses Shell's native brightness capability interface;
-  the DC-1 opts into inverse ambient response and routes native targets through
-  its two-channel warmth mixer. Do not add a second sensor controller.
+  source cohort. Settings uses Shell's native brightness capability interface
+  and the DC-1 opts into inverse ambient response. Do not add a second sensor
+  controller.
 - Bump a recipe's `pkgrel` whenever its recipe or effective inputs change.
   CI reuses unchanged versions; an existing published APK filename must
   retain identical bytes. Before staging, compare the recipe against the
@@ -168,7 +168,8 @@ before changing drivers, DTS, power policy or desktop integration.
 | --- | --- |
 | USB | `dr_mode = "otg"`; keep `g1` bound in host mode. Never remove configfs gadget objects to switch roles. MT6375 TCPM owns VBUS; keep jagar's `mediatek,force-vbus-valid` override applying in device mode too (`VBUSVALID`/`AVALID`/`BVALID` asserted, `SESSEND` clear), because the UTMI VBUS input stays at session end while TCPM negotiates. Removing the device-mode branch drops gadget enumeration. PIO-only MUSB must not advertise `HCD_DMA`. Source PDO stays 5 V/500 mA pending electrical/thermal validation. |
 | Display | Logs and frame IRQs do not prove lit glass. Verify TE GPIO83 or DCS `0x0a` (`0x9c`); a timed-out DCS read can prevent re-enable until reboot. Clear `DSI_SW_CTL_EN` on all five lanes, including D3 at `0x0544`. Keep full panel timings and the 60 Hz preferred default; the 120 Hz mode is an experiment. |
-| Frontlight mirror | `dc1-screen-backlight` mirrors DRM `dpms` onto both RT4539 `bl_power` files (0/4), never `brightness`, and writes only on observed state changes. Keep the 500 ms DRM poll: there is no DPMS uevent, and a GNOME-only D-Bus signal would lose sway. The systemd unit and the OpenRC script must both keep their `--restore` stop hook. |
+| Frontlight mix | `rt4539.c` pairs `lcd-backlight-amber` with `lcd-backlight` by label and registers only `lcd-backlight` (total luminance); the white chip's `warmth` attribute sets the mix, and one request updates both chips. Keep both labels together. Chip power-down after a fade is deferred except in system suspend. GNOME's native brightness writes the device directly; `dc1-warmth` writes only `warmth` (udev: `root:wheel 0664`) and keeps its two-device mixer solely for kernels without the pairing. |
+| Frontlight mirror | `dc1-screen-backlight` mirrors DRM `dpms` onto every backlight `bl_power` file (0/4), never `brightness`, and writes only on observed state changes. Keep the 500 ms DRM poll: there is no DPMS uevent, and a GNOME-only D-Bus signal would lose sway. The systemd unit and the OpenRC script must both keep their `--restore` stop hook. |
 | Desktop geometry | Keep at least 12 device px at edges and about 40 px in corners. Lock-sheet OSK padding targets the parent of the unlock dialog's `_stack`, never its background-first child. |
 | Optional sessions | GNOME Mobile stays the default. Plasma Mobile, the Waydroid manager and any owner-installed Sway session are tablet-side add-ons outside the rootfs build; `dc1-session` writes the AccountsService session because gdm autologin skips the greeter. `dc1-orientation` stands down when `org.kde.KWin` owns the session. Keep `/etc/tcb` mode 0711 so non-root password checks work; 0700 breaks `unix_chkpwd` for every lock screen. Waydroid tooling never installs kernels or writes boot slots. |
 | GPU | `dc1-gpu-freq` is the sole min/max writer; keep thermal cooling and autosuspend. Default floor is 812 MHz with 40 ms poll. Measure continuous and idle-gap p95/max using `tools/performance/`; throughput alone is not smoothness proof. |

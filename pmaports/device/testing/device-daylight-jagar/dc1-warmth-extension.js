@@ -1,8 +1,21 @@
-// GNOME 51 targets are routed through NativeBrightnessBridge, preserving
-// the native brightness and dimming policy while mixing both frontlights.
-// The D-Bus path below remains for rollback to the 48-based mobile shell.
-// DC-1 frontlight temperature -- a second quick-settings slider that mixes
-// the two frontlights as a colour temperature over one shared luminance.
+// DC-1 frontlight temperature -- a dedicated quick-settings slider for the
+// colour mix of the two frontlights, beside GNOME's own brightness slider.
+//
+// Current kernels mix in the driver. rt4539.c pairs the amber chip with the
+// white one and registers a single "lcd-backlight" device whose brightness
+// is the total luminance; the white chip's I2C device carries a "warmth"
+// attribute (0..max_warmth) that selects the mix, and every brightness or
+// warmth change updates both chips in one request. GNOME then owns the
+// brightness without any routing (no colour flash between two writes), and
+// this extension only writes warmth. The attribute is root:wheel 0664 via
+// 90-device-daylight-jagar.rules; provisioning puts the owner in wheel.
+//
+// Kernels without the paired driver (the rollback slot) still expose two
+// backlight devices. For those the extension falls back to the userspace
+// mixer below: GNOME 51 targets are routed through NativeBrightnessBridge,
+// and the D-Bus path remains for rollback to the 48-based mobile shell.
+//
+// The rest of this header describes that fallback mixer.
 //
 // The DC-1 has two independent RT4539 frontlights on separate i2c buses:
 // "lcd-backlight" (white, i2c-5) and "lcd-backlight-amber" (amber, i2c-2).
@@ -85,6 +98,8 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 const WHITE = 'lcd-backlight';
 const AMBER = 'lcd-backlight-amber';
 const SYSFS = '/sys/class/backlight';
+const KERNEL_WARMTH = `${SYSFS}/${WHITE}/device/warmth`;
+const KERNEL_MAX_WARMTH = `${SYSFS}/${WHITE}/device/max_warmth`;
 
 // gsd's Brightness property changes before the helper has written sysfs; give
 // the write time to land before reading the white level back.
@@ -185,6 +200,92 @@ class Channel {
             if (queued !== null && queued !== this.written)
                 this.write(queued);
         });
+    }
+}
+
+// Drives the kernel's warmth attribute. The driver re-mixes the current
+// brightness on both chips itself, so a drag is a stream of single writes;
+// a one-slot queue keeps at most one write in flight and drops stale ones.
+class KernelWarmthController {
+    constructor() {
+        this.max = readInt(KERNEL_MAX_WARMTH) ?? 0;
+        this._written = null;
+        this._writing = false;
+        this._queued = null;
+        this._cancellable = new Gio.Cancellable();
+    }
+
+    static get available() {
+        return GLib.file_test(KERNEL_WARMTH, GLib.FileTest.EXISTS);
+    }
+
+    destroy() {
+        this._cancellable.cancel();
+        this._queued = null;
+    }
+
+    setTemperature(temperature) {
+        // Drags rarely land exactly on the end stop; a residual white of a
+        // count or two defeats "white off at max".
+        const t = temperature > 0.98 ? 1 : clamp01(temperature);
+        this._write(Math.round(t * this.max));
+    }
+
+    _write(value) {
+        if (this._writing) {
+            this._queued = value;
+            return;
+        }
+        if (value === this._written || this._cancellable.is_cancelled())
+            return;
+
+        // Every step runs on GIO's worker threads. A store that switches a
+        // chip off waits for its fade in the driver, and a synchronous write
+        // would freeze the shell -- slider included -- for that long. Drags
+        // coalesce in the one-slot queue instead of being debounced, so the
+        // light follows the finger with no added delay.
+        this._writing = true;
+        const finish = error => {
+            if (error && !error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                logError(error, `dc1-warmth: writing warmth ${value} failed`);
+            else if (!error)
+                this._written = value;
+
+            this._writing = false;
+            const queued = this._queued;
+            this._queued = null;
+            if (queued !== null)
+                this._write(queued);
+        };
+
+        // sysfs needs an in-place write: GLib's replace helpers write a
+        // temporary file and rename it over the target.
+        Gio.File.new_for_path(KERNEL_WARMTH).open_readwrite_async(
+            GLib.PRIORITY_DEFAULT, this._cancellable, (file, openResult) => {
+                let stream;
+                try {
+                    stream = file.open_readwrite_finish(openResult);
+                } catch (e) {
+                    finish(e);
+                    return;
+                }
+                stream.get_output_stream().write_bytes_async(
+                    new GLib.Bytes(new TextEncoder().encode(`${value}\n`)),
+                    GLib.PRIORITY_DEFAULT, this._cancellable, (output, writeResult) => {
+                        let error = null;
+                        try {
+                            output.write_bytes_finish(writeResult);
+                        } catch (e) {
+                            error = e;
+                        }
+                        stream.close_async(GLib.PRIORITY_DEFAULT, null, (closed, closeResult) => {
+                            try {
+                                closed.close_finish(closeResult);
+                            } catch {}
+                            finish(error);
+                        });
+                    });
+            });
     }
 }
 
@@ -424,6 +525,11 @@ class WarmthIndicator extends QuickSettings.SystemIndicator {
 
 export default class DC1WarmthExtension extends Extension {
     enable() {
+        if (KernelWarmthController.available) {
+            this._enableKernelMixer();
+            return;
+        }
+
         this._controller = new WarmthController();
         if (!this._controller.available) {
             console.warn(`dc1-warmth: no ${AMBER} backlight, not adding the slider`);
@@ -479,6 +585,23 @@ export default class DC1WarmthExtension extends Extension {
                 }
                 this._scheduleFollow();
             });
+    }
+
+    // GNOME's brightness slider drives the single lcd-backlight device
+    // directly; only the temperature slider is ours.
+    _enableKernelMixer() {
+        this._controller = new KernelWarmthController();
+        if (this._controller.max <= 0) {
+            console.warn('dc1-warmth: kernel warmth has no range, not adding the slider');
+            this._controller.destroy();
+            this._controller = null;
+            return;
+        }
+
+        this._settings = this.getSettings();
+        this._migrate();
+        this._indicator = new WarmthIndicator(this._settings, this._controller);
+        Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
     }
 
     disable() {
