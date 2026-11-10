@@ -316,6 +316,13 @@ white is off at maximum warmth. One brightness or warmth request updates both
 chips under one lock, so no intermediate colour is shown. Warmth is not
 persistent and starts at 0.
 
+Live brightness and warmth changes ramp on the 8 ms slope so the light
+follows a drag instead of lagging it; the stock 128 ms slope is used only
+for the screen-off fade. An optional `brightness-profile` property splits
+live changes into up to eight frame-scale steps, using the long slope near
+the target and the short one farther away; no shipped device tree sets it
+yet, so this needs a full image to adopt.
+
 GNOME Mobile 51's native brightness manager writes `lcd-backlight` directly
 and owns the slider, automatic target, idle dimming and saved monitor
 brightness. The `dc1-warmth@denv.it` extension adds a dedicated temperature
