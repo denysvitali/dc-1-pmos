@@ -25,6 +25,7 @@ and the measurements supporting them. A successful build is not hardware validat
 | [Building from pinned sources](building.md) | Host requirements, rootfs exports, boot images, and CI release assembly |
 | [Release versions and publication](releases.md) | Retained numbered builds, rolling `latest`, manual tags, and rerun behavior |
 | [Local kernel development](kernel-development.md) | Native kernel-only build, installation, and rollback workflow |
+| [Local compositor profiling](compositor-profiling.md) | Opt-in, non-deploying staging of a profiler-enabled Mutter build, capture runbook, and the frontlight readiness blocker |
 | [Contributing](../CONTRIBUTING.md) | Validation, package versioning, public-data rules, and review discipline |
 | [Operational instructions](../CLAUDE.md) | Build, boot, hardware, and CI invariants (`AGENTS.md` links to this file) |
 | [Roadmap](roadmap.md) | Open acceptance work and hardware-session runbooks |
