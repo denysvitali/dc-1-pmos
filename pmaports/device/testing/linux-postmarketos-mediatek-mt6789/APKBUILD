@@ -1,7 +1,7 @@
 maintainer="Denys Vitali <denys@denv.it>"
 pkgname=linux-postmarketos-mediatek-mt6789
 pkgver=7.2_rc5_git20260819
-pkgrel=77
+pkgrel=78
 pkgdesc="Mainline-based kernel fork for MediaTek MT6789/MT8781 devices"
 arch="aarch64"
 _carch="arm64"
@@ -31,7 +31,7 @@ makedepends="
 "
 
 _repository="dc-1-linux-kernel"
-_commit="45c3bdf75b76464cd086fadb75bf32fea47bbca5"
+_commit="40b46d6fc4e6bfe08dd52b1d7fbe682e41ed9d06"
 # Native ALS, display-resume fixes, shallow WFI support, the paired RT4539
 # frontlight mix and its frame-scale live ramp are in this pin.
 # The kernel source tarball supplies the base config. The config used to be
@@ -263,7 +263,7 @@ modules() {
 }
 
 sha512sums="
-5a71206ff8f6e57129b53645c1be1a74a99822d94c767456a9bb1a9ec9dedb75a1aefffcc697dba8120672f4700b0f9b9f48681c5173aa7726714752f41c87db  linux-postmarketos-mediatek-mt6789-45c3bdf75b76464cd086fadb75bf32fea47bbca5.tar.gz
+da8baa5d935fdc97eb62061780dbddeff4e6b6c1e90fa3cc5ebe734982849aee631306c4dd5c3d29c4e47661cb74c1802628f0f2747bc8333cfe479a7c66df94  linux-postmarketos-mediatek-mt6789-40b46d6fc4e6bfe08dd52b1d7fbe682e41ed9d06.tar.gz
 35e0cbe0891e1c696a927c3f0e83207ecff9a9a05302336b2fb76a07fcc099f41748d716c99c6fed9d6e4aa3368dbe088178985ad5fd70ce4b4b87b3dc197f57  sdcard.config
 91cdf92c1f37efb6b8e3ebc691c1ce97d4a93acc737aa5ecd4f2943943734ab2d5fa73899e6f5d254dc57ec9fe15f75813cd7008b128982a3fc1cfa19dc5fc6f  latency.config
 4be263aa63ccd85cecda1c900f5210eab22d2305ef88330734afc68e8151682da88950c53a6fef5aed0161b524d0d6b40df3ca7da81468005b769c267e84fc42  suspend.config
