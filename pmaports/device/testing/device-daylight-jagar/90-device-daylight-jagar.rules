@@ -54,3 +54,12 @@ ACTION=="add|change", SUBSYSTEM=="typec", ENV{DEVTYPE}=="typec_partner", \
 # failed-communication case and stops matching the moment the gauge answers
 # (P7.1). The MT6375 line-power supply is untouched, so AC state still shows.
 SUBSYSTEM=="power_supply", KERNEL=="bq78z100-0", ATTR{present}=="0", ENV{UPOWER_IGNORE}="1"
+
+# Let the owner's desktop set the frontlight colour mix. rt4539.c exposes
+# "warmth" on the white chip once it has paired the amber chip; brightness
+# stays with logind's backlight permissions. Provisioning adds the owner to
+# wheel, the same group dc1-gpu-freq uses for session-UI writes. The
+# attribute exists only after the driver binds, so match bind as well as
+# coldplug add. Kernels without the paired driver never match.
+ACTION=="add|bind", SUBSYSTEM=="i2c", DRIVER=="rt4539", TEST=="warmth", \
+  RUN+="/bin/chgrp wheel /sys%p/warmth", RUN+="/bin/chmod 0664 /sys%p/warmth"

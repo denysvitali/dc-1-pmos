@@ -42,14 +42,24 @@ require updating the pinned kernel commit/archive checksum and
 `scripts/versions.env`; editing the sibling kernel checkout alone does not
 change this package. `sdcard.config` adds built-in storage requirements to
 the pinned defconfig; `latency.config` requires high-resolution timers for
-GPU wake and desktop scheduling precision. `suspend.config` enables the
+GPU wake and desktop scheduling precision; `suspend.config` enables the
 shallow WFI cpuidle driver required to freeze s2idle timekeeping and packages
-the PMIC alarm RTC as a module, preserving the built-in boot-time RTC. The recipe
-verifies the resolved values from the storage, latency, suspend, USB, resource
-control and Waydroid fragments, and packages the resulting configuration.
-`waydroid.config` enables Android IPC, ARM32 compatibility and container
-networking. It also exposes the running configuration at `/proc/config.gz`
-for diagnostics and prerequisite checks. Android userspace is installed separately.
+the PMIC alarm RTC as a module, preserving the built-in boot-time RTC.
+`usb-host.config` keeps the recovery controller/gadget built in and adds
+loadable USB peripheral drivers. `resource-control.config` enables cgroup CPU,
+I/O and PID limits; `waydroid.config` enables Android IPC, ARM32 compatibility
+and container networking and exposes the running configuration at
+`/proc/config.gz` for diagnostics and prerequisite checks (Android userspace
+is installed separately); `sensors.config` builds the MN29005 ambient-light
+module. The recipe verifies the resolved `y`/`m` values from all seven
+fragments, O2 performance optimization, disabled `SLUB_TINY`, enabled
+compaction, and clang/LLD 20 both at configuration resolution and immediately
+before and after the kernel build. The packaged configuration is a validated
+`.config.kernel` snapshot taken after `Image.gz modules`, before the separate
+GCC-host DTB pass can change toolchain-derived configuration. A failed kernel
+build removes any stale snapshot; packaging refuses a missing or invalid
+snapshot. The offline `scripts/tests/test_kernel_config.py` suite simulates
+post-DTB mutation and exercises these failure paths.
 
 The kernel recipe emits a separate `-modules` APK and requires its exact
 version. Keep both APKs together for local installation. `usb-host.config`

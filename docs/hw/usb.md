@@ -62,9 +62,11 @@ at session end. Forcing the PHY's VBUSVALID/AVALID session inputs and
 restarting the role session made the attached Lenovo/Fresco Logic five-port
 hub enumerate immediately at 480 Mbit/s; charger `online` remained `1`,
 input current remained 1.5 A, and the Type-C power role remained `[sink]`.
-Kernel `a1a5a465fb61` makes that override an opt-in T-PHY property
-(`mediatek,force-vbus-valid`) enabled
-only for jagar and clears it outside host mode. Note its placement: the
+The T-PHY override is opt-in (`mediatek,force-vbus-valid`) and enabled only
+for jagar. The pinned kernel applies it in device mode too: VBUSVALID,
+AVALID and BVALID are asserted and SESSEND is cleared so MUSB can enumerate
+the bound gadget while TCPM validates VBUS. OTG mode clears the forced
+session inputs. Note its placement: the
 property lives on the `usb-phy@0` child of the `t-phy@11f40000` node, not
 on the T-PHY parent — grepping only the parent looks like the property is
 missing.

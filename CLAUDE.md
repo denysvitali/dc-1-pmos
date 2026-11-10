@@ -12,7 +12,9 @@ Implementation details belong in the relevant guide, not a running diary here.
 
 ## Start and finish a task
 
-1. Check `hostname` and `git status`. Preserve existing worktree changes.
+1. Check `hostname`, `git fetch`, and `git status`. Confirm your base is
+   `origin/main` before editing; a local `main` that was left alone for a
+   while can be dozens of commits behind. Preserve existing worktree changes.
 2. Read the relevant guide and implementation before editing. Work directly
    on `main`; keep changes focused and stage only the work you reviewed.
 3. Run the checks appropriate to the change. Review the complete staged diff
@@ -71,12 +73,14 @@ Five overlays produce ten runtime APKs:
 | `gnome-settings-daemon-mobile` | Upstream `extra-repos/systemd/gnome-settings-daemon-mobile`; settings daemon and systemd APKs |
 
 - Keep Shell, Mutter and settings-daemon on the matched `51.1.mobile.21`
-  source cohort. Settings uses Shell's native brightness capability interface;
-  the DC-1 opts into inverse ambient response and routes native targets through
-  its two-channel warmth mixer. Do not add a second sensor controller.
+  source cohort. Settings uses Shell's native brightness capability interface
+  and the DC-1 opts into inverse ambient response. Do not add a second sensor
+  controller.
 - Bump a recipe's `pkgrel` whenever its recipe or effective inputs change.
   CI reuses unchanged versions; an existing published APK filename must
-  retain identical bytes.
+  retain identical bytes. Before staging, compare the recipe against the
+  published release, not only against the branch tip: a `pkgrel` whose APK
+  already shipped must not gain new content.
 - Keep recipes conventional. Use POSIX `sh` unless a script requires another
   shell; retain `set -eu` and fail-closed build validation. Installation policy belongs in `installer/`
   or build scripts.
@@ -91,17 +95,44 @@ Five overlays produce ten runtime APKs:
   `CC="ccache clang-20"`, `HOSTCC="ccache clang-20"`. DTB generation is
   serial with `HOSTCC=gcc`. Keep `CCACHE_DIR=/home/pmos/.ccache` and the
   positive check that ccache recorded compiles.
-- Preserve the built-in settings from `sdcard.config`, `latency.config` and
-  `suspend.config`, especially `CONFIG_HIGH_RES_TIMERS=y` and the shallow WFI
-  cpuidle driver needed to freeze s2idle timekeeping. Ship the resolved config.
+- The recipe merges and checks seven fragments after Kconfig: `sdcard`,
+  `latency`, `suspend`, `usb-host`, `resource-control`, `waydroid` and
+  `sensors` (`.config`). Preserve especially `CONFIG_HIGH_RES_TIMERS=y`, the
+  shallow WFI cpuidle driver needed to freeze s2idle timekeeping, built-in
+  Binder with `/proc/config.gz`, and `CONFIG_MN29005=m`. Ship the resolved
+  pre-DTB config snapshot. A new or changed fragment needs an entry in the
+  recipe's check loop and in `scripts/tests/test_kernel_config.py`.
+- `installer/build.sh` pins Alpine edge APKs by exact version and SHA-256.
+  Edge deletes superseded builds, so a 404 means refresh the affected pins
+  after verifying Alpine signatures; never relax the hash check.
+- Device helpers ship as regular files or compiled C, never as shell scripts
+  kept under an old path. A helper that moves from shell to C needs: the
+  `source=` entry and checksum renamed, a `build()` compile line, its `sh -n`
+  line removed from `scripts/verify.sh`, and compile coverage with
+  `-Wall -Wextra -Werror` either in a `installer/tests/test-*.sh` (the
+  `installer` group runs it) or in the `c` group of `scripts/check.sh`. Its
+  fake-input tests belong under `installer/tests/` and run without hardware.
+- The shipped image boots systemd. Units that must also work on an OpenRC
+  host ship a paired `dc1-*.initd` with equivalent logic and stop/restore
+  hooks; anything OpenRC cannot express (system generators, timers,
+  `ConditionPathExists`, `ExecStopPost`) is systemd-only and must say so in
+  its header. Do not invent an initd that silently does less.
 
 The rootfs builder is non-deploying: `pmbootstrap install --no-image
 --no-sshd --no-firewall --no-recommends`. Builders write regular files;
 never use fastboot, SSH/SCP or block-device targets in the build path.
 
+The image ships GNOME Mobile as its only desktop (`ui = gnome-mobile`) with
+gdm autologin to the build-time `dc1` account; provisioning renames that
+account and updates the autologin target to the chosen username. Plasma Mobile, an
+owner-installed Sway session and the Waydroid manager are add-ons on the
+tablet, not rootfs content, and their session files are what `dc1-session`
+selects between.
+
 See [building](docs/building.md) for commands and artifact inventory,
-[releases](docs/releases.md) for publication, and
-[kernel development](docs/kernel-development.md) for local builds and rollback.
+[releases](docs/releases.md) for publication,
+[kernel development](docs/kernel-development.md) for local builds and rollback,
+and [optional sessions](docs/plasma-mobile.md) / [Waydroid](docs/waydroid.md).
 Local kernel updates preserve the running stub, DTB and ramdisk; DT/initramfs
 changes require the full image workflow. Root-only rollback records stay
 outside Git in `/var/lib/dc1/local-kernel`.
@@ -135,9 +166,12 @@ before changing drivers, DTS, power policy or desktop integration.
 
 | Area | Requirements to preserve |
 | --- | --- |
-| USB | `dr_mode = "otg"`; keep `g1` bound in host mode. Never remove configfs gadget objects to switch roles. MT6375 TCPM owns VBUS; retain jagar's host-only `mediatek,force-vbus-valid` override. PIO-only MUSB must not advertise `HCD_DMA`. Source PDO stays 5 V/500 mA pending electrical/thermal validation. |
-| Display | Logs and frame IRQs do not prove lit glass. Verify TE GPIO83 or DCS `0x0a` (`0x9c`); a timed-out DCS read can prevent re-enable until reboot. Clear `DSI_SW_CTL_EN` on all five lanes, including D3 at `0x0544`. Keep full panel timings and the 60 Hz default. |
+| USB | `dr_mode = "otg"`; keep `g1` bound in host mode. Never remove configfs gadget objects to switch roles. MT6375 TCPM owns VBUS; keep jagar's `mediatek,force-vbus-valid` override applying in device mode too (`VBUSVALID`/`AVALID`/`BVALID` asserted, `SESSEND` clear), because the UTMI VBUS input stays at session end while TCPM negotiates. Removing the device-mode branch drops gadget enumeration. PIO-only MUSB must not advertise `HCD_DMA`. Source PDO stays 5 V/500 mA pending electrical/thermal validation. |
+| Display | Logs and frame IRQs do not prove lit glass. Verify TE GPIO83 or DCS `0x0a` (`0x9c`); a timed-out DCS read can prevent re-enable until reboot. Clear `DSI_SW_CTL_EN` on all five lanes, including D3 at `0x0544`. Keep full panel timings and the 60 Hz preferred default; the 120 Hz mode is an experiment. |
+| Frontlight mix | `rt4539.c` pairs `lcd-backlight-amber` with `lcd-backlight` by label and registers only `lcd-backlight` (total luminance); the white chip's `warmth` attribute sets the mix, and one request updates both chips. Keep both labels together. Chip power-down after a fade is deferred except in system suspend. GNOME's native brightness writes the device directly; `dc1-warmth` writes only `warmth` (udev: `root:wheel 0664`) and keeps its two-device mixer solely for kernels without the pairing. |
+| Frontlight mirror | `dc1-screen-backlight` mirrors DRM `dpms` onto every backlight `bl_power` file (0/4), never `brightness`, and writes only on observed state changes. Keep the 500 ms DRM poll: there is no DPMS uevent, and a GNOME-only D-Bus signal would lose sway. The systemd unit and the OpenRC script must both keep their `--restore` stop hook. |
 | Desktop geometry | Keep at least 12 device px at edges and about 40 px in corners. Lock-sheet OSK padding targets the parent of the unlock dialog's `_stack`, never its background-first child. |
+| Optional sessions | GNOME Mobile stays the default. Plasma Mobile, the Waydroid manager and any owner-installed Sway session are tablet-side add-ons outside the rootfs build; `dc1-session` writes the AccountsService session because gdm autologin skips the greeter. `dc1-orientation` stands down when `org.kde.KWin` owns the session. Keep `/etc/tcb` mode 0711 so non-root password checks work; 0700 breaks `unix_chkpwd` for every lock screen. Waydroid tooling never installs kernels or writes boot slots. |
 | GPU | `dc1-gpu-freq` is the sole min/max writer; keep thermal cooling and autosuspend. Default floor is 812 MHz with 40 ms poll. Measure continuous and idle-gap p95/max using `tools/performance/`; throughput alone is not smoothness proof. |
 | Battery | BQ78Z100 stays disabled until live ACK/protocol measurement. Keep calibrated `mt6358-fg` fallback and single-use clean-shutdown anchor (maximum ten minutes old). |
 | Charging | Keep RT9471 disabled and active-low GPIO151 CE high until routing, current sharing, thermals and pack-temperature enforcement are established. Do not enable a second charger blindly. |
@@ -209,6 +243,19 @@ The shared local/CI runner also accepts `syntax`, `packaging`, `installer`,
 `c`, `go`, and `dtbswap` groups. It never installs dependencies or deploys;
 Go may download its declared toolchain or modules on the first run. See
 [contributor setup](CONTRIBUTING.md#local-setup) for prerequisites.
+
+`sh scripts/check.sh installer` discovers `installer/tests/test-*.sh` by
+glob, so a new test runs before it is committed, but only under that naming.
+Run the gates against the tree you are about to commit: an `MM` entry in
+`git status` means the staged copy differs from the one you tested, so stage
+again and re-read the staged diff rather than trusting an earlier green.
+`sh -n` on a referenced helper fails when the file is missing, so a rename or
+helper deletion must update `scripts/verify.sh` in the same change.
+
+Before reporting a push as good, check the run itself. For a repository you
+do not administer, job logs are not retrievable through the public API (the
+logs endpoint returns 403), so read the check annotations and the named
+failing step, and report which step failed rather than guessing a cause.
 
 Use `actionlint` for workflow changes, or at least parse YAML. Documentation
 edits need link/anchor and command checks, not a hardware boot.

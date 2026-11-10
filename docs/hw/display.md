@@ -105,7 +105,19 @@ The frontlight is not the panel's DRM backlight — our mainline DT has no
 panel node, so DRM exposes no `panel orientation` property and no backlight
 phandle — so `dc1-screen-backlight` mirrors the connector's DPMS state onto
 both RT4539 `bl_power` files; without it a blanked panel stays evenly lit
-and reads as a wedged display.
+and reads as a wedged display. The helper polls every 500 ms (DRM supplies
+no DPMS uevent, and GNOME-only D-Bus notifications would lose sway
+support): any successfully read `On` wins, any other complete line votes
+off, missing/unreadable/partial reads do not vote, an all-unknown poll
+leaves the lights untouched, and writes land only on observed state changes
+so `brightness` survives blanking. Since device r123 it is a compiled C
+helper (`dc1-screen-backlight.c`) that waits on a monotonic clock instead
+of the shell loop's twice-per-second `sleep` child — that removes recurring
+process creation, not the polling wakeups, and no battery-life change has
+been measured. Both service managers still call `--restore` on stop.
+Fake-sysfs contract tests for the helper live in
+`installer/tests/test-dc1-screen-backlight.py` and cover blanking, restoration,
+unknown connector states and preservation of brightness.
 
 ## GPU
 
@@ -294,14 +306,24 @@ the [desktop guide](../gnome.md#chromium-webgpu) for restart and override behavi
 
 ## Frontlight
 
-Dual RT4539 backlight drivers expose `lcd-backlight` (white, i2c-5) and
-`lcd-backlight-amber` (amber, i2c-2). GNOME Mobile 51's native brightness
-manager owns the slider, automatic target, idle dimming and saved monitor
-brightness. The `dc1-warmth@denv.it` extension routes its built-in display
-output through the existing two-channel mixer, preserving the temperature
-crossfade and logind's `Session.SetBrightness` permissions. White-channel
-uevents are not treated as total luminance, so pure amber does not reset the
-slider or feed an automatic target back into the user's preference.
+Two RT4539 chips light the panel: white on i2c-5 and amber on i2c-2. The
+driver pairs the node labelled `lcd-backlight-amber` with `lcd-backlight` and
+registers only `lcd-backlight`, whose brightness is the total luminance.
+`/sys/class/backlight/lcd-backlight/device/warmth` (0 to `max_warmth`)
+selects a constant-sum crossfade. Up to half the range, amber rises beside an
+undimmed white channel. Above that, white dims while amber keeps rising, and
+white is off at maximum warmth. One brightness or warmth request updates both
+chips under one lock, so no intermediate colour is shown. Warmth is not
+persistent and starts at 0.
+
+GNOME Mobile 51's native brightness manager writes `lcd-backlight` directly
+and owns the slider, automatic target, idle dimming and saved monitor
+brightness. The `dc1-warmth@denv.it` extension adds a dedicated temperature
+slider that writes only `warmth`. The device udev rule makes that attribute
+`root:wheel 0664` when the driver binds. Provisioning adds the owner to
+`wheel`. On a kernel without the paired driver, which still exposes two
+backlight devices, the extension falls back to its userspace two-channel
+mixer through logind's `Session.SetBrightness`.
 
 The matched settings daemon consumes SensorProxy and retains its native
 normalization and smoothing. The DC-1 schema override enables
