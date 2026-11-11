@@ -148,29 +148,19 @@ sudo env KERNEL_IMAGE=Image.gz KERNEL_DTB=jagar.dtb MODDIR=mods ./build.sh
                                          # (both dtbswap; KERNEL_DTB required)
 ```
 
-Needs `lz4` (the boot chain requires a legacy-frame LZ4 cpio), `curl` and
-`xz` (build-time downloads), and network on the first run. Everything
-fetched is cached under `dl/` (gitignored, never committed) and verified
-before use:
+Needs `lz4`, `curl`, `xz`, Python 3, OpenSSL and network access. Firmware
+is cached under `dl/` (gitignored, never committed) and verified before use:
 
-- **MT7902 firmware** (`WIFI_RAM_CODE_MT7902_1.bin`,
-  `WIFI_MT7902_patch_mcu_1_1_hdr.bin`) from upstream linux-firmware (tag
-  `20260622`) and the signed **wireless-regdb 2026.05.30** pair — each
-  pinned by exact size + SHA-256, fail-closed. A same-named file with a
-  different hash (the stock Android blobs pass the legacy handshake and
-  then fail mainline mt76's UNI commands) fails the build.
-- **Alpine edge/main aarch64 apks**, pinned by exact version in `build.sh`
-  (`ALPINE_APKS`): busybox-static (the image's `/bin/busybox`, provides
-  `blkid`/`cryptpw`/`udhcpc` — Ubuntu's busybox-static lacks `blkid`),
-  curl + its full shared-library closure, zstd, wpa_supplicant + libraries,
-  the musl loader, and the CA bundle. Only named files are staged, a
-  `readelf` DT_NEEDED closure check fails the build if Alpine's dependency
-  graph drifts, and a version bump on the mirror 404s the pinned URL so
-  the build fails closed until the pin is updated deliberately. Refresh
-  both `ALPINE_APKS` filenames and matching `ALPINE_APK_SHA256S` full-archive
-  hashes only after verifying official Alpine artifacts with trusted Alpine
-  signing keys. Audit every pin when refreshing: the build stops at the first
-  unavailable package, so one failure can hide other superseded versions.
+- **MT7902 firmware** from upstream linux-firmware and the signed
+  **wireless-regdb** pair are pinned by exact size and SHA-256. A same-named
+  stock Android blob fails the build.
+- **Alpine edge/main aarch64 packages** are resolved by name with their
+  dependencies on every build. The host `apk.static` is bootstrapped from
+  Alpine's signed index using the committed public keys; apk verifies the
+  current index and package contents before installing them into a disposable
+  staging tree. Only required binaries and libraries are staged. The library
+  closure checks catch missing runtime dependencies. Edge changes may change
+  the resulting image even with unchanged repository sources.
 
 `BUSYBOX=` overrides the busybox binary (must be static; the applet check
 enforces `nc sha256sum base64 blkid awk switch_root cryptpw udhcpc` and
@@ -185,9 +175,8 @@ artifact names `installer-boot.img`
 and `jagar-boot.img` are load-bearing — the host script, the on-device
 installer, and CI depend on them.
 
-The **system** image stays minimal: no firmware, no network userland —
-the installed rootfs carries its own (upstream, pinned) MT7902 firmware
-via `linux-firmware-mediatek`.
+The **system** image carries firmware and the filesystem repair tools, but
+not the installer network userland.
 
 ## Tests
 

@@ -32,7 +32,7 @@ Boot-image assembly additionally uses a C compiler with static linking, Go
 binutils, and dtc (`fdtget`/`fdtput`). The stub requires clang, LLD, and
 llvm-objcopy. CI explicitly uses LLVM 19 for the hardware-proven stub; the
 Makefile defaults to Alpine's LLVM 20 path. Root is needed for initramfs device
-nodes. The installer builder downloads its pinned Alpine busybox-static;
+nodes. The installer builder resolves Alpine busybox-static from edge;
 Ubuntu's busybox-static lacks required applets.
 
 ## Source and package identity
@@ -108,7 +108,9 @@ directory as the workflow does. Only the explicit legacy gadget module
 allowlist enters the installer ramdisk; dock modules stay on the rootfs.
 Outputs are under `installer/out/`, including
 `installer-boot.img` and `jagar-boot.img`. Downloaded inputs are cached in
-`installer/dl/`; temporary staging lives in `installer/root/`.
+`installer/dl/`; temporary staging lives in `installer/root/`. Alpine package
+versions are resolved from the current signed edge index, so pinned source
+commits alone do not reproduce identical boot images.
 See the [installer implementation guide](../installer/README.md#building)
 for input validation and firmware provenance.
 

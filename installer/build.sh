@@ -21,8 +21,8 @@
 #                                          (gadget stack, if modular)
 #
 # Run as root (or under fakeroot): the cpio needs real device nodes.
-# Needs network on the first run: firmware and Alpine packages are fetched
-# at BUILD time (cached under dl/, pinned below, never committed).
+# Needs network at build time: firmware is cached under dl/, while Alpine
+# packages are freshly resolved on each build. Neither is committed.
 #
 # The installer image is SECRET-FREE:
 #   * no wifi.conf, no authorized_keys, no keys of any kind. Wi-Fi
@@ -35,9 +35,7 @@
 #     even pass the legacy firmware handshake, then fail mainline mt76's
 #     UNI commands -- a same-named file with the wrong hash FAILS the build.
 #   * userland beyond busybox (curl, zstd, wpa_supplicant + libraries, the
-#     musl loader) is extracted from Alpine edge apks pinned by exact
-#     version and SHA-256 below. These are public binaries fetched from the
-#     official mirror; a replaced file under the same version fails closed.
+#     musl loader) is resolved from Alpine edge using its signed package index.
 #
 # Facts this build depends on (measured during bring-up; see also the
 # comments in src/init.c):
@@ -72,6 +70,8 @@ command -v lz4 >/dev/null || fatal "need lz4 (legacy-frame ramdisk is mandatory)
 command -v cpio >/dev/null || fatal "need cpio"
 command -v curl >/dev/null || fatal "need curl (build-time downloads)"
 command -v xz >/dev/null || fatal "need xz (wireless-regdb tarball)"
+command -v python3 >/dev/null || fatal "need python3 (Alpine apk bootstrap)"
+command -v openssl >/dev/null || fatal "need openssl (Alpine index signature)"
 
 # --------------------------------------------------------------- 0. downloads
 # Everything fetched here is public, upstream, and verified before use.
@@ -102,95 +102,6 @@ REGDB_SIZE=6380
 REGDB_SHA256=2fb33ca0074db573e05ef7dd50bb45b63c0ff98b7e852e1105ebad536fae8e6b
 REGDB_SIG_SIZE=1085
 REGDB_SIG_SHA256=c941c08f51c93e46722293b85631604c3740d86c3de0c75f79aef50d2e919179
-
-# Alpine edge/main aarch64 packages, pinned by exact version AND content hash
-# (verified 2026-10-18 against official artifacts with trusted Alpine signing
-# keys; replacement hashes confirmed by a second download). Edge removes
-# superseded builds, so audit every pin when refreshing unavailable packages.
-# A filename is not a content pin: mirrors may replace
-# bytes under one version, and dl/ is a persistent cache. Every cached or newly
-# downloaded APK is therefore verified before extraction.
-ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64"
-ALPINE_APKS="
-busybox-static-1.38.0-r7
-musl-1.2.6-r5
-curl-8.22.0-r0
-libcurl-8.22.0-r0
-ca-certificates-bundle-20260909-r0
-brotli-libs-1.2.0-r1
-c-ares-1.34.8-r0
-libcrypto3-3.5.9-r0
-libssl3-3.5.9-r0
-libidn2-2.3.8-r0
-libunistring-1.4.2-r0
-nghttp2-libs-1.70.0-r0
-libpsl-0.21.5-r3
-zlib-1.3.2-r1
-zstd-1.5.7-r2
-zstd-libs-1.5.7-r2
-libgcc-15.2.0-r9
-libstdc++-15.2.0-r9
-wpa_supplicant-2.11-r4
-dbus-libs-1.16.2-r4
-libnl3-3.12.0-r0
-pcsc-lite-libs-2.5.2-r0
-dropbear-2026.94-r0
-utmps-libs-0.1.3.4-r0
-skalibs-libs-2.15.1.0-r0
-e2fsprogs-1.47.4-r0
-e2fsprogs-extra-1.47.4-r0
-e2fsprogs-libs-1.47.4-r0
-libcom_err-1.47.4-r0
-libblkid-2.42.4-r3
-libuuid-2.42.4-r3
-libeconf-0.8.4-r0
-"
-ALPINE_APK_SHA256S="
-6e1b8ecc3fb6a991025127120378521f481daa886e7f346f1089019d9741df2f busybox-static-1.38.0-r7
-d59b8eecf8bd212162171bd816861c19319a5616e33380ae68fa9fcb7d2f4d1b musl-1.2.6-r5
-e5b5f41ce308324fe0b7102a67e176dc4a841fc0400ee1139a454d99bf09749f curl-8.22.0-r0
-a0bcde87175e2e73d087e8626b8c606d83c61851b06f36e108abff4f1d8a20e9 libcurl-8.22.0-r0
-e85937873b0c571353aa521dec19753156a2b976dde278d0703db6e5e1e0071f ca-certificates-bundle-20260909-r0
-1d355054e19b7dd843d225c878a8e92b205270f4f7c89fb218151d21c9ae87e0 brotli-libs-1.2.0-r1
-b16ca578a8718851e2d3068120c0e60753a66f2df1fe44c530198b3ef5882b67 c-ares-1.34.8-r0
-ddfed8feb861b75bc002c3bc4a8453cee00f46db822dadc40dabb2334c47b585 libcrypto3-3.5.9-r0
-90f714960f379016298504d2afac67196814fff6f78ad9844348dda74cc99cb0 libssl3-3.5.9-r0
-3c6f9af20e672e880e2d719445750ad5ba41dceb53158fef9f256f17dc828f09 libidn2-2.3.8-r0
-2c2a871d7cf19eae35e3a6a57d74fd194bd3d68742d78d7b54b698f62fcdde0e libunistring-1.4.2-r0
-a552fb542888b300e353c960be884d448e789e8fb96be5e12873f0102540c363 nghttp2-libs-1.70.0-r0
-6758fc2b54987b260855e95ede93e7a5aefdf5955a5915aba25ea172fbc301ca libpsl-0.21.5-r3
-11c745d55520625947fae4096fef8e719c04501484843e123d8051f8f3d6dfa1 zlib-1.3.2-r1
-5ddea5d959e1ec4464042fa6c58bf10cfaf9212d634a7540d7c4f96251ccbd1d zstd-1.5.7-r2
-67f0803cc07bad0dd866d21fdaca1fa742b541a4e5e96e0159bd8b0054d348ac zstd-libs-1.5.7-r2
-23653103b2adf85dab73e4e35047f64b8671cd654e2d0291f44bec549084afd1 libgcc-15.2.0-r9
-36e8a2cee1ee14df5180c1f5737f0ffb59004ef92dd4f0bedff425968c4855ae libstdc++-15.2.0-r9
-7060615b397fd9ddca3b430fe98b6dd50494e09a6d7275a8fd0b255c0cd04a3e wpa_supplicant-2.11-r4
-4b0b2bcd31649a251276c7beb6041914e12fe091115c9951164c1a96f755a8e2 dbus-libs-1.16.2-r4
-462da328a92f1f5bd9089b8055e542afba3d91015a820191e36ad3a1fb2011a9 libnl3-3.12.0-r0
-fee7634ca4f4d9527ac5fb769ae7ca2dd7e1693d7fb3d647366c76d087d5642a pcsc-lite-libs-2.5.2-r0
-445c25a5cbd99ce1881df61fd1a191705e937e0c6e9963cbb8b04f2acf3541ac dropbear-2026.94-r0
-230e4a1749df6ece26852f552e84789fac750eef613e6f9cca0c5aedcd75514a utmps-libs-0.1.3.4-r0
-f14960b7a1d40c20d6c045874682f73c0aa4e8f36bae11583d3b860fb10b6764 skalibs-libs-2.15.1.0-r0
-7071d075262b1fdd3996e86c7955f219e00ce55e0774e54a62566c2bd11c493f e2fsprogs-1.47.4-r0
-44096fa251d7cf4a5d8c6c1ffb4014e28fc63ccd4e02534d0e2908fc5e7bc850 e2fsprogs-extra-1.47.4-r0
-476555b7a8178a8acf7cd94e0b3d10deb12ac236b9e78e04fc1648f0a29e3ea5 e2fsprogs-libs-1.47.4-r0
-b8d23585a851bfc732cfb39638b5d92c88a309ba1eb52243796c69c18a978b10 libcom_err-1.47.4-r0
-0a01844c07c3ae1ba0388a83316466ef2b41c6ccd46efff19bbcfdfbcaac78a5 libblkid-2.42.4-r3
-61844afc7b573f6b21cb6c644ba485ea1597c9969219b5ad8c8e9f5f0dc2590b libuuid-2.42.4-r3
-dd863710179743e49a6f2d446576aec31dbc5ab61f88da254e054f530b99cdb1 libeconf-0.8.4-r0
-"
-
-set -- $ALPINE_APKS
-alpine_apk_count=$#
-alpine_pin_count=$(printf '%s\n' "$ALPINE_APK_SHA256S" |
-	awk 'NF == 2 { n++ } END { print n + 0 }')
-[ "$alpine_pin_count" -eq "$alpine_apk_count" ] ||
-	fatal "Alpine package/pin count mismatch ($alpine_apk_count packages, $alpine_pin_count pins)"
-printf '%s\n' "$ALPINE_APK_SHA256S" | awk '
-	NF == 0 { next }
-	NF != 2 || length($1) != 64 || $1 ~ /[^0-9a-f]/ { exit 1 }
-	seen[$2]++ { exit 1 }
-' || fatal "malformed or duplicate Alpine package SHA-256 pin"
 
 verify_blob() {
 	vb_label=$1 vb_path=$2 vb_size=$3 vb_sha=$4
@@ -230,7 +141,7 @@ fetch() {   # fetch URL OUT -- cache-aware, fail-closed
 	fatal "download failed: $1"
 }
 
-mkdir -p "$DL/firmware" "$DL/apk" "$DL/apkroot"
+mkdir -p "$DL/firmware"
 
 fetch "$LINUX_FIRMWARE_URL/mediatek/$WIFI_RAM_NAME?h=$LINUX_FIRMWARE_TAG" \
 	"$DL/firmware/$WIFI_RAM_NAME"
@@ -260,27 +171,29 @@ verify_blob "wireless-regdb $REGDB_VERSION signature" \
 regdb_magic=$(od -An -tx1 -N4 "$DL/firmware/regulatory.db" | tr -d ' \n')
 [ "$regdb_magic" = 52474442 ] || fatal "regulatory.db has invalid magic $regdb_magic"
 
-# Fetch + unpack the pinned Alpine packages into one merged tree. An .apk is
-# concatenated gzip/tar segments; tar extracts all of them (the signature
-# segment yields dot-files we ignore). Every file we STAGE from the tree is
-# checked to exist afterwards, so a bad extraction fails closed.
-for pkg in $ALPINE_APKS; do
-	fetch "$ALPINE_MIRROR/$pkg.apk" "$DL/apk/$pkg.apk"
-	want=$(printf '%s\n' "$ALPINE_APK_SHA256S" |
-		awk -v pkg="$pkg" '$2 == pkg { print $1; exit }')
-	[ -n "$want" ] || fatal "no SHA-256 pin for Alpine package $pkg"
-	got=$(sha256sum "$DL/apk/$pkg.apk" | cut -d' ' -f1)
-	[ "$got" = "$want" ] ||
-		fatal "Alpine package $pkg has SHA-256 $got, expected $want"
-	echo "  verified Alpine package $pkg"
-done
+# Resolve current Alpine edge packages and their dependencies with apk.
+# The bootstrap is authenticated before execution; apk verifies the fresh
+# signed index and every package. The staging root is disposable, not cached.
+bootstrap=$(mktemp -d "$DL/apk-bootstrap.XXXXXX")
+APK=$(python3 -I "$HERE/../scripts/bootstrap-alpine-apk.py" "$bootstrap") ||
+	fatal "cannot bootstrap trusted Alpine apk"
 rm -rf "$DL/apkroot"
 mkdir -p "$DL/apkroot"
-for pkg in $ALPINE_APKS; do
-	tar -xzf "$DL/apk/$pkg.apk" -C "$DL/apkroot" 2>/dev/null ||
-		fatal "cannot extract verified Alpine package $pkg"
-done
-rm -rf "$DL/apkroot/.SIGN"* 2>/dev/null || true
+printf '%s\n' 'https://dl-cdn.alpinelinux.org/alpine/edge/main' > "$bootstrap/repositories"
+# apk rejects --usermode when invoked by root (as in the native CI build).
+# Keep it only for unprivileged/fakeroot staging; neither mode runs scripts.
+set --
+if [ "$(id -u)" -ne 0 ]; then
+	set -- --usermode
+fi
+"$APK" --root "$DL/apkroot" --arch aarch64 \
+	--keys-dir "$HERE/../scripts/alpine-keys" \
+	--repositories-file "$bootstrap/repositories" --no-cache \
+	add --initdb "$@" --no-scripts --no-progress \
+	busybox-static musl curl zstd wpa_supplicant dropbear \
+	e2fsprogs e2fsprogs-extra ca-certificates-bundle ||
+	fatal "cannot resolve and install verified Alpine packages"
+rm -rf "$bootstrap"
 
 BUSYBOX=${BUSYBOX:-"$DL/apkroot/bin/busybox.static"}
 
@@ -427,7 +340,7 @@ for a in sh ash cat ls ln mount mountpoint umount insmod lsmod modprobe ip \
 done
 
 # ------------------------------------------- 2b. network userland + firmware
-# Binaries and libraries from the pinned Alpine apks (see stage 0). Only the
+# Binaries and libraries from the resolved Alpine packages (see stage 0). Only the
 # named files are taken -- never a recursive copy of the apk tree.
 AR="$DL/apkroot"
 stage() {   # stage MODE SRC DEST -- fail closed on anything missing
@@ -469,12 +382,13 @@ find "$AR/usr/lib" -maxdepth 1 \( -name '*.so' -o -name '*.so.*' \) \
 if command -v readelf >/dev/null 2>&1; then
 	for bin in "$d/sbin/wpa_supplicant" "$d/sbin/wpa_cli" \
 	           "$d/usr/bin/curl" "$d/usr/bin/zstd" \
+	           "$d/usr/sbin/dropbear" "$d/usr/bin/dropbearkey" \
 	           "$d/sbin/e2fsck" "$d/usr/sbin/resize2fs" "$d"/usr/lib/*.so*; do
 		[ -f "$bin" ] || continue
 		readelf -d "$bin" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p' \
 		| while read -r need; do
 			[ -e "$d/usr/lib/$need" ] || [ -e "$d/lib/$need" ] || \
-				fatal "$(basename "$bin") needs $need, not staged (Alpine dep drift -- update the apk pin list)"
+				fatal "$(basename "$bin") needs $need, not staged (Alpine dependency drift)"
 		done || exit 1
 	done
 	echo "  shared-library closure check: OK"
@@ -571,7 +485,7 @@ install -m 0644 "$DL/firmware/regulatory.db" "$s/lib/firmware/regulatory.db"
 install -m 0644 "$DL/firmware/regulatory.db.p7s" "$s/lib/firmware/regulatory.db.p7s"
 
 # Offline rootfs grow (boot.sh) + optional fsck: resize2fs and e2fsck plus
-# their musl libs, the same pinned set the installer stages. The apk ships each
+# their musl libs, the same resolved set the installer stages. The apk ships each
 # lib as a real file (libX.so.1.2.3) plus a symlink (libX.so.1); copy both.
 mkdir -p "$s/sbin" "$s/usr/sbin" "$s/usr/lib" "$s/lib"
 install -m 0755 "$AR/sbin/e2fsck" "$s/sbin/e2fsck"

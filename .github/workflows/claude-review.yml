@@ -1,6 +1,6 @@
 # Automated Claude Code review of pull requests, served through llm-proxy
 # (https://github.com/denysvitali/llm-proxy) routing to OpenCode Zen's free
-# `x-preview-f-free` model.
+# `longcat-2.5-free` model.
 #
 # Security model — PR content (diff, files, and, on `pull_request`, even this
 # workflow file itself) is untrusted:
@@ -64,7 +64,7 @@ jobs:
             - type: opencode
           default_route:
             backend: opencode
-            model: x-preview-f-free
+            model: longcat-2.5-free
           EOF
           docker run -d --name llm-proxy \
             -p 127.0.0.1:8090:8090 \
@@ -108,12 +108,12 @@ jobs:
           # select a non-free upstream model.
           ANTHROPIC_BASE_URL: http://127.0.0.1:8090
           ANTHROPIC_API_KEY: unauthenticated-local-proxy
-          ANTHROPIC_MODEL: opencode/x-preview-f-free
-          ANTHROPIC_SMALL_FAST_MODEL: opencode/x-preview-f-free
-          ANTHROPIC_DEFAULT_HAIKU_MODEL: opencode/x-preview-f-free
-          ANTHROPIC_DEFAULT_SONNET_MODEL: opencode/x-preview-f-free
-          ANTHROPIC_DEFAULT_OPUS_MODEL: opencode/x-preview-f-free
-          # x-preview-f-free serves a 1M-token context. Claude Code does not
+          ANTHROPIC_MODEL: opencode/longcat-2.5-free
+          ANTHROPIC_SMALL_FAST_MODEL: opencode/longcat-2.5-free
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: opencode/longcat-2.5-free
+          ANTHROPIC_DEFAULT_SONNET_MODEL: opencode/longcat-2.5-free
+          ANTHROPIC_DEFAULT_OPUS_MODEL: opencode/longcat-2.5-free
+          # longcat-2.5-free serves a 1M-token context. Claude Code does not
           # recognize the model name and would otherwise assume 200k and
           # auto-compact early; declare the real window explicitly.
           CLAUDE_CODE_MAX_CONTEXT_TOKENS: "1000000"
@@ -156,7 +156,7 @@ jobs:
           inventing findings. Do not include preamble about being an AI.
           EOF
           claude -p \
-            --model opencode/x-preview-f-free \
+            --model opencode/longcat-2.5-free \
             --allowedTools "Read,Grep,Glob" \
             --disallowedTools "Bash,Write,Edit,NotebookEdit,WebFetch,WebSearch,Task" \
             --add-dir /tmp \

@@ -16,8 +16,7 @@
 #   * verifies the secret is a valid RSA key AND that its public half matches
 #     the committed key (a wrong secret would sign an index no device can
 #     verify, which is a silent failure on hardware);
-#   * pins apk-tools-static by version + SHA-256, like installer/build.sh
-#     pins busybox-static.
+#   * authenticates the current Alpine apk-tools-static before execution.
 set -eu
 
 usage() {
@@ -35,7 +34,7 @@ keyname=dc1-apk
 pubkey="$script_dir/../pmaports/device/testing/device-daylight-jagar/$keyname.rsa.pub"
 [ -f "$pubkey" ] || { echo "build-apkindex: committed public key missing: $pubkey" >&2; exit 1; }
 
-for tool in openssl curl sha256sum tar gzip head diff; do
+for tool in openssl python3 sha256sum tar gzip head diff; do
 	command -v "$tool" >/dev/null 2>&1 || {
 		echo "build-apkindex: missing required tool: $tool" >&2
 		exit 1
@@ -67,39 +66,13 @@ if ! diff -q "$work/secret-pub.der.sha256" "$work/committed-pub.der.sha256" >/de
 	exit 1
 fi
 
-# Pinned static apk-tools (aarch64: this job runs on ubuntu-24.04-arm). A
-# version bump by Alpine edge 404s here and fails the build closed; update
-# the pin deliberately, exactly like the ALPINE_APKS list in installer/build.sh.
-# Edge deletes superseded builds, so the common failure is a stale pin rather
-# than a network fault -- curl's bare exit 22 says none of that, so retry and
-# then name the likely cause (re-resolved 2026-09-10: 3.0.7-r0 was gone).
-apk_pkg="apk-tools-static-3.0.8-r0.apk"
-apk_url="https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/$apk_pkg"
-apk_sha256="8b5da539b70bb9dfca6567d336821bb316193544fd420213784584f285e99bb1"
-apk_try=1
-apk_max=${DC1_FETCH_RETRIES:-3}
-while :; do
-	if curl -fsSL --retry 3 --retry-all-errors \
-		-o "$work/$apk_pkg" "$apk_url"; then
-		break
-	fi
-	rm -f "$work/$apk_pkg"
-	if [ "$apk_try" -ge "$apk_max" ]; then
-		echo "build-apkindex: cannot download $apk_url" >&2
-		echo "build-apkindex: a curl 22 here usually means edge dropped $apk_pkg; update the pin" >&2
-		exit 1
-	fi
-	apk_try=$((apk_try + 1))
-	sleep $((apk_try * 2))
-done
-printf '%s  %s\n' "$apk_sha256" "$work/$apk_pkg" | sha256sum -c - >/dev/null ||
-	{ echo "build-apkindex: $apk_pkg does not match the pinned SHA-256" >&2; exit 1; }
-tar -xzf "$work/$apk_pkg" -C "$work" 2>/dev/null || {
-	echo "build-apkindex: cannot extract verified $apk_pkg" >&2
+# Bootstrap the current host apk from Alpine's signed index, without a
+# version pin. No downloaded executable runs before authentication.
+mkdir "$work/bootstrap"
+APK=$(python3 -I "$script_dir/bootstrap-alpine-apk.py" "$work/bootstrap") || {
+	echo "build-apkindex: cannot bootstrap trusted Alpine apk" >&2
 	exit 1
 }
-APK="$work/sbin/apk.static"
-[ -x "$APK" ] || { echo "build-apkindex: failed to extract apk.static" >&2; exit 1; }
 
 # Build the (unsigned) index over the published packages. --allow-untrusted
 # is required: pmbootstrap signs each run's packages with a throwaway key,
@@ -122,10 +95,14 @@ mkdir -p "$verify_root/etc/apk/keys" "$verify_root/lib/apk" \
 	"$verify_root/var/lib/apk"
 cp "$pubkey" "$verify_root/etc/apk/keys/$keyname.rsa.pub"
 : >"$verify_root/empty-repositories"
+set --
+if [ "$(id -u)" -ne 0 ]; then
+	set -- --usermode
+fi
 "$APK" --root "$verify_root" \
 	--keys-dir "$verify_root/etc/apk/keys" \
 	--repositories-file "$verify_root/empty-repositories" \
-	--no-cache add --initdb --usermode >/dev/null
+	--no-cache add --initdb "$@" >/dev/null
 printf 'file://%s/APKINDEX.tar.gz\n' "$release_dir" \
 	>"$verify_root/repositories"
 "$APK" --root "$verify_root" \

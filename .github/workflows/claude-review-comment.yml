@@ -70,7 +70,7 @@ jobs:
           body="$RUNNER_TEMP/body.md"
           {
             printf '<!-- claude-code-review -->\n'
-            printf '**Automated review** of %s by Claude Code via llm-proxy (opencode/x-preview-f-free).\n' "$RUN_HEAD_SHA"
+            printf '**Automated review** of %s by Claude Code via llm-proxy.\n' "$RUN_HEAD_SHA"
             printf '_Generated from untrusted PR content with a read-only toolset; verify findings before acting on them._\n\n'
             head -c 60000 "$dir/review.md"
             if [ "$(wc -c < "$dir/review.md")" -gt 60000 ]; then
