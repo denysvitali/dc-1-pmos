@@ -180,10 +180,16 @@ APK=$(python3 -I "$HERE/../scripts/bootstrap-alpine-apk.py" "$bootstrap") ||
 rm -rf "$DL/apkroot"
 mkdir -p "$DL/apkroot"
 printf '%s\n' 'https://dl-cdn.alpinelinux.org/alpine/edge/main' > "$bootstrap/repositories"
+# apk rejects --usermode when invoked by root (as in the native CI build).
+# Keep it only for unprivileged/fakeroot staging; neither mode runs scripts.
+set --
+if [ "$(id -u)" -ne 0 ]; then
+	set -- --usermode
+fi
 "$APK" --root "$DL/apkroot" --arch aarch64 \
 	--keys-dir "$HERE/../scripts/alpine-keys" \
 	--repositories-file "$bootstrap/repositories" --no-cache \
-	add --initdb --usermode --no-scripts --no-progress \
+	add --initdb "$@" --no-scripts --no-progress \
 	busybox-static musl curl zstd wpa_supplicant dropbear \
 	e2fsprogs e2fsprogs-extra ca-certificates-bundle ||
 	fatal "cannot resolve and install verified Alpine packages"

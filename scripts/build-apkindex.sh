@@ -95,10 +95,14 @@ mkdir -p "$verify_root/etc/apk/keys" "$verify_root/lib/apk" \
 	"$verify_root/var/lib/apk"
 cp "$pubkey" "$verify_root/etc/apk/keys/$keyname.rsa.pub"
 : >"$verify_root/empty-repositories"
+set --
+if [ "$(id -u)" -ne 0 ]; then
+	set -- --usermode
+fi
 "$APK" --root "$verify_root" \
 	--keys-dir "$verify_root/etc/apk/keys" \
 	--repositories-file "$verify_root/empty-repositories" \
-	--no-cache add --initdb --usermode >/dev/null
+	--no-cache add --initdb "$@" >/dev/null
 printf 'file://%s/APKINDEX.tar.gz\n' "$release_dir" \
 	>"$verify_root/repositories"
 "$APK" --root "$verify_root" \

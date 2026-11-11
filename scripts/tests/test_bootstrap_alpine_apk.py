@@ -5,6 +5,7 @@ import gzip
 import hashlib
 import importlib.util
 import io
+import os
 from pathlib import Path
 import subprocess
 import tarfile
@@ -96,6 +97,59 @@ class BootstrapTest(unittest.TestCase):
         package, identity = self.package()
         with self.assertRaises(ValueError):
             bootstrap.extract_binary(package[:20], identity)
+
+
+class ApkInvocationTest(unittest.TestCase):
+    """Execute each builder's actual apk command with fake uid/apk inputs."""
+
+    def run_command(self, builder, uid, exit_code=0):
+        source = (SCRIPT.parent.parent / builder).read_text()
+        start = source.index('set --\nif [ "$(id -u)" -ne 0 ]; then')
+        end_marker = ('rm -rf "$bootstrap"' if builder == 'installer/build.sh'
+                      else "printf 'file://")
+        command = source[start:source.index(end_marker, start)]
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            apk = work / 'apk'
+            log = work / 'arguments'
+            apk.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$APK_LOG"\n'
+                           'exit "$APK_EXIT"\n')
+            apk.chmod(0o755)
+            env = dict(os.environ, APK=str(apk), APK_LOG=str(log),
+                       APK_EXIT=str(exit_code), TEST_UID=str(uid),
+                       DL=tmp, HERE=tmp, bootstrap=tmp, verify_root=tmp)
+            result = subprocess.run(
+                ['sh', '-eu', '-c',
+                 'id() { printf "%s\\n" "$TEST_UID"; }\n'
+                 'fatal() { printf "%s\\n" "$*" >&2; exit 1; }\n' + command],
+                env=env, text=True, capture_output=True)
+            return result, log.read_text().splitlines()
+
+    def test_root_and_unprivileged_invocations(self):
+        for builder in ('installer/build.sh', 'scripts/build-apkindex.sh'):
+            for uid in (0, 1000):
+                with self.subTest(builder=builder, uid=uid):
+                    result, args = self.run_command(builder, uid)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual('--usermode' in args, uid != 0)
+                    for required in ('--root', '--keys-dir', '--repositories-file',
+                                     '--no-cache', 'add', '--initdb'):
+                        self.assertIn(required, args)
+                    self.assertNotIn('--allow-untrusted', args)
+                    if builder == 'installer/build.sh':
+                        self.assertIn('--no-scripts', args)
+                        self.assertEqual(args[args.index('--arch') + 1], 'aarch64')
+                        for package in ('busybox-static', 'musl', 'curl', 'zstd',
+                                        'wpa_supplicant', 'dropbear', 'e2fsprogs',
+                                        'e2fsprogs-extra', 'ca-certificates-bundle'):
+                            self.assertIn(package, args)
+
+    def test_apk_failure_is_fatal(self):
+        for builder in ('installer/build.sh', 'scripts/build-apkindex.sh'):
+            for uid in (0, 1000):
+                with self.subTest(builder=builder, uid=uid):
+                    result, _ = self.run_command(builder, uid, exit_code=42)
+                    self.assertNotEqual(result.returncode, 0)
 
 
 if __name__ == '__main__':
