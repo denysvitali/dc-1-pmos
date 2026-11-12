@@ -44,9 +44,9 @@ fdtget "$WORK/dtb" /memory reg >/dev/null 2>&1 ||
 
 DTB="$WORK/dtb"
 
-align4() { echo $(( ($1 + 3) & ~3 )); }
+align8() { echo $(( ($1 + 7) & ~7 )); }
 SS=$(wc -c < "$STUB"); DS=$(wc -c < "$DTB"); KS=$(wc -c < "$KERNEL")
-DOFF=$(align4 "$SS"); KOFF=$(align4 $((DOFF + DS)))
+DOFF=$(align8 "$SS"); KOFF=$(align8 $((DOFF + DS)))
 
 tmp=$WORK
 cp "$STUB" "$tmp/img"

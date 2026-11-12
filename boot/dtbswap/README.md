@@ -19,7 +19,11 @@ tree instead.
     boot.img kernel slot = gzip( [ stub | our dtb | real kernel Image ] )
 
 LK gunzips the whole blob to one address and jumps to offset 0. Offsets are
-patched into the stub's payload table at `0x40` by `pack.sh`.
+patched into the stub's payload table at `0x40` by `pack.sh`. The dtb and the
+kernel are placed on 8-byte boundaries. The stub hands the kernel a pointer to
+the dtb in place, and arm64 requires the FDT to be 8-byte aligned
+(`Documentation/arch/arm64/booting.rst`). A merely 4-aligned dtb makes the
+kernel reject it before any console exists.
 
 ## What is copied from LK's tree, and why
 
@@ -30,6 +34,7 @@ LK fills these in at run time; a statically built dtb cannot know them:
 | `/chosen/bootargs` | LK builds the whole command line itself and overwrites whatever the DTS says |
 | `/chosen/linux,initrd-start` / `-end` | the ramdisk LK already placed in DRAM |
 | `/memory` `reg` | LK patches the real DRAM size |
+| `/chosen/framebuffer@*` `reg`, `stride` | Not copied from LK: read back from the display overlay (OVL0's enabled layer). LK double-buffers its splash, and the frame on the glass varies per boot (buffer 1 at `0xff02d000` with a 4800-byte pitch and buffer 0 at `0xfe8c1000` with 4864 have both been seen). Only a layer that is exactly 1200×1600, has a 4800 or 4864 pitch, and lies inside the splash reservation is accepted; otherwise the tree keeps its own values. A tree without the node, or with differently sized properties, is left untouched. The progress bars are drawn on the same live buffer. |
 
 The stub cannot grow a tree with the MMU off, so it only ever overwrites
 properties that already exist and are large enough. `pack.sh` prepares a padded
