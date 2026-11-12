@@ -82,12 +82,56 @@ extern unsigned long jump_target;
 #define WHITE		0xffffffffu
 #define BLACK		0xff000000u
 
+/*
+ * LK double-buffers its splash: the reservation at FB_PA holds several
+ * frames spaced FB_STRIDE * FB_H apart, and which one is on the glass (and
+ * with which pitch: 4864 or 4800 have both been seen) varies from boot to
+ * boot. Read it back from the display overlay instead of assuming buffer 0,
+ * so the bars below land where they can be seen and the kernel's
+ * simple-framebuffer node can be pointed at the same place.
+ */
+#define FB_H		1600U
+#define FB_RES_SIZE	0x173e000UL
+#define OVL0_PA		0x14005000UL
+#define OVL_SRC_CON	0x2c
+#define OVL_L_SRC_SIZE(n)	(0x38 + (n) * 0x20)
+#define OVL_L_PITCH(n)		(0x44 + (n) * 0x20)
+#define OVL_L_ADDR(n)		(0xf40 + (n) * 0x20)
+
+static unsigned long fb_base = FB_PA;
+static u32 fb_pitch = FB_STRIDE;
+
+static void find_live_fb(void)
+{
+	volatile u32 *ovl = (volatile u32 *)OVL0_PA;
+	u32 en = ovl[OVL_SRC_CON / 4];
+
+	for (u32 n = 0; n < 4; n++) {
+		unsigned long a;
+		u32 pitch;
+
+		if (!(en & (1U << n)))
+			continue;
+		a = ovl[OVL_L_ADDR(n) / 4];
+		pitch = ovl[OVL_L_PITCH(n) / 4] & 0xffff;
+		if (ovl[OVL_L_SRC_SIZE(n) / 4] != ((FB_H << 16) | FB_W))
+			continue;
+		if (pitch != FB_W * 4 && pitch != FB_STRIDE)
+			continue;
+		if (a < FB_PA || a + (unsigned long)pitch * FB_H > FB_PA + FB_RES_SIZE)
+			continue;
+		fb_base = a;
+		fb_pitch = pitch;
+		return;
+	}
+}
+
 static void fill_rows(u32 y0, u32 rows, u32 argb)
 {
-	volatile u32 *fb = (volatile u32 *)FB_PA;
+	volatile u32 *fb = (volatile u32 *)fb_base;
 	for (u32 y = y0; y < y0 + rows; y++)
 		for (u32 x = 0; x < FB_W; x++)
-			fb[(y * FB_STRIDE) / 4 + x] = argb;
+			fb[(y * fb_pitch) / 4 + x] = argb;
 }
 
 /* n bars = the step reached; 8 bars means the swap succeeded. */
@@ -170,6 +214,85 @@ static void *fdt_find(void *fdt, const char *node, const char *prop, u32 *len)
 		}
 	}
 	return 0;
+}
+
+/*
+ * Same walk one level down: /<node>/<child>[@...]/<prop>. Only used for
+ * /chosen/framebuffer@..., which our dts always carries.
+ */
+static void *fdt_find2(void *fdt, const char *node, const char *child,
+		       const char *prop, u32 *len)
+{
+	struct fdt_header *h = fdt;
+	u8 *base = fdt;
+	u8 *p = base + be32(&h->off_dt_struct);
+	u8 *end = p + be32(&h->size_dt_struct);
+	const char *strs = (const char *)(base + be32(&h->off_dt_strings));
+	int depth = 0, in1 = 0, in2 = 0;
+
+	while (p < end) {
+		u32 tag = be32(p); p += 4;
+
+		if (tag == FDT_BEGIN_NODE) {
+			const char *name = (const char *)p, *want;
+			unsigned long l = 0;
+			while (p[l]) l++;
+			p += (l + 4) & ~3UL;
+			depth++;
+			if (depth == 2 || (depth == 3 && in1)) {
+				const char *a = name;
+				want = depth == 2 ? node : child;
+				while (*want && *a == *want) { a++; want++; }
+				if (depth == 2)
+					in1 = (!*want && (!*a || *a == '@'));
+				else
+					in2 = (!*want && (!*a || *a == '@'));
+			}
+		} else if (tag == FDT_END_NODE) {
+			if (depth == 3) in2 = 0;
+			if (depth == 2) in1 = 0;
+			depth--;
+		} else if (tag == FDT_PROP) {
+			u32 plen = be32(p), noff = be32(p + 4);
+			u8 *data = p + 8;
+			p = data + ((plen + 3) & ~3U);
+			if (in2 && depth == 3 && streq(strs + noff, prop)) {
+				*len = plen;
+				return data;
+			}
+		} else if (tag == FDT_NOP) {
+			continue;
+		} else {
+			break;
+		}
+	}
+	return 0;
+}
+
+static void put_be32(void *p, u32 v)
+{
+	u8 *b = p;
+	b[0] = v >> 24; b[1] = v >> 16; b[2] = v >> 8; b[3] = v;
+}
+
+/*
+ * Point /chosen/framebuffer at the live splash buffer. Best effort: a tree
+ * without the node, or with differently sized properties, keeps whatever it
+ * says (buffer 0), which is only wrong on the boots LK ends on another one.
+ */
+static void patch_framebuffer(void *fdt)
+{
+	u32 rlen = 0, slen = 0;
+	u8 *reg = fdt_find2(fdt, "chosen", "framebuffer", "reg", &rlen);
+	u8 *stride = fdt_find2(fdt, "chosen", "framebuffer", "stride", &slen);
+
+	if (!reg || rlen != 16 || !stride || slen != 4)
+		return;
+	put_be32(reg, (u32)(fb_base >> 32));
+	put_be32(reg + 4, (u32)fb_base);
+	put_be32(reg + 8, 0);
+	put_be32(reg + 12, fb_pitch * FB_H);
+	put_be32(stride, fb_pitch);
 }
 
 /*
@@ -264,6 +387,7 @@ unsigned long dtbswap_main(unsigned long lk_fdt, unsigned long base)
 	void *kern_src = (void *)(base + payload.kern_off);
 	void *kern_dst = (void *)KERNEL_RELOC_PA;
 
+	find_live_fb();
 	trace(1);
 	/* The kernel moves either way; only the fdt choice is conditional. */
 	memcpy_(kern_dst, kern_src, payload.kern_len);
@@ -301,6 +425,7 @@ unsigned long dtbswap_main(unsigned long lk_fdt, unsigned long base)
 		return lk_fdt;
 	}
 	trace(8);
+	patch_framebuffer(our);
 
 	report(8);				/* 8 bars: swapped, booting our dtb */
 	return (unsigned long)our;
